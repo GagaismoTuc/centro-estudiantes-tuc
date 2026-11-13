@@ -164,6 +164,12 @@ func (s *Store) ResetPassword(ctx context.Context, token, password string) error
 		if _, err := tx.Exec(ctx, `UPDATE users SET password_hash = $2 WHERE id = $1`, user, hash); err != nil {
 			return err
 		}
+		// Kill every other pending emailed token too: a sign-in link left in a mailbox someone else
+		// controlled must not outlive the password reset.
+		if _, err := tx.Exec(ctx,
+			`UPDATE email_tokens SET used_at = $2 WHERE user_id = $1 AND used_at IS NULL`, user, s.now()); err != nil {
+			return err
+		}
 		_, err = tx.Exec(ctx, `DELETE FROM sessions WHERE user_id = $1`, user)
 		return err
 	})

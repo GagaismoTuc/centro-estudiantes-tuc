@@ -473,3 +473,26 @@ func TestEmailTokenGrantsAreLeastPrivilege(t *testing.T) {
 		}
 	}
 }
+
+// A password reset must kill every pending emailed token: a sign-in link sitting in a mailbox the
+// attacker controlled would otherwise still open a session after the owner reset the password.
+func TestPasswordResetInvalidatesPendingSignInLinks(t *testing.T) {
+	ctx := integration(t)
+	f := newFixture(t, ctx)
+	email := uniqueEmail("reset-links")
+	user := f.seedUser(t, ctx, email, "student")
+
+	wantResponse(t, f.post("/api/auth/link", emailBody(email), "198.51.100.70", ""), http.StatusAccepted, "")
+	link := f.oneLink(t, email, "Tu enlace para ingresar", "/ingresar")
+	wantResponse(t, f.post("/api/auth/password/reset-request", emailBody(email), "198.51.100.70", ""), http.StatusAccepted, "")
+	reset := f.oneLink(t, email, "Restablecer tu contraseña", "/restablecer")
+
+	rec := f.post("/api/auth/password/reset", fmt.Sprintf(`{"token":%q,"password":%q}`, reset, newPassword), "198.51.100.71", "")
+	wantResponse(t, rec, http.StatusNoContent, "")
+
+	rec = f.post("/api/auth/link/consume", tokenBody(link), "198.51.100.72", "")
+	wantResponse(t, rec, http.StatusUnprocessableEntity, invalidTokenBody)
+	if n := sessionCount(t, ctx, user); n != 0 {
+		t.Fatalf("sessions = %d, want 0", n)
+	}
+}
