@@ -85,7 +85,147 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /roster:
+    get:
+      operationId: getRoster
+      summary: List the roster of the active tenant
+      description: "School admins only. Responses carry `Cache-Control: no-store` (personal data)."
+      responses:
+        "200":
+          description: Roster members ordered by name.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RosterMember"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /roster/import:
+    post:
+      operationId: postRosterImport
+      summary: Import roster members from CSV
+      description: >
+        School admins only. The body is CSV (max 1 MiB, max 5000 data rows) whose first line is the
+        header `full_name,document_number` (case-insensitive, trimmed). `document_number` must have 7 to 9
+        digits after removing dots and spaces. The import is atomic: any invalid row or a document number
+        repeated in the file writes nothing. Rows whose document number already exists in the tenant are
+        skipped, never updated.
+      requestBody:
+        required: true
+        content:
+          text/csv:
+            schema:
+              type: string
+      responses:
+        "200":
+          description: Imported.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportResult"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "413":
+          description: Body larger than 1 MiB (`body_too_large`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "415":
+          description: Content-Type is not `text/csv` (`unsupported_media_type`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: >
+            Nothing was written. `invalid_rows` lists every problem with its 1-based line number (the header
+            is line 1); `too_many_rows` when the file has more than 5000 data rows.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportError"
+  /roster/{memberId}/access-code:
+    post:
+      operationId: postRosterMemberAccessCode
+      summary: Issue an access code for one roster member
+      description: >
+        School admins only. Returns the code in plain text once (`Cache-Control: no-store`); only its HMAC is
+        stored. The code expires after 30 days and revokes the member's previous unused code.
+      parameters:
+        - name: memberId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "201":
+          description: Code issued.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IssuedCode"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: No such member in the active tenant (`not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: The member already has an account (`member_has_account`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /roster/access-codes:
+    post:
+      operationId: postRosterAccessCodes
+      summary: Issue codes for every member without an account and without an active code
+      description: "School admins only. Codes are shown once, for printing (`Cache-Control: no-store`)."
+      responses:
+        "201":
+          description: Codes issued, ordered by name; empty when nobody needed one.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/IssuedMemberCode"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
 components:
+  responses:
+    Unauthenticated:
+      description: No valid session (`unauthenticated`).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Forbidden:
+      description: The user is not a school admin of the active tenant (`forbidden`).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
   schemas:
     Health:
       type: object
@@ -128,3 +268,69 @@ components:
             - $ref: "#/components/schemas/Role"
           nullable: true
           description: Role in the active tenant; null when the user has no membership.
+    RosterMember:
+      type: object
+      required: [id, fullName, documentNumber, hasActiveCode, hasAccount]
+      properties:
+        id:
+          type: string
+        fullName:
+          type: string
+        documentNumber:
+          type: string
+        hasActiveCode:
+          type: boolean
+          description: An unused, unrevoked and unexpired access code exists.
+        hasAccount:
+          type: boolean
+    ImportResult:
+      type: object
+      required: [inserted, skipped]
+      properties:
+        inserted:
+          type: integer
+        skipped:
+          type: integer
+    ImportError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+        rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/RowError"
+    RowError:
+      type: object
+      required: [line, reason]
+      properties:
+        line:
+          type: integer
+        reason:
+          type: string
+    IssuedCode:
+      type: object
+      required: [code, expiresAt]
+      properties:
+        code:
+          type: string
+          pattern: "^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$"
+        expiresAt:
+          type: string
+          format: date-time
+    IssuedMemberCode:
+      type: object
+      required: [memberId, fullName, documentNumber, code, expiresAt]
+      properties:
+        memberId:
+          type: string
+        fullName:
+          type: string
+        documentNumber:
+          type: string
+        code:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time

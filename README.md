@@ -37,6 +37,15 @@ cd web && pnpm test
 cd web && pnpm gen:api            # after editing openapi/openapi.yaml
 ```
 
+### Server environment
+
+| Variable | Purpose |
+|---|---|
+| `DATABASE_URL` | Application connection: a login role member of `ce_app`, without `SUPERUSER` or `BYPASSRLS` |
+| `MIGRATE_DATABASE_URL` | Table owner connection, used only to apply migrations at startup |
+| `ACCESS_CODE_KEY` | Base64 HMAC key (at least 32 random bytes) for roster access codes; generate it with `openssl rand -base64 32`. The server refuses to start without it. Changing it invalidates every unused code |
+| `ADDR` | Listen address (default `:8080`) |
+
 ## Contract-first rule
 
 Change the API in `openapi/openapi.yaml` first, then regenerate both sides (`go generate ./...` in `api/`,
