@@ -85,3 +85,7 @@ npx modern-web-guidance@1.0.0 legacy-scan web/src                        # spot 
 ```
 
 The CLI runs offline and has no dependencies. Origin Trial and volatile features stay disabled (no `.mwgrc`).
+
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on every push: Go generated code check, `go vet`, `go test -race` against a real PostgreSQL (testcontainers), `govulncheck`; and for the web, the generated client check, typecheck, tests, build and `pnpm audit --prod`. Actions are pinned by commit SHA.
