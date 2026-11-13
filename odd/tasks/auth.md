@@ -21,9 +21,10 @@ Branch: `feat/auth` (stacked on `feat/mvp-foundation-03-web`) · Delivery: ask-o
 - T4 — S5 — gentle-ai-worker — outbox, email verification, magic link, password reset — pending
 - T5 — S6 — gentle-ai-worker — TOTP 2FA for privileged roles — pending
 - T6 — S7 — gentle-ai-worker — web screens — pending
-- T7 — S2 — inline — rate limiter behind a trusted proxy (`X-Forwarded-For` only from configured proxies, per-IP limit sized for school NAT), expired-session cleanup, hidden password prompt in CLI — pending
+- T7 — S2 — inline — rate limiter behind a trusted proxy (`X-Forwarded-For` only from configured proxies, per-IP limit sized for school NAT), expired-session cleanup, hidden password prompt in CLI; verify follow-ups: precompute dummy hash, strict login JSON (unknown fields / trailing data → 400), delete the request's old session on re-login, CheckAppRole rejects table owners, admin CLI runs CheckAppRole, document per-email lockout DoS — pending
 
 ## Log
 
 - **L1 (2026-11-13, verbatim):** "Dale, cuando termines las instalaciones anda con los pr nomas y empeza." Scope taken from docs/spec/mvp.md §2–3 and the user's earlier answer quoted in S1. Every task is security-sensitive (Risk item 2): each work-unit commit gets an independent verify.
 - **L2 (2026-11-13):** T1 deviations accepted: two DSNs (app role vs owner) and startup role check; app role may INSERT organizations (bootstrap); read-only `memberships_own_user` policy on `app.user_id` set only by `db.WithUser`; composite FKs with tenant_id (FK checks bypass RLS); argon2id m=19MiB t=2 p=1 (OWASP). ADR rules 6, 8-10 updated. Open items moved to T7. ~1680 authored lines (870 tests): single security unit, over the 400 heuristic.
+- **L3 (2026-11-13):** c53dd40 assessed high (native high + escalation). Independent verify: all S2 clauses PASS, no blockers; follow-ups folded into T7. Native review due (high_risk) — started per RDD.
