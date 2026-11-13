@@ -549,6 +549,8 @@ func TestMFAVerifyKeepsAbsoluteSessionLifetime(t *testing.T) {
 
 	rec := f.post("/api/auth/mfa/verify", codeBody(f.code(secret, 0)), mfaIP, tok)
 	wantResponse(t, rec, http.StatusNoContent, "")
+	// The cookie lives exactly as long as the session it carries: one hour left.
+	cookieWithMaxAge(t, rec, 3600)
 
 	var expires time.Time
 	if err := tdb.Super.QueryRow(ctx,

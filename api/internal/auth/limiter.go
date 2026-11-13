@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"strings"
 	"sync"
 	"time"
 )
@@ -13,6 +14,7 @@ import (
 type Limiter struct {
 	mu        sync.Mutex
 	max       int
+	maxBy     map[string]int // per key prefix, overriding max
 	window    time.Duration
 	now       func() time.Time
 	hits      map[string][]time.Time
@@ -22,6 +24,26 @@ type Limiter struct {
 // NewLimiter allows max attempts per key within window.
 func NewLimiter(max int, window time.Duration, now func() time.Time) *Limiter {
 	return &Limiter{max: max, window: window, now: now, hits: map[string][]time.Time{}}
+}
+
+// WithMax sets the limit of keys starting with prefix (for example "ip:") and returns l. Call it
+// before the limiter is used.
+func (l *Limiter) WithMax(prefix string, max int) *Limiter {
+	if l.maxBy == nil {
+		l.maxBy = map[string]int{}
+	}
+	l.maxBy[prefix] = max
+	return l
+}
+
+// limit returns the limit of key.
+func (l *Limiter) limit(key string) int {
+	for p, m := range l.maxBy {
+		if strings.HasPrefix(key, p) {
+			return m
+		}
+	}
+	return l.max
 }
 
 // Take records one attempt for every key and returns true when all keys are under the limit.
@@ -34,7 +56,7 @@ func (l *Limiter) Take(keys ...string) bool {
 	l.sweep(now)
 	for _, k := range keys {
 		l.hits[k] = l.live(l.hits[k], now)
-		if len(l.hits[k]) >= l.max {
+		if len(l.hits[k]) >= l.limit(k) {
 			return false
 		}
 	}

@@ -111,11 +111,12 @@ func (m *MFA) Enroll(ctx context.Context, userID, email string) (secret, uri str
 }
 
 // Confirm checks code against the pending secret, confirms it, replaces the recovery codes and
-// rotates the session named by token into a two-factor session. It returns the new session token
-// and the recovery codes in display form (shown once).
-func (m *MFA) Confirm(ctx context.Context, token, userID, code string) (string, []string, error) {
+// rotates the session named by token into a two-factor session. It returns the new session token,
+// its (unchanged) absolute expiry and the recovery codes in display form (shown once).
+func (m *MFA) Confirm(ctx context.Context, token, userID, code string) (string, time.Time, []string, error) {
 	now := m.now().UTC().Truncate(time.Microsecond)
 	var newToken string
+	var expires time.Time
 	var codes []string
 	err := pgx.BeginFunc(ctx, m.pool, func(tx pgx.Tx) error {
 		var sealed []byte
@@ -154,21 +155,23 @@ func (m *MFA) Confirm(ctx context.Context, token, userID, code string) (string, 
 			}
 			codes = append(codes, c)
 		}
-		newToken, err = rotateSession(ctx, tx, token, userID, now)
+		newToken, expires, err = rotateSession(ctx, tx, token, userID, now, true)
 		return err
 	})
 	if err != nil {
-		return "", nil, err
+		return "", time.Time{}, nil, err
 	}
-	return newToken, codes, nil
+	return newToken, expires, codes, nil
 }
 
 // Verify checks a TOTP code or, when code is empty, a recovery code, and rotates the session named
-// by token into a two-factor session. Wrong, replayed (time step at or before the last accepted one)
-// and used codes, and users without a confirmed TOTP, all return ErrInvalidCode.
-func (m *MFA) Verify(ctx context.Context, token, userID, code, recoveryCode string) (string, error) {
+// by token into a two-factor session, returning the new token and its (unchanged) expiry. Wrong,
+// replayed (time step at or before the last accepted one) and used codes, and users without a
+// confirmed TOTP, all return ErrInvalidCode.
+func (m *MFA) Verify(ctx context.Context, token, userID, code, recoveryCode string) (string, time.Time, error) {
 	now := m.now().UTC().Truncate(time.Microsecond)
 	var newToken string
+	var expires time.Time
 	err := pgx.BeginFunc(ctx, m.pool, func(tx pgx.Tx) error {
 		var sealed []byte
 		var last *int64
@@ -204,10 +207,10 @@ func (m *MFA) Verify(ctx context.Context, token, userID, code, recoveryCode stri
 				return err
 			}
 		}
-		newToken, err = rotateSession(ctx, tx, token, userID, now)
+		newToken, expires, err = rotateSession(ctx, tx, token, userID, now, true)
 		return err
 	})
-	return newToken, err
+	return newToken, expires, err
 }
 
 // check decrypts the secret and verifies code against it, rejecting steps at or before last.
@@ -227,25 +230,45 @@ func (m *MFA) check(userID string, sealed []byte, last *int64, code string, now 
 	return step, nil
 }
 
-// rotateSession deletes the session named by token and inserts a new two-factor session for the same
-// user and tenant, returning its token. A privilege change always gets a new token.
-func rotateSession(ctx context.Context, tx pgx.Tx, token, userID string, now time.Time) (string, error) {
+// rotateSession deletes the live session named by token and inserts a new one for the same user and
+// tenant with the same absolute expiry, returning its token and expiry. With mfa the new session
+// proved the second factor now; otherwise it keeps the old session's mfa_at. A privilege change
+// always gets a new token.
+func rotateSession(ctx context.Context, tx pgx.Tx, token, userID string, now time.Time, mfa bool) (string, time.Time, error) {
 	h, ok := hashToken(token)
 	if !ok {
-		return "", ErrNoSession
+		return "", time.Time{}, ErrNoSession
 	}
 	var tenant *string
 	var expires time.Time
+	var mfaAt *time.Time
 	err := tx.QueryRow(ctx, `DELETE FROM sessions WHERE token_hash = $1 AND user_id = $2 AND expires_at > $3
-		RETURNING tenant_id::text, expires_at`, h, userID, now).Scan(&tenant, &expires)
+		RETURNING tenant_id::text, expires_at, mfa_at`, h, userID, now).Scan(&tenant, &expires, &mfaAt)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", ErrNoSession
+		return "", time.Time{}, ErrNoSession
 	}
 	if err != nil {
-		return "", fmt.Errorf("auth: rotate session: %w", err)
+		return "", time.Time{}, fmt.Errorf("auth: rotate session: %w", err)
 	}
-	// Keep the original absolute expiry: elevating privilege must not extend the session.
-	return insertSessionUntil(ctx, tx, userID, tenant, now, expires, &now)
+	if mfa {
+		mfaAt = &now
+	}
+	// Keep the original absolute expiry: rotating must never extend the session.
+	tok, err := insertSessionUntil(ctx, tx, userID, tenant, now, expires, mfaAt)
+	return tok, expires, err
+}
+
+// RotateSession replaces the session named by token (of userID) with a new token for the same
+// tenant, second-factor state and absolute expiry, returning the token and expiry.
+func (s *Store) RotateSession(ctx context.Context, token, userID string) (string, time.Time, error) {
+	now := s.now().UTC().Truncate(time.Microsecond)
+	var tok string
+	var expires time.Time
+	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) (err error) {
+		tok, expires, err = rotateSession(ctx, tx, token, userID, now, false)
+		return err
+	})
+	return tok, expires, err
 }
 
 // newRecoveryCode returns 10 random Crockford base32 characters as XXXXX-XXXXX.

@@ -65,11 +65,13 @@ type Session struct {
 type Store struct {
 	pool *pgxpool.Pool
 	now  func() time.Time
+	// dummy is verified when the email is unknown; computed here so the first miss is not slower.
+	dummy string
 }
 
 // NewStore returns a Store; now is the clock used for session expiry.
 func NewStore(pool *pgxpool.Pool, now func() time.Time) *Store {
-	return &Store{pool: pool, now: now}
+	return &Store{pool: pool, now: now, dummy: dummyHash()}
 }
 
 // NormalizeEmail trims and lowercases an email; accounts are matched on this form.
@@ -82,7 +84,7 @@ func (s *Store) Authenticate(ctx context.Context, email, password string) (strin
 	err := s.pool.QueryRow(ctx, `SELECT id::text, password_hash FROM users WHERE lower(email) = $1`,
 		NormalizeEmail(email)).Scan(&id, &hash)
 	if errors.Is(err, pgx.ErrNoRows) {
-		_, _ = VerifyPassword(dummyHash(), password)
+		_, _ = VerifyPassword(s.dummy, password)
 		return "", ErrInvalidCredentials
 	}
 	if err != nil {

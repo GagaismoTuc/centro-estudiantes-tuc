@@ -350,7 +350,7 @@ func TestEmailRequestsAreRateLimited(t *testing.T) {
 		f := newFixture(t, ctx)
 		email := uniqueEmail("rate-ip")
 		f.seedUser(t, ctx, email, "")
-		for range 5 {
+		for range 50 { // per-IP limit sized for a school behind one NAT address
 			wantResponse(t, f.post("/api/auth/password/reset-request", emailBody(uniqueEmail("x")), "203.0.113.150", ""), http.StatusAccepted, "")
 		}
 		wantResponse(t, f.post("/api/auth/link", emailBody(email), "203.0.113.150", ""), http.StatusTooManyRequests, tooManyBody)
@@ -369,7 +369,7 @@ func TestInvalidTokensAreRateLimitedPerIP(t *testing.T) {
 	tok := f.oneLink(t, email, "Tu enlace para ingresar", "/ingresar")
 	bogus := tokenBody(base64.RawURLEncoding.EncodeToString(make([]byte, 32)))
 	const ip = "203.0.113.161"
-	for i := range 10 {
+	for i := range 50 { // per-IP limit sized for a school behind one NAT address
 		path := []string{"/api/auth/email/verify", "/api/auth/link/consume"}[i%2]
 		wantResponse(t, f.post(path, bogus, ip, ""), http.StatusUnprocessableEntity, invalidTokenBody)
 	}
