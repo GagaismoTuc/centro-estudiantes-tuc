@@ -385,3 +385,97 @@ func TestMigrateIsIdempotentAndReversible(t *testing.T) {
 		t.Fatalf("after down: organizations=%v roster_members=%v, want neither", org, roster)
 	}
 }
+
+func TestWithTenantRollsBackOnError(t *testing.T) {
+	ctx := integration(t)
+	sentinel := errors.New("boom")
+	err := db.WithTenant(ctx, env.app, env.tenantA, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO roster_members (tenant_id, full_name, document_number) VALUES ($1, 'Rollback', '114')`,
+			env.tenantA); err != nil {
+			return err
+		}
+		return sentinel
+	})
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("err = %v, want the error returned by fn", err)
+	}
+	var n int
+	if err := env.super.QueryRow(ctx, `SELECT count(*) FROM roster_members WHERE document_number = '114'`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatalf("persisted %d rows, want 0", n)
+	}
+}
+
+func TestUpdateCannotMoveRowToOtherTenant(t *testing.T) {
+	ctx := integration(t)
+	beforeA := superMembers(t, ctx, env.tenantA)
+	beforeB := superMembers(t, ctx, env.tenantB)
+	err := db.WithTenant(ctx, env.app, env.tenantA, func(tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, `UPDATE roster_members SET tenant_id = $1 WHERE document_number = '111'`, env.tenantB)
+		return err
+	})
+	wantRLSError(t, err)
+	if after := superMembers(t, ctx, env.tenantA); !slices.Equal(after, beforeA) {
+		t.Fatalf("tenant A rows changed: %v, want %v", after, beforeA)
+	}
+	if after := superMembers(t, ctx, env.tenantB); !slices.Equal(after, beforeB) {
+		t.Fatalf("tenant B rows changed: %v, want %v", after, beforeB)
+	}
+}
+
+// A malformed tenant can only be set by bypassing WithTenant; the query then errors (22P02)
+// instead of returning rows, so it still fails closed.
+func TestMalformedTenantSettingFailsClosed(t *testing.T) {
+	ctx := integration(t)
+	err := pgx.BeginFunc(ctx, env.app, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `SELECT set_config('app.tenant_id', 'garbage', true)`); err != nil {
+			return err
+		}
+		var n int
+		return tx.QueryRow(ctx, `SELECT count(*) FROM roster_members`).Scan(&n)
+	})
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) || pgErr.Code != "22P02" {
+		t.Fatalf("err = %v, want SQLSTATE 22P02", err)
+	}
+}
+
+// If ce_app already exists with an attribute that bypasses RLS, Migrate must refuse to continue.
+func TestMigrateRefusesUnsafePreexistingAppRole(t *testing.T) {
+	ctx := integration(t)
+	if _, err := env.super.Exec(ctx, `CREATE DATABASE unsafe_role_check`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := env.super.Exec(ctx, `ALTER ROLE ce_app BYPASSRLS`); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if _, err := env.super.Exec(context.Background(), `ALTER ROLE ce_app NOBYPASSRLS`); err != nil {
+			t.Errorf("restore ce_app: %v", err)
+		}
+	})
+	cfg, err := pgx.ParseConfig(env.superDSN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dsn := fmt.Sprintf("postgres://%s:%s@%s:%d/unsafe_role_check?sslmode=disable", cfg.User, cfg.Password, cfg.Host, cfg.Port)
+
+	if err := db.Migrate(ctx, dsn); err == nil {
+		t.Fatal("Migrate succeeded with ce_app BYPASSRLS, want an error")
+	}
+	sqlDB, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sqlDB.Close()
+	var created bool
+	if err := sqlDB.QueryRowContext(ctx, `SELECT to_regclass('roster_members') IS NOT NULL`).Scan(&created); err != nil {
+		t.Fatal(err)
+	}
+	if created {
+		t.Fatal("roster_members was created despite the unsafe role")
+	}
+}

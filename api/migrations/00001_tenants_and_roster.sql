@@ -6,6 +6,9 @@ DO $$
 BEGIN
     IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'ce_app') THEN
         CREATE ROLE ce_app NOLOGIN NOSUPERUSER NOBYPASSRLS;
+    ELSIF EXISTS (SELECT FROM pg_roles WHERE rolname = 'ce_app' AND (rolsuper OR rolbypassrls)) THEN
+        -- A pre-existing role that bypasses RLS would silently disable tenant isolation.
+        RAISE EXCEPTION 'role ce_app exists with SUPERUSER or BYPASSRLS; refusing to migrate';
     END IF;
 END
 $$;
