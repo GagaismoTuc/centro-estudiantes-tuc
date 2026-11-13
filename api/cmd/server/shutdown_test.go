@@ -29,6 +29,25 @@ func TestParseTrustedProxies(t *testing.T) {
 	}
 }
 
+// An IPv4-mapped IPv6 prefix never matches: client addresses are unmapped before the check, so such
+// an entry would silently trust nothing. It is refused at startup.
+func TestParseTrustedProxiesRejectsIPv4MappedPrefixes(t *testing.T) {
+	const want = "TRUSTED_PROXIES must list IPv4 proxies as plain IPv4 CIDRs, not IPv4-mapped IPv6 (::ffff:…)"
+	for _, in := range []string{"::ffff:10.0.0.0/104", "10.0.0.0/8, ::ffff:192.168.1.10/128"} {
+		if _, err := parseTrustedProxies(in); err == nil || err.Error() != want {
+			t.Errorf("parseTrustedProxies(%q) = %v, want %q", in, err, want)
+		}
+	}
+}
+
+// Docker sends SIGKILL stop_grace_period after SIGTERM (the README asks for 30 s): shutting down
+// HTTP and draining mail must fit inside it with margin.
+func TestShutdownBudgetFitsTheStopGracePeriod(t *testing.T) {
+	if shutdownTimeout != 15*time.Second || drainTimeout != 10*time.Second || shutdownTimeout+drainTimeout > 25*time.Second {
+		t.Fatalf("shutdown %s + drain %s; want 15 s + 10 s (at most 25 s)", shutdownTimeout, drainTimeout)
+	}
+}
+
 func TestRunRefusesToStartWithInvalidTrustedProxies(t *testing.T) {
 	const want = "TRUSTED_PROXIES must be a comma-separated list of CIDRs, e.g. 10.0.0.0/8,192.168.1.10/32"
 	key := base64.StdEncoding.EncodeToString(make([]byte, 32))

@@ -5,6 +5,7 @@ import (
 	"context"
 	"log/slog"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -40,8 +41,11 @@ func TestQueueDropsWhenFullAndDrainsOnClose(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("Go blocked on a full queue")
 	}
-	if !strings.Contains(logs.String(), "mail queue full") {
-		t.Fatalf("log = %q, want a dropped-message entry", logs.String())
+	if !strings.Contains(logs.String(), `level=WARN msg="mail queue full: message dropped" dropped=1`) {
+		t.Fatalf("log = %q, want a WARN dropped-message entry with the counter", logs.String())
+	}
+	if n := q.Dropped(); n != 1 {
+		t.Fatalf("Dropped = %d, want 1", n)
 	}
 
 	closed := make(chan error)
@@ -56,6 +60,45 @@ func TestQueueDropsWhenFullAndDrainsOnClose(t *testing.T) {
 	q.Go(func() { ran.Add(100) }) // after Close: dropped, no panic
 	if n := ran.Load(); n != 3 {
 		t.Fatalf("job ran after Close")
+	}
+	if n := q.Dropped(); n != 2 || !strings.Contains(logs.String(), `level=WARN msg="mail queue closed: message dropped" dropped=2`) {
+		t.Fatalf("Dropped = %d, log = %q; want 2 and a WARN closed entry", n, logs.String())
+	}
+}
+
+// Go racing with concurrent Close calls never panics (send on a closed channel) and every job is
+// either run or counted as dropped. Run with -race.
+func TestQueueGoRacesWithConcurrentClose(t *testing.T) {
+	captureLogs(t)
+	const senders, perSender = 16, 50
+	q := mail.NewQueue(2, 8)
+	var ran atomic.Int64
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+	for range senders {
+		wg.Go(func() {
+			<-start
+			for range perSender {
+				q.Go(func() { ran.Add(1) })
+			}
+		})
+	}
+	closeErr := make(chan error, 2)
+	for range 2 {
+		wg.Go(func() { <-start; closeErr <- q.Close(context.Background()) })
+	}
+	close(start)
+	wg.Wait()
+	for range 2 {
+		if err := <-closeErr; err != nil {
+			t.Fatalf("Close = %v, want nil", err)
+		}
+	}
+	if err := q.Close(context.Background()); err != nil {
+		t.Fatalf("third Close = %v, want nil", err)
+	}
+	if got := uint64(ran.Load()) + q.Dropped(); got != senders*perSender {
+		t.Fatalf("run %d + dropped %d = %d, want %d", ran.Load(), q.Dropped(), got, senders*perSender)
 	}
 }
 

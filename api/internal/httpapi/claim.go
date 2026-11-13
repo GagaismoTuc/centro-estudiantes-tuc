@@ -89,17 +89,20 @@ func (s *server) PostAuthClaim(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnprocessableEntity, "weak_password")
 		return
 	}
+	// The new session is created with the account and the one the request came with goes away in the
+	// same transaction.
+	var prev string
+	if _, ok := auth.SessionFromContext(r.Context()); ok {
+		c, _ := r.Cookie(sessionCookie) // present: withSession resolved it
+		prev = c.Value
+	}
 	c, ok := s.spendCode(w, r, func() (roster.Claimed, error) {
-		return s.roster.Claim(r.Context(), req.Code, email, req.Password)
+		return s.roster.Claim(r.Context(), req.Code, email, req.Password, prev)
 	})
 	if !ok {
 		return
 	}
-	// The new session was created with the account; the one the request came with goes away.
-	if err := s.dropPreviousSession(r); err != nil {
-		slog.Error("drop previous session", "err", err)
-	}
-	s.setNewSessionCookie(w, c.Token)
+	s.setSessionCookieUntil(w, c.Token, c.Expires)
 	writeJSON(w, http.StatusCreated, studentMe(c, email, false))
 	s.sendLink(auth.PurposeVerifyEmail, email, c.VerifyToken)
 }
@@ -116,19 +119,14 @@ func (s *server) PostAuthRedeem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cookie, _ := r.Cookie(sessionCookie) // present: withSession resolved it
+	// Joining a school changes what the session may do: Redeem rotates it (new token, same absolute
+	// expiry) in the same transaction.
 	c, ok := s.spendCode(w, r, func() (roster.Claimed, error) {
 		return s.roster.Redeem(r.Context(), sess, cookie.Value, req.Code)
 	})
 	if !ok {
 		return
 	}
-	// Joining a school changes what the session may do: give it a new token, same absolute expiry.
-	token, expires, err := s.store.RotateSession(r.Context(), cookie.Value, sess.UserID)
-	if err != nil {
-		slog.Error("rotate session after redeem", "err", err)
-		writeError(w, http.StatusInternalServerError, "internal")
-		return
-	}
-	s.setSessionCookieUntil(w, token, expires)
+	s.setSessionCookieUntil(w, c.Token, c.Expires)
 	writeJSON(w, http.StatusOK, studentMe(c, sess.Email, sess.EmailVerified))
 }

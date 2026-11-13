@@ -41,8 +41,9 @@ trendy one, and chose: "Podemos hacer el backend con Go y frontend con typescrip
 8. `organizations` is platform-level: the app role can read it across tenants (names and hierarchy only) and insert
    into it (bootstrap). Before adding sensitive columns to it, give it its own RLS policy.
 9. Two connection strings: `DATABASE_URL` (login role member of `ce_app`, used by the app) and `MIGRATE_DATABASE_URL`
-   (table owner, used only to migrate). The server refuses to start if the app role is superuser, has `BYPASSRLS`
-   or is not a member of `ce_app`.
+   (table owner, used only to migrate). The server and the admin CLI refuse to run if the app role is superuser,
+   has `BYPASSRLS`, is not a member of `ce_app`, or owns (directly or through role membership) a table in
+   schema `public`.
 10. Foreign keys between tenant-owned tables include `tenant_id` (composite), because FK checks bypass RLS.
 
 ### Emailed token rules
@@ -69,7 +70,9 @@ trendy one, and chose: "Podemos hacer el backend con Go y frontend con typescrip
    ciphertext copied to another user's row does not decrypt. The server refuses to start without the key.
 2. A code is accepted for the steps now−1, now and now+1, and only if its step is later than the last
    accepted one (`user_totp.last_used_step`, updated under a row lock), so every code works once.
-   Recovery codes (10 per enrollment, 50 bits each) are single-use and stored as SHA-256 only.
+   Recovery codes (10 per enrollment, 50 bits each) are single-use and stored only as HMAC-SHA256 under a key
+   derived from `TOTP_ENC_KEY` with HKDF-SHA256 (info `recovery-codes`), so a database copy alone cannot test
+   codes offline. Migration 00008 deleted the codes stored as plain SHA-256 before (no production data).
 3. Wrong, replayed and used codes get the same `invalid_code`; failures are limited per user (5 per
    15 minutes, shared by verification and enrollment confirmation).
 4. Proving the second factor (enrollment confirmation or verification) rotates the session: a new token and
@@ -87,14 +90,20 @@ trendy one, and chose: "Podemos hacer el backend con Go y frontend con typescrip
    requests, invalid emailed tokens), sized for a whole school behind one NAT address. Per email: 5 login
    failures and 5 link requests. Per user: 5 invalid two-factor codes. Server errors (5xx) never count.
 2. The client IP is the TCP peer; `X-Forwarded-For` is read only when the peer is in `TRUSTED_PROXIES`, and
-   then the right-most address that is not a trusted proxy is the client. IPv6 clients are keyed by /64.
+   then the right-most address that is not a trusted proxy is the client (all headers in order, empty hops
+   skipped, ports dropped; all hops trusted: the left-most). An unparsable hop met before any untrusted one
+   puts the request in a single shared bucket, never the proxy's. IPv4-mapped prefixes in `TRUSTED_PROXIES`
+   are refused at startup. IPv6 clients are keyed by /64. Per-key limits that depend on a key prefix use
+   the longest matching prefix.
 3. **Accepted trade-off: per-email lockout.** Anyone who knows a victim's email can spend its per-email
    budget (5 failed logins, 5 link requests) and lock that account out of password login and emailed links
    for 15 minutes, from many IPs. We accept it: the alternative (no per-email limit) lets a botnet guess
    one account's password at the full per-IP rate. A user already signed in is not affected, and the
    lockout ends by itself. Revisit if it is abused (e.g. per-email CAPTCHA or a longer, per-IP-scoped key).
-4. Every new session replaces the one the request arrived with (login, sign-in link, claim), and redeem
+4. Every new session replaces the one the request arrived with (login, sign-in link, claim; for claim the
+   old session is deleted in the claim's transaction, so a failure there fails the claim), and redeem
    and second-factor proof rotate the token keeping the absolute expiry (12 h from sign-in, never extended).
+   Redeem adds the membership, consumes the code and rotates the session in one transaction.
    The cookie's Max-Age is always the remaining lifetime of its session. Expired rows are deleted every
    10 minutes in batches.
 5. **Accepted trade-off: trust on first use for two-factor enrollment.** A privileged user without a
@@ -102,6 +111,9 @@ trendy one, and chose: "Podemos hacer el backend con Go y frontend con typescrip
    account is created (or after `admin reset-mfa`) binds the authenticator. Planned mitigations (auth T7):
    require a verified email before enrolling and notify the user by mail when an authenticator is
    confirmed.
+6. Shutdown fits the orchestrator's grace period: 15 s for in-flight requests plus 10 s to drain queued
+   mail (25 s), with `stop_grace_period: 30s` on the app container. Mail dropped because the in-memory
+   queue is full or closed is counted and logged at WARN, never with its content.
 
 ## Alternatives considered
 

@@ -190,7 +190,7 @@ func TestRosterImportInsertsAndSkipsExisting(t *testing.T) {
 
 	body := "\uFEFF Full_Name , DOCUMENT_NUMBER \r\n" +
 		"Ana Acosta,40.111.222\r\n" +
-		"  Beto Bravo  , 9 876 543\n" +
+		"  Beto Bravo  , 9.876.543\n" +
 		"\"Pérez, Juan\",22333444\n" +
 		"\n" +
 		"Otra Carla,30123456\n"

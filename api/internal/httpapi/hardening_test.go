@@ -77,7 +77,7 @@ func TestClientIPBehindTrustedProxy(t *testing.T) {
 				{"10.0.0.1", "1.2.3.4, 198.18.0.1, 10.0.0.2", 429}, // second trusted hop skipped
 				{"10.0.0.1", "198.18.0.1, 198.18.0.2", 422},        // another student behind the proxy
 				{"10.0.0.1", "", 422},                              // the proxy itself
-				{"10.0.0.1", "not-an-ip", 422},                     // falls back to the peer
+				{"10.0.0.1", "not-an-ip", 422},                     // own shared bucket, never the proxy's
 			}, "10.0.0.0/8, 192.168.1.1/32"},
 		{"IPv6 clients share their /64", "[2001:db8:1:2::1]",
 			func(int) string { return "" },

@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -14,11 +15,16 @@ import (
 type Limiter struct {
 	mu        sync.Mutex
 	max       int
-	maxBy     map[string]int // per key prefix, overriding max
+	maxBy     []prefixMax // per key prefix, overriding max; longest prefix first
 	window    time.Duration
 	now       func() time.Time
 	hits      map[string][]time.Time
 	lastSweep time.Time
+}
+
+type prefixMax struct {
+	prefix string
+	max    int
 }
 
 // NewLimiter allows max attempts per key within window.
@@ -26,21 +32,20 @@ func NewLimiter(max int, window time.Duration, now func() time.Time) *Limiter {
 	return &Limiter{max: max, window: window, now: now, hits: map[string][]time.Time{}}
 }
 
-// WithMax sets the limit of keys starting with prefix (for example "ip:") and returns l. Call it
-// before the limiter is used.
+// WithMax sets the limit of keys starting with prefix (for example "ip:") and returns l; when several
+// prefixes match a key, the longest wins. Call it before the limiter is used.
 func (l *Limiter) WithMax(prefix string, max int) *Limiter {
-	if l.maxBy == nil {
-		l.maxBy = map[string]int{}
-	}
-	l.maxBy[prefix] = max
+	l.maxBy = slices.DeleteFunc(l.maxBy, func(p prefixMax) bool { return p.prefix == prefix })
+	l.maxBy = append(l.maxBy, prefixMax{prefix, max})
+	slices.SortStableFunc(l.maxBy, func(a, b prefixMax) int { return len(b.prefix) - len(a.prefix) })
 	return l
 }
 
-// limit returns the limit of key.
+// limit returns the limit of key: that of its longest matching prefix, or the default.
 func (l *Limiter) limit(key string) int {
-	for p, m := range l.maxBy {
-		if strings.HasPrefix(key, p) {
-			return m
+	for _, p := range l.maxBy {
+		if strings.HasPrefix(key, p.prefix) {
+			return p.max
 		}
 	}
 	return l.max

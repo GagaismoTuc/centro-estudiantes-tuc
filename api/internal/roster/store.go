@@ -47,9 +47,20 @@ type Store struct {
 	now  func() time.Time
 }
 
-// NewStore returns a Store; key is the access-code HMAC key and now the clock.
+// NewStore returns a Store; key is the access-code HMAC key and now the clock. It panics when now
+// is nil.
 func NewStore(pool *pgxpool.Pool, key []byte, now func() time.Time) *Store {
+	if now == nil {
+		panic("roster: NewStore needs a clock")
+	}
 	return &Store{pool: pool, key: key, now: now}
+}
+
+// Authorize returns nil when sess may run roster operations (school_admin of its tenant with a
+// verified second factor), ErrForbidden or auth.ErrMFARequired otherwise. Callers use it to refuse a
+// request before reading its body; every operation checks again in its own transaction.
+func (s *Store) Authorize(ctx context.Context, sess auth.Session) error {
+	return s.asAdmin(ctx, sess, func(pgx.Tx) error { return nil })
 }
 
 // asAdmin runs fn in the session's tenant after checking, in the same transaction, that the user
