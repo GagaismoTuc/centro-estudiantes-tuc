@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -529,5 +530,80 @@ func TestMFAGrantsAreLeastPrivilege(t *testing.T) {
 		if _, err := tdb.App.Exec(ctx, q); err != nil {
 			t.Errorf("%s: %v", q, err)
 		}
+	}
+}
+
+// Rotating the session on two-factor verification must not extend its absolute lifetime.
+func TestMFAVerifyKeepsAbsoluteSessionLifetime(t *testing.T) {
+	ctx := integration(t)
+	f := newFixture(t, ctx)
+	user, _, secret, _ := f.signInMFA(t, ctx, "school_admin")
+	var email string
+	if err := tdb.Super.QueryRow(ctx, `SELECT email FROM users WHERE id = $1`, user).Scan(&email); err != nil {
+		t.Fatal(err)
+	}
+	f.clk.Advance(time.Minute)
+	start := f.clk.Now()
+	tok := f.loginOK(t, email)
+	f.clk.Advance(11 * time.Hour)
+
+	rec := f.post("/api/auth/mfa/verify", codeBody(f.code(secret, 0)), mfaIP, tok)
+	wantResponse(t, rec, http.StatusNoContent, "")
+
+	var expires time.Time
+	if err := tdb.Super.QueryRow(ctx,
+		`SELECT expires_at FROM sessions WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1`, user).Scan(&expires); err != nil {
+		t.Fatal(err)
+	}
+	if want := start.Add(12 * time.Hour); !expires.Equal(want) {
+		t.Fatalf("rotated session expires_at = %s, want %s (the original absolute expiry)", expires, want)
+	}
+}
+
+// Two verifications racing with the same TOTP code: exactly one may succeed (replay protection).
+func TestConcurrentSameTOTPCodeSucceedsOnce(t *testing.T) {
+	ctx := integration(t)
+	f := newFixture(t, ctx)
+	user, _, secret, _ := f.signInMFA(t, ctx, "school_admin")
+	var email string
+	if err := tdb.Super.QueryRow(ctx, `SELECT email FROM users WHERE id = $1`, user).Scan(&email); err != nil {
+		t.Fatal(err)
+	}
+	f.clk.Advance(time.Minute)
+	toks := []string{f.loginOK(t, email), f.loginOK(t, email)}
+	code := codeBody(f.code(secret, 0))
+
+	// Hold the row lock so both verifications are in flight together.
+	tx, err := tdb.Super.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `SELECT 1 FROM user_totp WHERE user_id = $1 FOR UPDATE`, user); err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	codes := make([]int, len(toks))
+	for i, tok := range toks {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			codes[i] = f.post("/api/auth/mfa/verify", code, mfaIP, tok).Code
+		}()
+	}
+	time.Sleep(500 * time.Millisecond)
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	wg.Wait()
+	ok := 0
+	for _, c := range codes {
+		if c == http.StatusNoContent {
+			ok++
+		} else if c != http.StatusUnprocessableEntity {
+			t.Fatalf("statuses %v, want one 204 and one 422", codes)
+		}
+	}
+	if ok != 1 {
+		t.Fatalf("statuses %v, want exactly one 204", codes)
 	}
 }

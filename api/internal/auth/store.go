@@ -129,6 +129,12 @@ func InsertSession(ctx context.Context, q execer, userID string, tenant *string,
 
 // insertSession is InsertSession with mfaAt, set only for a session that proved the second factor.
 func insertSession(ctx context.Context, q execer, userID string, tenant *string, now time.Time, mfaAt *time.Time) (string, error) {
+	return insertSessionUntil(ctx, q, userID, tenant, now, now.Add(SessionLifetime), mfaAt)
+}
+
+// insertSessionUntil is insertSession with an explicit absolute expiry (used when rotating a session,
+// which must never extend its lifetime).
+func insertSessionUntil(ctx context.Context, q execer, userID string, tenant *string, now, expires time.Time, mfaAt *time.Time) (string, error) {
 	raw := make([]byte, tokenLen)
 	if _, err := rand.Read(raw); err != nil {
 		return "", fmt.Errorf("auth: token: %w", err)
@@ -136,7 +142,7 @@ func insertSession(ctx context.Context, q execer, userID string, tenant *string,
 	sum := sha256.Sum256(raw)
 	if _, err := q.Exec(ctx,
 		`INSERT INTO sessions (token_hash, user_id, tenant_id, created_at, expires_at, mfa_at) VALUES ($1, $2, $3, $4, $5, $6)`,
-		sum[:], userID, tenant, now, now.Add(SessionLifetime), mfaAt); err != nil {
+		sum[:], userID, tenant, now, expires, mfaAt); err != nil {
 		return "", fmt.Errorf("auth: insert session: %w", err)
 	}
 	return base64.RawURLEncoding.EncodeToString(raw), nil

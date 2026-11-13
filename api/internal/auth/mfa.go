@@ -235,15 +235,17 @@ func rotateSession(ctx context.Context, tx pgx.Tx, token, userID string, now tim
 		return "", ErrNoSession
 	}
 	var tenant *string
+	var expires time.Time
 	err := tx.QueryRow(ctx, `DELETE FROM sessions WHERE token_hash = $1 AND user_id = $2 AND expires_at > $3
-		RETURNING tenant_id::text`, h, userID, now).Scan(&tenant)
+		RETURNING tenant_id::text, expires_at`, h, userID, now).Scan(&tenant, &expires)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", ErrNoSession
 	}
 	if err != nil {
 		return "", fmt.Errorf("auth: rotate session: %w", err)
 	}
-	return insertSession(ctx, tx, userID, tenant, now, &now)
+	// Keep the original absolute expiry: elevating privilege must not extend the session.
+	return insertSessionUntil(ctx, tx, userID, tenant, now, expires, &now)
 }
 
 // newRecoveryCode returns 10 random Crockford base32 characters as XXXXX-XXXXX.
