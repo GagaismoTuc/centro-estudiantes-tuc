@@ -1,0 +1,7 @@
+node_modules/
+dist/
+/api/bin/
+*.exe
+.env
+.env.*
+!.env.example
