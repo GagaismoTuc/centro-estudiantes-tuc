@@ -8,6 +8,9 @@ package oapi
 import (
 	"fmt"
 	"net/http"
+	"time"
+
+	"github.com/oapi-codegen/runtime"
 )
 
 // Defines values for HealthStatus.
@@ -59,6 +62,33 @@ type Health struct {
 // HealthStatus defines model for Health.Status.
 type HealthStatus string
 
+// ImportError defines model for ImportError.
+type ImportError struct {
+	Error string      `json:"error"`
+	Rows  *[]RowError `json:"rows,omitempty"`
+}
+
+// ImportResult defines model for ImportResult.
+type ImportResult struct {
+	Inserted int `json:"inserted"`
+	Skipped  int `json:"skipped"`
+}
+
+// IssuedCode defines model for IssuedCode.
+type IssuedCode struct {
+	Code      string    `json:"code"`
+	ExpiresAt time.Time `json:"expiresAt"`
+}
+
+// IssuedMemberCode defines model for IssuedMemberCode.
+type IssuedMemberCode struct {
+	Code           string    `json:"code"`
+	DocumentNumber string    `json:"documentNumber"`
+	ExpiresAt      time.Time `json:"expiresAt"`
+	FullName       string    `json:"fullName"`
+	MemberId       string    `json:"memberId"`
+}
+
 // LoginRequest defines model for LoginRequest.
 type LoginRequest struct {
 	Email    string `json:"email"`
@@ -80,6 +110,29 @@ type Me struct {
 // Role defines model for Role.
 type Role string
 
+// RosterMember defines model for RosterMember.
+type RosterMember struct {
+	DocumentNumber string `json:"documentNumber"`
+	FullName       string `json:"fullName"`
+	HasAccount     bool   `json:"hasAccount"`
+
+	// HasActiveCode An unused, unrevoked and unexpired access code exists.
+	HasActiveCode bool   `json:"hasActiveCode"`
+	Id            string `json:"id"`
+}
+
+// RowError defines model for RowError.
+type RowError struct {
+	Line   int    `json:"line"`
+	Reason string `json:"reason"`
+}
+
+// Forbidden defines model for Forbidden.
+type Forbidden = Error
+
+// Unauthenticated defines model for Unauthenticated.
+type Unauthenticated = Error
+
 // PostAuthLoginJSONRequestBody defines body for PostAuthLogin for application/json ContentType.
 type PostAuthLoginJSONRequestBody = LoginRequest
 
@@ -97,6 +150,18 @@ type ServerInterface interface {
 	// GetHealth Liveness check
 	// (GET /health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
+	// GetRoster List the roster of the active tenant
+	// (GET /roster)
+	GetRoster(w http.ResponseWriter, r *http.Request)
+	// PostRosterAccessCodes Issue codes for every member without an account and without an active code
+	// (POST /roster/access-codes)
+	PostRosterAccessCodes(w http.ResponseWriter, r *http.Request)
+	// PostRosterImport Import roster members from CSV
+	// (POST /roster/import)
+	PostRosterImport(w http.ResponseWriter, r *http.Request)
+	// PostRosterMemberAccessCode Issue an access code for one roster member
+	// (POST /roster/{memberId}/access-code)
+	PostRosterMemberAccessCode(w http.ResponseWriter, r *http.Request, memberId string)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -155,6 +220,74 @@ func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Requ
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetHealth(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetRoster operation middleware
+func (siw *ServerInterfaceWrapper) GetRoster(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetRoster(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostRosterAccessCodes operation middleware
+func (siw *ServerInterfaceWrapper) PostRosterAccessCodes(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostRosterAccessCodes(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostRosterImport operation middleware
+func (siw *ServerInterfaceWrapper) PostRosterImport(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostRosterImport(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostRosterMemberAccessCode operation middleware
+func (siw *ServerInterfaceWrapper) PostRosterMemberAccessCode(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "memberId" -------------
+	var memberId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "memberId", r.PathValue("memberId"), &memberId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "memberId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostRosterMemberAccessCode(w, r, memberId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -288,6 +421,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/login", wrapper.PostAuthLogin)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/logout", wrapper.PostAuthLogout)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/auth/me", wrapper.GetAuthMe)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/roster", wrapper.GetRoster)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/roster/import", wrapper.PostRosterImport)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/roster/{memberId}/access-code", wrapper.PostRosterMemberAccessCode)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/roster/access-codes", wrapper.PostRosterAccessCodes)
 
 	return m
 }

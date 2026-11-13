@@ -10,18 +10,22 @@ import (
 
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/auth"
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/oapi"
+	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/roster"
 )
 
 // Deps are the router's dependencies. Pool must connect as a member of ce_app.
 type Deps struct {
 	Pool *pgxpool.Pool
 	Now  func() time.Time // defaults to time.Now
+	// AccessCodeKey is the HMAC key for access codes (ACCESS_CODE_KEY, at least 32 bytes).
+	AccessCodeKey []byte
 }
 
 // server implements oapi.ServerInterface.
 type server struct {
 	store   *auth.Store
 	limiter *auth.Limiter
+	roster  *roster.Store
 }
 
 var _ oapi.ServerInterface = (*server)(nil)
@@ -42,6 +46,7 @@ func NewRouter(d Deps) http.Handler {
 	s := &server{
 		store:   auth.NewStore(d.Pool, d.Now),
 		limiter: auth.NewLimiter(loginMaxFailures, loginWindow, d.Now),
+		roster:  roster.NewStore(d.Pool, d.AccessCodeKey, d.Now),
 	}
 	h := oapi.HandlerWithOptions(s, oapi.StdHTTPServerOptions{
 		BaseURL:    "/api",

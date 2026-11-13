@@ -16,12 +16,12 @@ Branch: `feat/auth` (stacked on `feat/mvp-foundation-03-web`) · Delivery: ask-o
 ## Tasks
 
 - T1 — S2 — gentle-ai-worker — users, memberships, sessions, password login/logout/me, bootstrap CLI — done (c53dd40; native review approved+acknowledged): RED `undefined: db.WithUser` + `relation "users" does not exist`, mutation checks (no CrossOriginProtection → 204 want 403); GREEN `go test -race -count=1 ./...` ok
-- T2 — S3 — gentle-ai-worker — roster CSV import + access codes — pending
+- T2 — S3 — gentle-ai-worker — roster CSV import + access codes — done: RED `undefined: roster.NewCode`, `status = 501, want 200`; mutation (drop school_admin check → 200 want 403); GREEN `go test -race -count=1 ./...` ok
 - T3 — S4 — gentle-ai-worker — claim flow — pending
 - T4 — S5 — gentle-ai-worker — outbox, email verification, magic link, password reset — pending
 - T5 — S6 — gentle-ai-worker — TOTP 2FA for privileged roles — pending
 - T6 — S7 — gentle-ai-worker — web screens — pending
-- T7 — S2 — inline — rate limiter behind a trusted proxy (`X-Forwarded-For` only from configured proxies, per-IP limit sized for school NAT), expired-session cleanup, hidden password prompt in CLI; verify follow-ups: precompute dummy hash, strict login JSON (unknown fields / trailing data → 400), delete the request's old session on re-login, CheckAppRole rejects table owners, admin CLI runs CheckAppRole, document per-email lockout DoS; native review advisories: limiter must not count 500s as failures, /auth/me must not return tenantId without a role, httpapi tests must be re-runnable on the same container (no fixed emails/IDs collisions), CLI usage tests should not need Docker — pending
+- T7 — S2 — inline — rate limiter behind a trusted proxy (`X-Forwarded-For` only from configured proxies, per-IP limit sized for school NAT), expired-session cleanup, hidden password prompt in CLI; verify follow-ups: precompute dummy hash, strict login JSON (unknown fields / trailing data → 400), delete the request's old session on re-login, CheckAppRole rejects table owners, admin CLI runs CheckAppRole, document per-email lockout DoS; native review advisories: limiter must not count 500s as failures, /auth/me must not return tenantId without a role, httpapi tests must be re-runnable on the same container (no fixed emails/IDs collisions), CLI usage tests should not need Docker; T2 follow-ups: accept `;`-separated CSV (Argentine Excel), serialize concurrent bulk issuance, bulk issuance performance for ~5000 members, bump Go to 1.26.11 (govulncheck: 11 reachable stdlib vulns in 1.26.6) — pending
 
 ## Log
 
@@ -29,3 +29,4 @@ Branch: `feat/auth` (stacked on `feat/mvp-foundation-03-web`) · Delivery: ask-o
 - **L2 (2026-11-13):** T1 deviations accepted: two DSNs (app role vs owner) and startup role check; app role may INSERT organizations (bootstrap); read-only `memberships_own_user` policy on `app.user_id` set only by `db.WithUser`; composite FKs with tenant_id (FK checks bypass RLS); argon2id m=19MiB t=2 p=1 (OWASP). ADR rules 6, 8-10 updated. Open items moved to T7. ~1680 authored lines (870 tests): single security unit, over the 400 heuristic.
 - **L3 (2026-11-13):** c53dd40 assessed high (native high + escalation). Independent verify: all S2 clauses PASS, no blockers; follow-ups folded into T7. Native review due (high_risk) — started per RDD.
 - **L4 (2026-11-13):** Native review lineage review-ec62dfbaa06326a1 (base 439f78f, lenses risk+reliability) approved with 8 non-blocking advisories; acknowledged (authority burned). Advisories folded into T7.
+- **L5 (2026-11-13):** T2 decisions: re-issuing for a member with an account → 409 `member_has_account`; 413/415/422 error bodies; CSV BOM accepted; `no-store` on all roster endpoints; added dependency github.com/oapi-codegen/runtime v1.9.0 (needed by generated path params, authorized by parent). T3 lookup before sign-in needs a narrow path through RLS (code_hash is globally unique).

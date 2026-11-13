@@ -78,6 +78,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/roster": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the roster of the active tenant
+         * @description School admins only. Responses carry `Cache-Control: no-store` (personal data).
+         */
+        get: operations["getRoster"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/roster/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import roster members from CSV
+         * @description School admins only. The body is CSV (max 1 MiB, max 5000 data rows) whose first line is the header `full_name,document_number` (case-insensitive, trimmed). `document_number` must have 7 to 9 digits after removing dots and spaces. The import is atomic: any invalid row or a document number repeated in the file writes nothing. Rows whose document number already exists in the tenant are skipped, never updated.
+         */
+        post: operations["postRosterImport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/roster/{memberId}/access-code": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Issue an access code for one roster member
+         * @description School admins only. Returns the code in plain text once (`Cache-Control: no-store`); only its HMAC is stored. The code expires after 30 days and revokes the member's previous unused code.
+         */
+        post: operations["postRosterMemberAccessCode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/roster/access-codes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Issue codes for every member without an account and without an active code
+         * @description School admins only. Codes are shown once, for printing (`Cache-Control: no-store`).
+         */
+        post: operations["postRosterAccessCodes"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -103,8 +183,60 @@ export interface components {
             /** @description Role in the active tenant; null when the user has no membership. */
             role: components["schemas"]["Role"] | null;
         };
+        RosterMember: {
+            id: string;
+            fullName: string;
+            documentNumber: string;
+            /** @description An unused, unrevoked and unexpired access code exists. */
+            hasActiveCode: boolean;
+            hasAccount: boolean;
+        };
+        ImportResult: {
+            inserted: number;
+            skipped: number;
+        };
+        ImportError: {
+            error: string;
+            rows?: components["schemas"]["RowError"][];
+        };
+        RowError: {
+            line: number;
+            reason: string;
+        };
+        IssuedCode: {
+            code: string;
+            /** Format: date-time */
+            expiresAt: string;
+        };
+        IssuedMemberCode: {
+            memberId: string;
+            fullName: string;
+            documentNumber: string;
+            code: string;
+            /** Format: date-time */
+            expiresAt: string;
+        };
     };
-    responses: never;
+    responses: {
+        /** @description No valid session (`unauthenticated`). */
+        Unauthenticated: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description The user is not a school admin of the active tenant (`forbidden`). */
+        Forbidden: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+    };
     parameters: never;
     requestBodies: never;
     headers: never;
@@ -228,6 +360,147 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+        };
+    };
+    getRoster: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Roster members ordered by name. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RosterMember"][];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    postRosterImport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "text/csv": string;
+            };
+        };
+        responses: {
+            /** @description Imported. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportResult"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            /** @description Body larger than 1 MiB (`body_too_large`). */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Content-Type is not `text/csv` (`unsupported_media_type`). */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Nothing was written. `invalid_rows` lists every problem with its 1-based line number (the header is line 1); `too_many_rows` when the file has more than 5000 data rows. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportError"];
+                };
+            };
+        };
+    };
+    postRosterMemberAccessCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                memberId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Code issued. */
+            201: {
+                headers: {
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssuedCode"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            /** @description No such member in the active tenant (`not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The member already has an account (`member_has_account`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    postRosterAccessCodes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Codes issued, ordered by name; empty when nobody needed one. */
+            201: {
+                headers: {
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssuedMemberCode"][];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
         };
     };
 }

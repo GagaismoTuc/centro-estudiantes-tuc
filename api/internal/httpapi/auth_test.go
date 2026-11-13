@@ -72,7 +72,7 @@ type fixture struct {
 func newFixture(t *testing.T, ctx context.Context) *fixture {
 	t.Helper()
 	f := &fixture{clk: &fakeClock{t: time.Date(2026, 11, 13, 12, 0, 0, 0, time.UTC)}}
-	f.h = httpapi.NewRouter(httpapi.Deps{Pool: tdb.App, Now: f.clk.Now})
+	f.h = httpapi.NewRouter(httpapi.Deps{Pool: tdb.App, Now: f.clk.Now, AccessCodeKey: testKey})
 	if err := tdb.Super.QueryRow(ctx,
 		`INSERT INTO organizations (kind, name) VALUES ('school', $1) RETURNING id::text`, t.Name()).Scan(&f.tenant); err != nil {
 		t.Fatal(err)
