@@ -7,7 +7,7 @@ export type Me = components["schemas"]["Me"];
 export type Reply = { status: number; body?: unknown };
 
 /** A request the app sent, as seen at the fetch boundary. */
-export type Sent = { method: string; path: string; body: unknown; href: string };
+export type Sent = { method: string; path: string; body: unknown; contentType: string | null; href: string };
 
 export const ok = (body?: unknown, status = 200): Reply => ({ status, body });
 export const noContent = (status = 204): Reply => ({ status });
@@ -40,7 +40,10 @@ export function mockApi(routes: Record<string, Reply | Reply[]>): Sent[] {
     const path = url.pathname.replace(/^\/api/, "");
     const key = `${request.method} ${path}`;
     const text = await request.text();
-    sent.push({ method: request.method, path, body: text ? JSON.parse(text) : undefined, href: window.location.href });
+    const contentType = request.headers.get("Content-Type");
+    // JSON bodies are parsed; anything else (CSV uploads) is kept as the raw text.
+    const body = !text ? undefined : contentType?.includes("json") ? JSON.parse(text) : text;
+    sent.push({ method: request.method, path, body, contentType, href: window.location.href });
 
     const route = routes[key];
     let reply: Reply;

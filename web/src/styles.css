@@ -2,22 +2,26 @@
    primary actions and one restrained blue accent (docs/design/reference-dashboard.jpg). */
 
 /* ---------- Tokens ---------- */
+/* One declaration per token: light-dark() picks the value from the root's used
+   color-scheme, which follows the OS ("light dark") or the pinned theme below.
+   (Modern Web Guidance `dark-mode`; light-dark() is Baseline since 2024-05.) */
 :root {
-  --page: #fafafa;
-  --surface: #ffffff;
-  --surface-2: #f4f4f5;
-  --border: #e7e7e7;
-  --input-border: #8c8c8c; /* ≥3:1 against the surface (non-text contrast) */
-  --text: #0a0a0a;
-  --muted: #6b6b6b;
-  --primary: #0a0a0a;
-  --on-primary: #ffffff;
-  --accent: #2563eb;
-  --danger: #b42318;
-  --danger-bg: #fef3f2;
-  --ok: #157f3d;
-  --ok-bg: #effaf3;
-  --shadow: 0 1px 2px rgb(0 0 0 / 0.04), 0 8px 24px rgb(0 0 0 / 0.04);
+  --page: light-dark(#fafafa, #0a0a0a);
+  --surface: light-dark(#ffffff, #141414);
+  --surface-2: light-dark(#f4f4f5, #1f1f1f);
+  --border: light-dark(#e7e7e7, #2a2a2a);
+  --input-border: light-dark(#8c8c8c, #737373); /* ≥3:1 against the surface (non-text contrast) */
+  --text: light-dark(#0a0a0a, #ededed);
+  --muted: light-dark(#6b6b6b, #a1a1a1);
+  --primary: light-dark(#0a0a0a, #ededed);
+  --on-primary: light-dark(#ffffff, #0a0a0a);
+  --accent: light-dark(#2563eb, #60a5fa);
+  --danger: light-dark(#b42318, #fda29b);
+  --danger-bg: light-dark(#fef3f2, #2a1211);
+  --ok: light-dark(#157f3d, #75e0a7);
+  --ok-bg: light-dark(#effaf3, #0d2116);
+  --shadow: 0 1px 2px light-dark(rgb(0 0 0 / 0.04), rgb(0 0 0 / 0.4)),
+    0 8px 24px light-dark(rgb(0 0 0 / 0.04), transparent);
   --backdrop: rgb(0 0 0 / 0.5);
 
   --radius: 10px;
@@ -33,45 +37,7 @@
   accent-color: var(--primary);
 }
 
-/* Dark tokens: when the OS asks for dark and nothing pins light, or when dark is pinned. */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --page: #0a0a0a;
-    --surface: #141414;
-    --surface-2: #1f1f1f;
-    --border: #2a2a2a;
-    --input-border: #737373;
-    --text: #ededed;
-    --muted: #a1a1a1;
-    --primary: #ededed;
-    --on-primary: #0a0a0a;
-    --accent: #60a5fa;
-    --danger: #fda29b;
-    --danger-bg: #2a1211;
-    --ok: #75e0a7;
-    --ok-bg: #0d2116;
-    --shadow: 0 1px 2px rgb(0 0 0 / 0.4);
-  }
-}
-:root[data-theme="dark"] {
-  --page: #0a0a0a;
-  --surface: #141414;
-  --surface-2: #1f1f1f;
-  --border: #2a2a2a;
-  --input-border: #737373;
-  --text: #ededed;
-  --muted: #a1a1a1;
-  --primary: #ededed;
-  --on-primary: #0a0a0a;
-  --accent: #60a5fa;
-  --danger: #fda29b;
-  --danger-bg: #2a1211;
-  --ok: #75e0a7;
-  --ok-bg: #0d2116;
-  --shadow: 0 1px 2px rgb(0 0 0 / 0.4);
-}
-
-/* Native UI (scrollbars, form controls) follows the pinned scheme. */
+/* The pinned scheme drives light-dark() tokens and native UI (scrollbars, controls). */
 :root[data-theme="light"],
 :root:has(> head > meta[name="color-scheme"][content="light"]) {
   color-scheme: light;
@@ -826,6 +792,278 @@ input:user-invalid {
   background: var(--surface);
 }
 
+/* ---------- Roster ---------- */
+.page-actions,
+.panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.panel__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.button--small {
+  min-block-size: 2.25rem;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.875rem;
+}
+@media (pointer: coarse) {
+  .button--small {
+    min-block-size: 2.75rem;
+  }
+}
+.button:disabled:not([aria-busy]) {
+  cursor: not-allowed;
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr));
+  gap: 0.75rem;
+  margin: 0;
+}
+.stats > div {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.875rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.stats dt {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.stats dd {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.mono,
+.access-code {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.access-code {
+  font-size: 0.9375rem;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+code {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+}
+
+.badge[data-tone="ok"] {
+  border-color: transparent;
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+
+.field--inline {
+  inline-size: min(100%, 18rem);
+}
+input[type="search"] {
+  inline-size: 100%;
+  min-block-size: 2.5rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: max(1rem, 1em);
+}
+
+/* Import drop zone: the native file input stays visible and labelled. */
+.dropzone {
+  display: grid;
+  justify-items: center;
+  gap: 0.375rem;
+  padding: 1.5rem 1rem;
+  border: 1px dashed var(--input-border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  text-align: center;
+  transition: border-color 150ms ease, background-color 150ms ease;
+}
+.dropzone[data-dragging] {
+  border-color: var(--accent);
+  background: var(--surface);
+}
+.dropzone > .icon {
+  inline-size: 1.25rem;
+  block-size: 1.25rem;
+  color: var(--muted);
+}
+.dropzone label {
+  font-weight: 500;
+}
+.dropzone input[type="file"] {
+  max-inline-size: 100%;
+  font: inherit;
+  font-size: 0.875rem;
+}
+.dropzone input[type="file"]::file-selector-button {
+  min-block-size: 2.5rem;
+  margin-inline-end: 0.75rem;
+  padding: 0.375rem 0.875rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.row-errors {
+  display: grid;
+  gap: 0.25rem;
+  max-block-size: 16rem;
+  margin: 0;
+  padding: 0.75rem 0.75rem 0.75rem 2rem;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--danger);
+  font-size: 0.875rem;
+}
+
+/* Data table (Modern Web Guidance `responsive-table`): sticky header, stacked cards
+   when the table's own container is narrow. */
+.table-wrap {
+  max-block-size: min(70vh, 40rem);
+  overflow: auto;
+  container-type: inline-size;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.data-table {
+  inline-size: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.875rem;
+}
+.data-table thead {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 1;
+}
+.data-table thead th {
+  padding: 0.5rem 0.75rem;
+  border-block-end: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-align: start;
+  text-transform: uppercase;
+}
+.data-table tbody :is(th, td) {
+  padding: 0.5rem 0.75rem;
+  border-block-end: 1px solid var(--border);
+  text-align: start;
+  vertical-align: middle;
+}
+.data-table tbody tr:last-child :is(th, td) {
+  border-block-end: 0;
+}
+.data-table tbody th {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.data-table__action p {
+  margin-block-start: 0.25rem;
+  max-inline-size: 14rem;
+}
+@container (width < 40rem) {
+  .data-table,
+  .data-table :is(tbody, tr, th, td) {
+    display: block;
+  }
+  .data-table thead {
+    display: none;
+  }
+  .data-table tbody tr {
+    padding: 0.5rem 0;
+    border-block-end: 1px solid var(--border);
+  }
+  .data-table tbody tr:last-child {
+    border-block-end: 0;
+  }
+  .data-table tbody :is(th, td) {
+    padding: 0.25rem 0.75rem;
+    border: 0;
+  }
+  .data-table td[data-label]::before {
+    content: attr(data-label) ": ";
+    color: var(--muted);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+  }
+}
+
+.issued {
+  border-color: var(--accent);
+}
+.issued__warning {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  padding: 0.625rem 0.75rem;
+  border-radius: var(--radius-sm);
+  background: var(--danger-bg);
+  color: var(--danger);
+  font-size: 0.875rem;
+}
+.issued__warning .icon {
+  margin-block-start: 0.15rem;
+}
+
+/* Confirmation dialog (Modern Web Guidance `dialog`). */
+.confirm {
+  inline-size: min(100% - 2rem, 28rem);
+  padding: 1.5rem;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) + 4px);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow);
+}
+.confirm[open] {
+  display: grid;
+  gap: 1rem;
+}
+.confirm:modal {
+  overscroll-behavior: contain;
+}
+.confirm::backdrop {
+  background: var(--backdrop);
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
+.confirm__body {
+  color: var(--muted);
+}
+.confirm__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
 /* ---------- Phone: top bar + drawer ---------- */
 @media (max-width: 60rem) {
   .shell {
@@ -947,9 +1185,17 @@ input:user-invalid {
   }
 }
 
-/* ---------- Print: only the recovery codes ---------- */
+/* ---------- Print ---------- */
+/* Paper is light even when dark is pinned (!important beats the pinned-theme rules). */
 @media print {
-  body * {
+  :root {
+    color-scheme: light !important;
+  }
+}
+
+/* Recovery codes: only their box. */
+@media print {
+  body:has(.print-area) * {
     visibility: hidden;
   }
   .print-area,
@@ -964,6 +1210,52 @@ input:user-invalid {
   }
   .print-area .secret__actions {
     display: none;
+  }
+}
+
+/* Access codes: one cut-out card per student, nothing of the app. */
+@media print {
+  @page {
+    margin: 10mm;
+  }
+  body:has(> .print-sheet) > :not(.print-sheet) {
+    display: none !important;
+  }
+  body > .print-sheet {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    color: #000;
+    font-size: 11pt;
+  }
+  .print-card {
+    display: grid;
+    gap: 1.5mm;
+    padding: 7mm 6mm;
+    border: 1px dashed #000;
+    margin: -0.5px; /* neighbouring dashes overlap into one cut line */
+    break-inside: avoid;
+  }
+  .print-card__brand,
+  .print-card__label {
+    font-family: var(--font-mono);
+    font-size: 8pt;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .print-card__name {
+    font-size: 13pt;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+  }
+  .print-card__code {
+    font-family: var(--font-mono);
+    font-size: 17pt;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+  }
+  .print-card__url {
+    font-family: var(--font-mono);
+    overflow-wrap: anywhere;
   }
 }
 

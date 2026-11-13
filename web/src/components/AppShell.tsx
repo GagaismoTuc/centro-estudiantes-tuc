@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { roleLabel, useMe, useSession } from "../auth/session.tsx";
+import { roleLabel, useMe } from "../auth/session.tsx";
 import { Link } from "../lib/router.tsx";
 import { Icon, type IconName } from "./Icon.tsx";
 import { BrandMark } from "./Page.tsx";
+import { SignOutButton } from "./SignOut.tsx";
 import { ThemeSwitch } from "./ThemeSwitch.tsx";
 
 const upcoming: { label: string; icon: IconName }[] = [
@@ -13,7 +14,6 @@ const upcoming: { label: string; icon: IconName }[] = [
 
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const me = useMe();
-  const { signOut } = useSession();
   return (
     <div className="sidebar__inner">
       <div className="sidebar__brand">
@@ -70,10 +70,10 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
           <p className="user-card__email">{me.email}</p>
           <p className="user-card__role">{me.role ? roleLabel[me.role] : "Sin escuela"}</p>
           <ThemeSwitch />
-          <button type="button" className="button button--ghost button--block" onClick={() => void signOut()}>
+          <SignOutButton className="button button--ghost button--block">
             <Icon name="logout" />
             Cerrar sesión
-          </button>
+          </SignOutButton>
         </div>
       </div>
     </div>

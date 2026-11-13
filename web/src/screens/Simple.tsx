@@ -23,21 +23,6 @@ export function Security() {
   );
 }
 
-/** /padron: roster screens arrive in T6b. */
-export function Roster() {
-  useDocumentTitle("Padrón");
-  return (
-    <>
-      <header className="page-header">
-        <PageTitle eyebrow="Escuela">Padrón</PageTitle>
-      </header>
-      <section className="panel">
-        <p>Acá vas a poder cargar el padrón desde un CSV y entregar los códigos de acceso. Lo estamos terminando.</p>
-      </section>
-    </>
-  );
-}
-
 export function NotFound() {
   useDocumentTitle("Página no encontrada");
   return (

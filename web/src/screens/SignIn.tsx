@@ -15,23 +15,41 @@ export function SignIn() {
   useDocumentTitle("Ingresar");
   const { session, afterSignIn } = useSession();
   // Taken once: the token was already removed from the address bar by App.
-  const [linkToken] = useState(() => takeFragmentToken("/ingresar"));
+  const [linkToken, setLinkToken] = useState(() => takeFragmentToken("/ingresar"));
+  // A link opened while signed in would replace that session: only after the user agrees.
+  const [linkApproved, setLinkApproved] = useState(session.status !== "user");
   const [status, setStatus] = useState<Status>(linkToken ? { tone: "info", text: "Ingresando con tu enlace…" } : null);
   const [pending, setPending] = useState(Boolean(linkToken));
   const emailRef = useRef<HTMLInputElement>(null);
   const started = useRef(false);
 
   useEffect(() => {
-    if (!linkToken || started.current) return;
+    if (!linkToken || !linkApproved || started.current) return;
     started.current = true; // single-use token: never send it twice (StrictMode re-runs effects)
     void call(apiClient.POST("/auth/link/consume", { body: { token: linkToken } })).then(async (result) => {
       if (result.ok) return afterSignIn();
       setStatus({ tone: "error", text: errorMessage(result.code) });
       setPending(false);
     });
-  }, [linkToken, afterSignIn]);
+  }, [linkToken, linkApproved, afterSignIn]);
 
   if (session.status === "user" && !linkToken) return <Redirect to={homeFor(session.me)} />;
+  if (session.status === "user" && !linkApproved) {
+    return (
+      <AuthLayout>
+        <PageTitle eyebrow="Enlace para ingresar">¿Cambiar de cuenta?</PageTitle>
+        <p className="lead">
+          {`Ya ingresaste como ${session.me.email}. Si seguís con el enlace, se cierra esa sesión y entrás con la cuenta del enlace.`}
+        </p>
+        <button type="button" className="button button--primary button--block" onClick={() => setLinkApproved(true)}>
+          Ingresar con el enlace
+        </button>
+        <button type="button" className="button button--secondary button--block" onClick={() => setLinkToken(null)}>
+          Seguir como {session.me.email}
+        </button>
+      </AuthLayout>
+    );
+  }
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

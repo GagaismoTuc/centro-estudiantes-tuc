@@ -12,7 +12,8 @@ import { MfaEnroll } from "./screens/MfaEnroll.tsx";
 import { MfaVerify } from "./screens/MfaVerify.tsx";
 import { ResetPassword } from "./screens/ResetPassword.tsx";
 import { SignIn } from "./screens/SignIn.tsx";
-import { NotFound, Roster, Security } from "./screens/Simple.tsx";
+import { Roster } from "./screens/Roster.tsx";
+import { NotFound, Security } from "./screens/Simple.tsx";
 import { VerifyEmail } from "./screens/VerifyEmail.tsx";
 
 export function App() {

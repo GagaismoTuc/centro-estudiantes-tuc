@@ -6,6 +6,7 @@ import { useSession } from "../auth/session.tsx";
 import { AuthLayout } from "../components/AuthLayout.tsx";
 import { Field, FormStatus, SubmitButton, type Status } from "../components/Form.tsx";
 import { PageTitle, useDocumentTitle } from "../components/Page.tsx";
+import { SignOutButton } from "../components/SignOut.tsx";
 
 /** One input for the 6-digit TOTP code (never split into boxes; keeps autofill and paste). */
 export function OtpField() {
@@ -27,12 +28,7 @@ export function OtpField() {
 }
 
 export function SignOutLink() {
-  const { signOut } = useSession();
-  return (
-    <button type="button" className="text-button" onClick={() => void signOut()}>
-      Cerrar sesión
-    </button>
-  );
+  return <SignOutButton className="text-button">Cerrar sesión</SignOutButton>;
 }
 
 /** /seguridad/verificar: second step of sign-in for sessions with a confirmed TOTP. */
