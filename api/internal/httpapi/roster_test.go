@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/oapi"
+	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/roster"
 )
 
 // testKey is the fixed ACCESS_CODE_KEY of every router under test.
@@ -60,11 +61,15 @@ func seedMember(t *testing.T, ctx context.Context, tenant, name, doc string) str
 	return id
 }
 
-// seedCode stores an access code; state is "active", "expired", "used" or "revoked".
-func seedCode(t *testing.T, ctx context.Context, tenant, member, state string, now time.Time) {
+// seedCode stores an access code and returns it in display form; state is "active", "expired",
+// "used" or "revoked".
+func seedCode(t *testing.T, ctx context.Context, tenant, member, state string, now time.Time) string {
 	t.Helper()
-	hash := make([]byte, 32)
-	_, _ = rand.Read(hash)
+	code, err := roster.NewCode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash := roster.HashCode(testKey, code)
 	created, expires := now.Add(-time.Hour), now.Add(time.Hour)
 	var used, revoked *time.Time
 	switch state {
@@ -80,6 +85,7 @@ func seedCode(t *testing.T, ctx context.Context, tenant, member, state string, n
 		VALUES ($1, $2, $3, $4, $5, $6, $7)`, tenant, member, hash, created, expires, used, revoked); err != nil {
 		t.Fatal(err)
 	}
+	return code
 }
 
 // linkAccount gives a roster member a student account.

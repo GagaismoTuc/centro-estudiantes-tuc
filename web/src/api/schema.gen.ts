@@ -78,6 +78,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create an account with a school access code
+         * @description No session needed. Creates the user, a `student` membership linked to the code's roster member, consumes the code and signs in (cookie as in login). Inputs are validated before any lookup: email (at most 254 characters, stored lowercase), password (10 to 128 characters) and code (12 Crockford base32 characters; case, spaces and hyphens are ignored). Unknown, used, revoked, expired and already-linked codes all get the same `invalid_code`. Every `invalid_code` counts against a per-IP limit (10 per 15 minutes); further requests get 429. Responses carry `Cache-Control: no-store`.
+         */
+        post: operations["postAuthClaim"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/redeem": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add a school to the signed-in account with an access code
+         * @description Adds a `student` membership in the code's tenant linked to its roster member, consumes the code and makes that tenant the session's active tenant. Same code rules and rate limit as `/auth/claim`. Responses carry `Cache-Control: no-store`.
+         */
+        post: operations["postAuthRedeem"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/roster": {
         parameters: {
             query?: never;
@@ -173,6 +213,14 @@ export interface components {
             email: string;
             password: string;
         };
+        ClaimRequest: {
+            code: string;
+            email: string;
+            password: string;
+        };
+        RedeemRequest: {
+            code: string;
+        };
         /** @enum {string} */
         Role: "school_admin" | "officer" | "student";
         Me: {
@@ -218,6 +266,24 @@ export interface components {
         };
     };
     responses: {
+        /** @description Body is not JSON, has unknown fields or trailing data, or exceeds 4 KiB (`bad_request`). */
+        BadRequest: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description Too many invalid codes from this client (`too_many_attempts`). */
+        TooManyAttempts: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
         /** @description No valid session (`unauthenticated`). */
         Unauthenticated: {
             headers: {
@@ -360,6 +426,96 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+        };
+    };
+    postAuthClaim: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClaimRequest"];
+            };
+        };
+        responses: {
+            /** @description Account created and signed in; the session cookie is set. */
+            201: {
+                headers: {
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Me"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            /** @description An account with this email exists (`email_in_use`); nothing changed and the code stays usable. Sign in and use `/auth/redeem` instead. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `invalid_email`, `weak_password` or `invalid_code`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            429: components["responses"]["TooManyAttempts"];
+        };
+    };
+    postAuthRedeem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RedeemRequest"];
+            };
+        };
+        responses: {
+            /** @description Membership added; the session now points at the code's tenant. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Me"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            /** @description The user already belongs to the code's tenant (`already_member`); the code stays usable. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `invalid_code`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            429: components["responses"]["TooManyAttempts"];
         };
     };
     getRoster: {

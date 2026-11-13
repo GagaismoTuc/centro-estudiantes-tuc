@@ -83,10 +83,6 @@ func (s *Store) Authenticate(ctx context.Context, email, password string) (strin
 // CreateSession starts a session for userID and returns the raw token for the cookie. Only its
 // SHA-256 is stored. The active tenant is the user's oldest membership, or none.
 func (s *Store) CreateSession(ctx context.Context, userID string) (string, error) {
-	raw := make([]byte, tokenLen)
-	if _, err := rand.Read(raw); err != nil {
-		return "", fmt.Errorf("auth: token: %w", err)
-	}
 	var tenant *string
 	err := db.WithUser(ctx, s.pool, userID, func(tx pgx.Tx) error {
 		err := tx.QueryRow(ctx,
@@ -100,14 +96,41 @@ func (s *Store) CreateSession(ctx context.Context, userID string) (string, error
 	if err != nil {
 		return "", fmt.Errorf("auth: pick tenant: %w", err)
 	}
-	now := s.now()
+	return InsertSession(ctx, s.pool, userID, tenant, s.now())
+}
+
+// InsertSession stores a new session for userID with the given active tenant (nil for none) and
+// returns the raw token for the cookie. q is the pool or a transaction.
+func InsertSession(ctx context.Context, q interface {
+	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
+}, userID string, tenant *string, now time.Time) (string, error) {
+	raw := make([]byte, tokenLen)
+	if _, err := rand.Read(raw); err != nil {
+		return "", fmt.Errorf("auth: token: %w", err)
+	}
 	sum := sha256.Sum256(raw)
-	if _, err := s.pool.Exec(ctx,
+	if _, err := q.Exec(ctx,
 		`INSERT INTO sessions (token_hash, user_id, tenant_id, created_at, expires_at) VALUES ($1, $2, $3, $4, $5)`,
 		sum[:], userID, tenant, now, now.Add(SessionLifetime)); err != nil {
 		return "", fmt.Errorf("auth: insert session: %w", err)
 	}
 	return base64.RawURLEncoding.EncodeToString(raw), nil
+}
+
+// SwitchSessionTenant makes tenant the active tenant of the session named by token, inside tx.
+func SwitchSessionTenant(ctx context.Context, tx pgx.Tx, token, tenant string) error {
+	h, ok := hashToken(token)
+	if !ok {
+		return ErrNoSession
+	}
+	tag, err := tx.Exec(ctx, `UPDATE sessions SET tenant_id = $2 WHERE token_hash = $1`, h, tenant)
+	if err != nil {
+		return fmt.Errorf("auth: switch tenant: %w", err)
+	}
+	if tag.RowsAffected() != 1 {
+		return ErrNoSession
+	}
+	return nil
 }
 
 // hashToken returns the stored form of a cookie token, or false when it is not a valid token.

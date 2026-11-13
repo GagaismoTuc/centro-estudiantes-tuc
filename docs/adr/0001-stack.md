@@ -30,9 +30,13 @@ trendy one, and chose: "Podemos hacer el backend con Go y frontend con typescrip
    which is safe with PgBouncer in transaction mode.
 4. Policies fail closed: with no tenant set they match zero rows.
 5. A municipality reading its schools will get its own explicit policy when that module exists.
-6. Only `db.WithTenant` writes `app.tenant_id` and only `db.WithUser` writes `app.user_id`; no other application
-   code may call `set_config` on them, because RLS trusts whatever the transaction declares. `app.user_id` only
-   grants read access to the user's own memberships (needed to pick the tenant at sign-in).
+6. Only `db.WithTenant` writes `app.tenant_id`, only `db.WithUser` writes `app.user_id` and only `db.WithCodeHash`
+   writes `app.code_hash`; no other application code may call `set_config` on them, because RLS trusts whatever
+   the transaction declares. `app.user_id` only grants read access to the user's own memberships (needed to pick
+   the tenant at sign-in). `app.code_hash` (hex of the HMAC of an access code) only grants SELECT and UPDATE on the
+   one `access_codes` row with that hash, so a code can be claimed before a tenant is known. Inside
+   `db.WithCodeHash`, once that row is found, `db.SetTenant` may declare the row's tenant for the same transaction
+   (to write the new membership); `db.SetTenant` is not called anywhere else except by `db.WithTenant`.
 7. Migrations refuse to run if `ce_app` already exists with `SUPERUSER` or `BYPASSRLS`.
 8. `organizations` is platform-level: the app role can read it across tenants (names and hierarchy only) and insert
    into it (bootstrap). Before adding sensitive columns to it, give it its own RLS policy.
