@@ -51,7 +51,10 @@ cd web && pnpm gen:api            # after editing openapi/openapi.yaml
 | `SMTP_USERNAME`, `SMTP_PASSWORD` | SMTP credentials (PLAIN auth, only over TLS). Required with `SMTP_HOST` |
 | `MAIL_FROM` | Sender address, e.g. `Centro de Estudiantes <no-reply@ce.example.edu.ar>`. Required with `SMTP_HOST` |
 | `MAIL_DEV_DIR` | Development only, used when `SMTP_HOST` is empty: every email is written as an `.eml` file in this directory instead of being sent. With neither variable the server refuses to start |
+| `TRUSTED_PROXIES` | Comma-separated CIDRs of the reverse proxies in front of the API, e.g. `127.0.0.1/32` for a Caddy on the same host (default empty). Only when the TCP peer is inside one of them does the server read `X-Forwarded-For`, taking the right-most address that is not itself a trusted proxy as the client; otherwise the header is ignored, so clients cannot forge their address. IPv6 clients are rate limited per /64. Behind a proxy, leaving it empty makes every request share the proxy's limit |
 | `ADDR` | Listen address (default `:8080`) |
+
+The server stops gracefully on SIGINT/SIGTERM: in-flight requests get up to 20 s, then queued emails are sent before it exits. Expired sessions are deleted every 10 minutes.
 
 ### Operator commands
 

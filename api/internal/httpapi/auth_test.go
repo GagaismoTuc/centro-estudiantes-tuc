@@ -72,9 +72,17 @@ type fixture struct {
 
 func newFixture(t *testing.T, ctx context.Context) *fixture {
 	t.Helper()
+	return newFixtureWith(t, ctx, func(*httpapi.Deps) {})
+}
+
+// newFixtureWith is newFixture with a hook that adjusts the router's dependencies.
+func newFixtureWith(t *testing.T, ctx context.Context, opt func(*httpapi.Deps)) *fixture {
+	t.Helper()
 	f := &fixture{clk: &fakeClock{t: time.Date(2026, 11, 13, 12, 0, 0, 0, time.UTC)}, mail: &fakeMail{}}
-	f.h = httpapi.NewRouter(httpapi.Deps{Pool: tdb.App, Now: f.clk.Now, AccessCodeKey: testKey, TOTPKey: testTOTPKey,
-		Mail: f.mail, BaseURL: baseURL, Background: func(fn func()) { fn() }})
+	d := httpapi.Deps{Pool: tdb.App, Now: f.clk.Now, AccessCodeKey: testKey, TOTPKey: testTOTPKey,
+		Mail: f.mail, BaseURL: baseURL, Background: func(fn func()) { fn() }}
+	opt(&d)
+	f.h = httpapi.NewRouter(d)
 	if err := tdb.Super.QueryRow(ctx,
 		`INSERT INTO organizations (kind, name) VALUES ('school', $1) RETURNING id::text`, t.Name()).Scan(&f.tenant); err != nil {
 		t.Fatal(err)
@@ -239,25 +247,26 @@ func TestLoginIsRateLimitedPerEmailAndPerIP(t *testing.T) {
 	ctx := integration(t)
 	for _, tc := range []struct {
 		name      string
-		attempt   func(i int) (email, ip string) // the 5 failing attempts
+		failures  int                            // the limit: 5 per email, 50 per IP (school NAT)
+		attempt   func(i int) (email, ip string) // the failing attempts
 		lastEmail string
 		lastIP    string
 	}{
-		{"same email from many IPs", func(i int) (string, string) {
+		{"same email from many IPs", 5, func(i int) (string, string) {
 			return "rate.email@example.com", fmt.Sprintf("203.0.113.%d", i+1)
 		}, "rate.email@example.com", "203.0.113.99"},
-		{"same IP for many emails", func(i int) (string, string) {
+		{"same IP for many emails", 50, func(i int) (string, string) {
 			return fmt.Sprintf("nobody%d@example.com", i), "203.0.113.200"
 		}, "rate.ip@example.com", "203.0.113.200"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newFixture(t, ctx)
 			userID := f.seedUser(t, ctx, tc.lastEmail, "student")
-			for i := range 5 {
+			for i := range tc.failures {
 				email, ip := tc.attempt(i)
 				wantResponse(t, f.login(email, "wrong", ip), http.StatusUnauthorized, invalidBody)
 			}
-			// 6th attempt within the window is refused even with the right password.
+			// The next attempt within the window is refused even with the right password.
 			rec := f.login(tc.lastEmail, password, tc.lastIP)
 			wantResponse(t, rec, http.StatusTooManyRequests, `{"error":"too_many_attempts"}`)
 			if sc := rec.Header().Get("Set-Cookie"); sc != "" {
@@ -291,6 +300,18 @@ func TestMe(t *testing.T) {
 		rec := f.do(http.MethodGet, "/api/auth/me", "", "198.51.100.4", loneToken, nil)
 		wantResponse(t, rec, http.StatusOK, fmt.Sprintf(
 			`{"email":"solo.me@example.com","emailVerified":false,"mfa":"not_required","role":null,"tenantId":null,"userId":"%s"}`, loneID))
+	})
+	t.Run("membership removed after sign-in", func(t *testing.T) {
+		email := uniqueEmail("gone.me")
+		goneID := f.seedUser(t, ctx, email, "student")
+		token := f.loginOK(t, email)
+		if _, err := tdb.Super.Exec(ctx, `DELETE FROM memberships WHERE user_id = $1`, goneID); err != nil {
+			t.Fatal(err)
+		}
+		// The session still names the tenant, but without a role it must not be reported.
+		rec := f.do(http.MethodGet, "/api/auth/me", "", "198.51.100.4", token, nil)
+		wantResponse(t, rec, http.StatusOK, fmt.Sprintf(
+			`{"email":"%s","emailVerified":false,"mfa":"not_required","role":null,"tenantId":null,"userId":"%s"}`, email, goneID))
 	})
 	t.Run("missing cookie", func(t *testing.T) {
 		wantResponse(t, f.do(http.MethodGet, "/api/auth/me", "", "198.51.100.4", "", nil), http.StatusUnauthorized, unauthBody)

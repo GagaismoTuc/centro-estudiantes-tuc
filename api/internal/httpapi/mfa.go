@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/auth"
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/oapi"
@@ -78,14 +79,15 @@ func (s *server) PostAuthMfaEnrollmentConfirm(w http.ResponseWriter, r *http.Req
 		return
 	}
 	var newToken string
+	var expires time.Time
 	var codes []string
 	if !s.spendMFA(w, sess.UserID, func() (err error) {
-		newToken, codes, err = s.mfa.Confirm(r.Context(), token, sess.UserID, req.Code)
+		newToken, expires, codes, err = s.mfa.Confirm(r.Context(), token, sess.UserID, req.Code)
 		return err
 	}) {
 		return
 	}
-	setSessionCookie(w, newToken, int(auth.SessionLifetime.Seconds()))
+	s.setSessionCookieUntil(w, newToken, expires)
 	writeJSON(w, http.StatusOK, oapi.RecoveryCodes{RecoveryCodes: codes})
 }
 
@@ -109,12 +111,13 @@ func (s *server) PostAuthMfaVerify(w http.ResponseWriter, r *http.Request) {
 		recovery = *req.RecoveryCode
 	}
 	var newToken string
+	var expires time.Time
 	if !s.spendMFA(w, sess.UserID, func() (err error) {
-		newToken, err = s.mfa.Verify(r.Context(), token, sess.UserID, code, recovery)
+		newToken, expires, err = s.mfa.Verify(r.Context(), token, sess.UserID, code, recovery)
 		return err
 	}) {
 		return
 	}
-	setSessionCookie(w, newToken, int(auth.SessionLifetime.Seconds()))
+	s.setSessionCookieUntil(w, newToken, expires)
 	w.WriteHeader(http.StatusNoContent)
 }

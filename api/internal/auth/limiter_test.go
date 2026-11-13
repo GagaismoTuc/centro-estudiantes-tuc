@@ -66,3 +66,18 @@ func TestLimiterRefundAndReset(t *testing.T) {
 		t.Fatal("blocked after Reset, want all slots back")
 	}
 }
+
+func TestLimiterWithMaxOverridesThePrefix(t *testing.T) {
+	l := auth.NewLimiter(2, time.Minute, newClock().Now).WithMax("ip:", 4)
+	for i := range 4 {
+		if !l.Take("ip:a") {
+			t.Fatalf("ip attempt %d blocked, want allowed (limit 4)", i+1)
+		}
+	}
+	if l.Take("ip:a") {
+		t.Fatal("5th ip attempt allowed, want blocked")
+	}
+	if !l.Take("email:x") || !l.Take("email:x") || l.Take("email:x") {
+		t.Fatal("email keys must keep the default limit of 2")
+	}
+}

@@ -81,6 +81,28 @@ trendy one, and chose: "Podemos hacer el backend con Go y frontend con typescrip
 6. A lost phone is handled by an operator with `admin reset-mfa`, which deletes the TOTP, the recovery codes
    and every session of the user.
 
+### Sign-in limits and sessions
+
+1. Rate limits use a 15-minute window. Per client IP: 50 (login failures, invalid access codes, link
+   requests, invalid emailed tokens), sized for a whole school behind one NAT address. Per email: 5 login
+   failures and 5 link requests. Per user: 5 invalid two-factor codes. Server errors (5xx) never count.
+2. The client IP is the TCP peer; `X-Forwarded-For` is read only when the peer is in `TRUSTED_PROXIES`, and
+   then the right-most address that is not a trusted proxy is the client. IPv6 clients are keyed by /64.
+3. **Accepted trade-off: per-email lockout.** Anyone who knows a victim's email can spend its per-email
+   budget (5 failed logins, 5 link requests) and lock that account out of password login and emailed links
+   for 15 minutes, from many IPs. We accept it: the alternative (no per-email limit) lets a botnet guess
+   one account's password at the full per-IP rate. A user already signed in is not affected, and the
+   lockout ends by itself. Revisit if it is abused (e.g. per-email CAPTCHA or a longer, per-IP-scoped key).
+4. Every new session replaces the one the request arrived with (login, sign-in link, claim), and redeem
+   and second-factor proof rotate the token keeping the absolute expiry (12 h from sign-in, never extended).
+   The cookie's Max-Age is always the remaining lifetime of its session. Expired rows are deleted every
+   10 minutes in batches.
+5. **Accepted trade-off: trust on first use for two-factor enrollment.** A privileged user without a
+   confirmed TOTP enrolls from any session that knows the password, so whoever signs in first after the
+   account is created (or after `admin reset-mfa`) binds the authenticator. Planned mitigations (auth T7):
+   require a verified email before enrolling and notify the user by mail when an authenticator is
+   confirmed.
+
 ## Alternatives considered
 
 - **Django + PostgreSQL + HTMX.** Strong secure defaults and an admin panel; rejected in favour of the owner's

@@ -51,12 +51,16 @@ func (s *server) sendLink(p auth.Purpose, to, token string) {
 // token and answers 202 the same way whether or not anything is sent.
 func (s *server) requestLink(w http.ResponseWriter, r *http.Request, email string, p auth.Purpose,
 	issue func() (auth.Emailed, error)) {
-	if !s.mailLimiter.Take("ip:"+clientIP(r), "email:"+auth.NormalizeEmail(email)) {
+	ipKey, emailKey := s.ipKey(r), "email:"+auth.NormalizeEmail(email)
+	if !s.mailLimiter.Take(ipKey, emailKey) {
 		writeError(w, http.StatusTooManyRequests, "too_many_attempts")
 		return
 	}
 	e, err := issue()
 	if err != nil {
+		// A server error does not spend the client's budget.
+		s.mailLimiter.Refund(ipKey)
+		s.mailLimiter.Refund(emailKey)
 		slog.Error("issue email token", "purpose", string(p), "err", err)
 		writeError(w, http.StatusInternalServerError, "internal")
 		return
@@ -67,7 +71,7 @@ func (s *server) requestLink(w http.ResponseWriter, r *http.Request, email strin
 
 // spendToken applies the per-IP limit to one token attempt: only invalid_token outcomes keep the hit.
 func (s *server) spendToken(w http.ResponseWriter, r *http.Request, use func() error) bool {
-	key := "ip:" + clientIP(r)
+	key := s.ipKey(r)
 	if !s.tokenLimiter.Take(key) {
 		writeError(w, http.StatusTooManyRequests, "too_many_attempts")
 		return false
@@ -143,14 +147,9 @@ func (s *server) PostAuthLinkConsume(w http.ResponseWriter, r *http.Request) {
 	}) {
 		return
 	}
-	token, err := s.store.CreateSession(r.Context(), user)
-	if err != nil {
-		slog.Error("create session", "err", err)
-		writeError(w, http.StatusInternalServerError, "internal")
-		return
+	if s.startSession(w, r, user) {
+		w.WriteHeader(http.StatusNoContent)
 	}
-	setSessionCookie(w, token, int(auth.SessionLifetime.Seconds()))
-	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *server) PostAuthPasswordReset(w http.ResponseWriter, r *http.Request) {

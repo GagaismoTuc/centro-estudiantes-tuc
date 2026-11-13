@@ -142,7 +142,7 @@ type Me struct {
 	// Role Role in the active tenant; null when the user has no membership.
 	Role *Role `json:"role"`
 
-	// TenantId Active tenant of the session; null when the user has no membership.
+	// TenantId Active tenant of the session; null whenever `role` is null (no membership there).
 	TenantId *string `json:"tenantId"`
 	UserId   string  `json:"userId"`
 }

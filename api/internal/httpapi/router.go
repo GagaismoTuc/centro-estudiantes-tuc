@@ -4,6 +4,7 @@ package httpapi
 import (
 	"encoding/json"
 	"net/http"
+	"net/netip"
 	"strings"
 	"time"
 
@@ -28,13 +29,19 @@ type Deps struct {
 	// BaseURL is the public origin of the web app (APP_BASE_URL) used in emailed links, without a
 	// trailing slash.
 	BaseURL string
-	// Background runs mail delivery after the response is decided; defaults to a new goroutine, so
-	// response time does not reveal whether an account exists. Tests pass a synchronous runner.
+	// Background runs mail delivery after the response is decided, so response time does not reveal
+	// whether an account exists. cmd/server passes a bounded mail.Queue it drains on shutdown; the
+	// default is a queue of its own (4 workers, 256 messages). Tests pass a synchronous runner.
 	Background func(func())
+	// TrustedProxies are the reverse proxies (TRUSTED_PROXIES) whose X-Forwarded-For is believed when
+	// they are the TCP peer. Empty: the peer address is always the client.
+	TrustedProxies []netip.Prefix
 }
 
 // server implements oapi.ServerInterface.
 type server struct {
+	now     func() time.Time
+	trusted []netip.Prefix
 	store   *auth.Store
 	limiter *auth.Limiter
 	// claimLimiter counts invalid access codes per client IP (claim and redeem).
@@ -54,15 +61,15 @@ type server struct {
 
 var _ oapi.ServerInterface = (*server)(nil)
 
-// Sign-in limit: failed attempts per client IP and per email.
+// Limits per 15-minute window. Per-IP limits are sized for a whole school behind one NAT address;
+// per-email and per-user limits stay tight.
 const (
-	loginMaxFailures = 5
+	perIPMax         = 50
+	loginMaxFailures = 5 // per email
 	loginWindow      = 15 * time.Minute
-	claimMaxFailures = 10
 	claimWindow      = 15 * time.Minute
-	mailMaxRequests  = 5
+	mailMaxRequests  = 5 // per email
 	mailWindow       = 15 * time.Minute
-	tokenMaxFailures = 10
 	tokenWindow      = 15 * time.Minute
 	mfaMaxFailures   = 5
 	mfaWindow        = 15 * time.Minute
@@ -79,16 +86,18 @@ func NewRouter(d Deps) http.Handler {
 		d.Mail = noSender{}
 	}
 	if d.Background == nil {
-		d.Background = func(fn func()) { go fn() }
+		d.Background = mail.NewQueue(4, 256).Go
 	}
 	s := &server{
+		now:     d.Now,
+		trusted: d.TrustedProxies,
 		store:   auth.NewStore(d.Pool, d.Now),
-		limiter: auth.NewLimiter(loginMaxFailures, loginWindow, d.Now),
+		limiter: auth.NewLimiter(loginMaxFailures, loginWindow, d.Now).WithMax("ip:", perIPMax),
 		roster:  roster.NewStore(d.Pool, d.AccessCodeKey, d.Now),
 
-		claimLimiter: auth.NewLimiter(claimMaxFailures, claimWindow, d.Now),
-		mailLimiter:  auth.NewLimiter(mailMaxRequests, mailWindow, d.Now),
-		tokenLimiter: auth.NewLimiter(tokenMaxFailures, tokenWindow, d.Now),
+		claimLimiter: auth.NewLimiter(perIPMax, claimWindow, d.Now),
+		mailLimiter:  auth.NewLimiter(mailMaxRequests, mailWindow, d.Now).WithMax("ip:", perIPMax),
+		tokenLimiter: auth.NewLimiter(perIPMax, tokenWindow, d.Now),
 		mfa:          auth.NewMFA(d.Pool, d.TOTPKey, d.Now),
 		mfaLimiter:   auth.NewLimiter(mfaMaxFailures, mfaWindow, d.Now),
 		mail:         d.Mail,

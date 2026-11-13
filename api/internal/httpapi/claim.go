@@ -40,7 +40,7 @@ func claimEmail(s string) (string, bool) {
 // spendCode applies the per-IP limit to one code attempt: only invalid_code outcomes keep the hit.
 // It writes every error response and returns the result on success.
 func (s *server) spendCode(w http.ResponseWriter, r *http.Request, use func() (roster.Claimed, error)) (roster.Claimed, bool) {
-	key := "ip:" + clientIP(r)
+	key := s.ipKey(r)
 	if !s.claimLimiter.Take(key) {
 		writeError(w, http.StatusTooManyRequests, "too_many_attempts")
 		return roster.Claimed{}, false
@@ -95,7 +95,11 @@ func (s *server) PostAuthClaim(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	setSessionCookie(w, c.Token, int(auth.SessionLifetime.Seconds()))
+	// The new session was created with the account; the one the request came with goes away.
+	if err := s.dropPreviousSession(r); err != nil {
+		slog.Error("drop previous session", "err", err)
+	}
+	s.setNewSessionCookie(w, c.Token)
 	writeJSON(w, http.StatusCreated, studentMe(c, email, false))
 	s.sendLink(auth.PurposeVerifyEmail, email, c.VerifyToken)
 }
@@ -118,5 +122,13 @@ func (s *server) PostAuthRedeem(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// Joining a school changes what the session may do: give it a new token, same absolute expiry.
+	token, expires, err := s.store.RotateSession(r.Context(), cookie.Value, sess.UserID)
+	if err != nil {
+		slog.Error("rotate session after redeem", "err", err)
+		writeError(w, http.StatusInternalServerError, "internal")
+		return
+	}
+	s.setSessionCookieUntil(w, token, expires)
 	writeJSON(w, http.StatusOK, studentMe(c, sess.Email, sess.EmailVerified))
 }

@@ -260,7 +260,7 @@ func TestClaimIsRateLimitedPerIP(t *testing.T) {
 		wantResponse(t, f.claim(code, taken, password, ip), http.StatusConflict, `{"error":"email_in_use"}`)
 		wantResponse(t, f.claim(code, "nope", password, ip), http.StatusUnprocessableEntity, `{"error":"invalid_email"}`)
 	}
-	for i := range 7 {
+	for i := range 47 { // 3 email_in_use + 47 invalid codes = the per-IP limit of 50 (school NAT)
 		bad := "ABCD-EFGH-JKMN"
 		if i%2 == 1 {
 			bad = "short" // malformed codes count too
@@ -339,6 +339,8 @@ func TestRedeemAddsMembershipAndSwitchesTenant(t *testing.T) {
 	userID, token := f.signIn(t, ctx, "officer") // already in f.tenant
 	var email string
 	_ = tdb.Super.QueryRow(ctx, `SELECT email FROM users WHERE id = $1`, userID).Scan(&email)
+	oldExpiry := sessionExpiry(t, ctx, token)
+	f.clk.Advance(2 * time.Hour)
 	other := newTenant(t, ctx)
 	member := seedMember(t, ctx, other, "Ana Acosta", "30111226")
 	code := seedCode(t, ctx, other, member, "active", f.clk.Now())
@@ -347,8 +349,15 @@ func TestRedeemAddsMembershipAndSwitchesTenant(t *testing.T) {
 
 	wantResponse(t, rec, http.StatusOK, meBody(userID, email, other, "student", "not_required", false))
 	wantNoStore(t, rec)
-	if sc := rec.Header().Get("Set-Cookie"); sc != "" {
-		t.Fatalf("Set-Cookie = %q, want none (same session)", sc)
+	// The session rotates: new token, old row gone, same absolute expiry (10 h left).
+	old := token
+	token = cookieWithMaxAge(t, rec, 10*3600)
+	if token == old {
+		t.Fatal("session token was not rotated")
+	}
+	wantResponse(t, f.do(http.MethodGet, "/api/auth/me", "", "192.0.2.90", old, nil), http.StatusUnauthorized, unauthBody)
+	if got := sessionExpiry(t, ctx, token); !got.Equal(oldExpiry) {
+		t.Fatalf("rotated session expires_at = %s, want %s", got, oldExpiry)
 	}
 	if got := memberAccounts(t, ctx, member); len(got) != 1 || got[0] != userID+"|student|"+other {
 		t.Fatalf("memberships = %q, want one student membership for %s", got, userID)
@@ -422,13 +431,13 @@ func TestClaimEmailProbesAreLimited(t *testing.T) {
 	taken := uniqueEmail("enum")
 	f.seedUser(t, ctx, taken, "")
 	limited := false
-	for range 40 {
+	for range 60 {
 		if f.claim(code, taken, password, "192.0.2.200").Code == http.StatusTooManyRequests {
 			limited = true
 			break
 		}
 	}
 	if !limited {
-		t.Fatal("40 email_in_use probes from one IP were never limited")
+		t.Fatal("60 email_in_use probes from one IP were never limited")
 	}
 }

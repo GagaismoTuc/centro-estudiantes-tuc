@@ -13,7 +13,13 @@
 //   - SMTP_HOST, SMTP_PORT (default 587), SMTP_USERNAME, SMTP_PASSWORD, MAIL_FROM: SMTP relay
 //     (STARTTLS required). Without SMTP_HOST, MAIL_DEV_DIR makes the server write each email as an
 //     .eml file there instead (development). With neither, the server refuses to start.
+//   - TRUSTED_PROXIES: comma-separated CIDRs of the reverse proxies in front of the server (default
+//     empty). Only when the TCP peer is in one of them is X-Forwarded-For used to find the client
+//     address for rate limits.
 //   - ADDR: listen address (default :8080).
+//
+// SIGINT or SIGTERM stops the server gracefully: in-flight requests get up to 20 s, then the session
+// cleanup stops and queued mail is sent before the process exits.
 package main
 
 import (
@@ -21,13 +27,19 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"os"
+	"os/signal"
+	"strings"
+	"syscall"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/auth"
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/db"
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/httpapi"
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/mail"
@@ -42,8 +54,15 @@ func main() {
 	}
 }
 
+const (
+	shutdownTimeout = 20 * time.Second
+	drainTimeout    = 40 * time.Second
+	cleanupInterval = 10 * time.Minute
+)
+
 func run(getenv func(string) string) error {
-	ctx := context.Background()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 	appDSN, migrateDSN := getenv("DATABASE_URL"), getenv("MIGRATE_DATABASE_URL")
 	if appDSN == "" || migrateDSN == "" {
 		return errors.New("DATABASE_URL and MIGRATE_DATABASE_URL must be set")
@@ -65,6 +84,10 @@ func run(getenv func(string) string) error {
 	if err != nil {
 		return err
 	}
+	trusted, err := parseTrustedProxies(getenv("TRUSTED_PROXIES"))
+	if err != nil {
+		return err
+	}
 	// Migrations need the owner role; the app role owns nothing (ADR 0001, tenant isolation rule 2).
 	if err := db.Migrate(ctx, migrateDSN); err != nil {
 		return err
@@ -82,19 +105,74 @@ func run(getenv func(string) string) error {
 	if addr == "" {
 		addr = ":8080"
 	}
+	queue := mail.NewQueue(4, 256)
 	srv := &http.Server{
-		Addr:              addr,
-		Handler:           httpapi.NewRouter(httpapi.Deps{Pool: pool, AccessCodeKey: codeKey, TOTPKey: totpKey, Mail: sender, BaseURL: baseURL}),
+		Handler: httpapi.NewRouter(httpapi.Deps{Pool: pool, AccessCodeKey: codeKey, TOTPKey: totpKey, Mail: sender,
+			BaseURL: baseURL, Background: queue.Go, TrustedProxies: trusted}),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      15 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}
-	slog.Info("listening", "addr", addr)
-	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
 		return err
 	}
-	return nil
+	slog.Info("listening", "addr", addr)
+	store := auth.NewStore(pool, time.Now)
+	return serve(ctx, srv, ln,
+		func(bg context.Context) { store.CleanSessionsEvery(bg, cleanupInterval) },
+		queue.Close)
+}
+
+// serve runs srv on ln and background (the session cleanup) until ctx is done. Then it stops
+// accepting connections and waits up to shutdownTimeout for in-flight requests, stops background,
+// and waits up to drainTimeout for drain (queued mail) before returning.
+func serve(ctx context.Context, srv *http.Server, ln net.Listener, background func(context.Context),
+	drain func(context.Context) error) error {
+	bgCtx, stopBG := context.WithCancel(context.Background())
+	bgDone := make(chan struct{})
+	go func() { defer close(bgDone); background(bgCtx) }()
+	served := make(chan error, 1)
+	go func() { served <- srv.Serve(ln) }()
+
+	var err error
+	select {
+	case err = <-served: // listener failure
+	case <-ctx.Done():
+		slog.Info("shutting down")
+		sctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		err = srv.Shutdown(sctx)
+		cancel()
+		if serr := <-served; !errors.Is(serr, http.ErrServerClosed) && err == nil {
+			err = serr
+		}
+	}
+	stopBG()
+	<-bgDone
+	dctx, cancel := context.WithTimeout(context.Background(), drainTimeout)
+	defer cancel()
+	if derr := drain(dctx); derr != nil {
+		slog.Error("mail queue not drained", "err", derr)
+	}
+	return err
+}
+
+// parseTrustedProxies parses TRUSTED_PROXIES: comma-separated CIDRs in canonical form (host bits
+// zero, e.g. 10.0.0.0/8 or 192.168.1.10/32). Empty means no trusted proxy.
+func parseTrustedProxies(raw string) ([]netip.Prefix, error) {
+	if strings.TrimSpace(raw) == "" {
+		return nil, nil
+	}
+	var out []netip.Prefix
+	for _, part := range strings.Split(raw, ",") {
+		p, err := netip.ParsePrefix(strings.TrimSpace(part))
+		if err != nil || p != p.Masked() {
+			return nil, errors.New("TRUSTED_PROXIES must be a comma-separated list of CIDRs, e.g. 10.0.0.0/8,192.168.1.10/32")
+		}
+		out = append(out, p)
+	}
+	return out, nil
 }
 
 // mailSender picks SMTP when SMTP_HOST is set, else the development FileSender when MAIL_DEV_DIR is set.

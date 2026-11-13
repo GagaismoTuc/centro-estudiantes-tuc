@@ -32,7 +32,7 @@ export interface paths {
         put?: never;
         /**
          * Sign in with email and password
-         * @description On success sets the session cookie `__Host-session` (HttpOnly, Secure, SameSite=Lax, Path=/, 12 hours). Unknown email and wrong password get the same 401 body. Failed attempts are limited per client IP and per email (5 per 15 minutes); further attempts get 429.
+         * @description On success sets the session cookie `__Host-session` (HttpOnly, Secure, SameSite=Lax, Path=/, 12 hours) and deletes the session the request arrived with, if any. Unknown email and wrong password get the same 401 body. Failed attempts are limited per email (5 per 15 minutes) and per client IP (50 per 15 minutes, sized for a school behind one address); further attempts get 429. Server errors never count.
          */
         post: operations["postAuthLogin"];
         delete?: never;
@@ -89,7 +89,7 @@ export interface paths {
         put?: never;
         /**
          * Create an account with a school access code
-         * @description No session needed. Creates the user, a `student` membership linked to the code's roster member, consumes the code and signs in (cookie as in login). Inputs are validated before any lookup: email (at most 254 characters, stored lowercase), password (10 to 128 characters, the rule shared by bootstrap, claim and password reset) and code (12 Crockford base32 characters; case, spaces and hyphens are ignored). Unknown, used, revoked, expired and already-linked codes all get the same `invalid_code`. Every `invalid_code` counts against a per-IP limit (10 per 15 minutes); further requests get 429. On success a verification link is emailed to the new address (see `/auth/email/verify`). Responses carry `Cache-Control: no-store`.
+         * @description No session needed. Creates the user, a `student` membership linked to the code's roster member, consumes the code and signs in (cookie as in login). Inputs are validated before any lookup: email (at most 254 characters, stored lowercase), password (10 to 128 characters, the rule shared by bootstrap, claim and password reset) and code (12 Crockford base32 characters; case, spaces and hyphens are ignored). Unknown, used, revoked, expired and already-linked codes all get the same `invalid_code`. Every `invalid_code` counts against a per-IP limit (50 per 15 minutes); further requests get 429. On success a verification link is emailed to the new address (see `/auth/email/verify`). Responses carry `Cache-Control: no-store`.
          */
         post: operations["postAuthClaim"];
         delete?: never;
@@ -109,7 +109,7 @@ export interface paths {
         put?: never;
         /**
          * Add a school to the signed-in account with an access code
-         * @description Adds a `student` membership in the code's tenant linked to its roster member, consumes the code and makes that tenant the session's active tenant. Same code rules and rate limit as `/auth/claim`. Responses carry `Cache-Control: no-store`.
+         * @description Adds a `student` membership in the code's tenant linked to its roster member, consumes the code and makes that tenant the session's active tenant. The session is rotated: a new cookie with the same absolute expiry (Max-Age is the remaining lifetime) and the old token stops working. Same code rules and rate limit as `/auth/claim`. Responses carry `Cache-Control: no-store`.
          */
         post: operations["postAuthRedeem"];
         delete?: never;
@@ -129,7 +129,7 @@ export interface paths {
         put?: never;
         /**
          * Email a verification link to the signed-in user
-         * @description Sends `{APP_BASE_URL}/verificar#token=...` (valid 48 hours) unless the email is already verified, in which case nothing is sent and the response is the same. Issuing a link invalidates the previous unused one. Shares the limit of the other mail requests (5 per 15 minutes per client IP and per email). Responses carry `Cache-Control: no-store`.
+         * @description Sends `{APP_BASE_URL}/verificar#token=...` (valid 48 hours) unless the email is already verified, in which case nothing is sent and the response is the same. Issuing a link invalidates the previous unused one. Shares the limit of the other mail requests (5 per 15 minutes per email, 50 per client IP). Responses carry `Cache-Control: no-store`.
          */
         post: operations["postAuthEmailVerification"];
         delete?: never;
@@ -149,7 +149,7 @@ export interface paths {
         put?: never;
         /**
          * Confirm the email address with an emailed token
-         * @description No session needed. Consumes a `verify_email` token and marks the email verified. Tokens are single-use; unknown, used, expired and other-purpose tokens all get `invalid_token`, and each counts against a per-IP limit (10 per 15 minutes, shared by every token endpoint). Responses carry `Cache-Control: no-store`.
+         * @description No session needed. Consumes a `verify_email` token and marks the email verified. Tokens are single-use; unknown, used, expired and other-purpose tokens all get `invalid_token`, and each counts against a per-IP limit (50 per 15 minutes, shared by every token endpoint). Responses carry `Cache-Control: no-store`.
          */
         post: operations["postAuthEmailVerify"];
         delete?: never;
@@ -169,7 +169,7 @@ export interface paths {
         put?: never;
         /**
          * Email a sign-in link
-         * @description No session needed. Always 202 with the same response whether or not an account exists; only an existing account gets `{APP_BASE_URL}/ingresar#token=...` (valid 15 minutes, single-use; issuing one invalidates the previous). Limited to 5 requests per 15 minutes per client IP and per email, shared with `/auth/password/reset-request` and `/auth/email/verification`. Responses carry `Cache-Control: no-store`.
+         * @description No session needed. Always 202 with the same response whether or not an account exists; only an existing account gets `{APP_BASE_URL}/ingresar#token=...` (valid 15 minutes, single-use; issuing one invalidates the previous). Limited to 5 requests per 15 minutes per email and 50 per client IP, shared with `/auth/password/reset-request` and `/auth/email/verification`. Responses carry `Cache-Control: no-store`.
          */
         post: operations["postAuthLink"];
         delete?: never;
@@ -269,7 +269,7 @@ export interface paths {
         put?: never;
         /**
          * Confirm TOTP enrollment with a first code
-         * @description Checks a code of the pending secret (one step of drift accepted). On success the TOTP is confirmed, 10 single-use recovery codes are returned once (`XXXXX-XXXXX`, only their SHA-256 is stored) and the session is rotated into a two-factor session (new `__Host-session` cookie, same attributes as login; the previous session is deleted). Wrong codes and confirming without a pending secret get `invalid_code`. Failures share the per-user limit of `/auth/mfa/verify` (5 per 15 minutes); further attempts get 429. Responses carry `Cache-Control: no-store`.
+         * @description Checks a code of the pending secret (one step of drift accepted). On success the TOTP is confirmed, 10 single-use recovery codes are returned once (`XXXXX-XXXXX`, only their SHA-256 is stored) and the session is rotated into a two-factor session (new `__Host-session` cookie, same attributes as login but Max-Age is the session's remaining lifetime, which is not extended; the previous session is deleted). Wrong codes and confirming without a pending secret get `invalid_code`. Failures share the per-user limit of `/auth/mfa/verify` (5 per 15 minutes); further attempts get 429. Responses carry `Cache-Control: no-store`.
          */
         post: operations["postAuthMfaEnrollmentConfirm"];
         delete?: never;
@@ -289,7 +289,7 @@ export interface paths {
         put?: never;
         /**
          * Complete two-factor sign-in
-         * @description Send exactly one of `code` (6 digits from the authenticator app; one step of drift accepted) or `recoveryCode` (single-use; case, spaces and hyphens ignored). On success the session is rotated into a two-factor session: a new `__Host-session` cookie with the same attributes as login, and the previous session row is deleted. A code whose time step was already used, a used recovery code, a wrong code and a user without confirmed TOTP all get the same `invalid_code`. Failures are limited per user (5 per 15 minutes, shared with enrollment confirmation); further attempts get 429. Responses carry `Cache-Control: no-store`.
+         * @description Send exactly one of `code` (6 digits from the authenticator app; one step of drift accepted) or `recoveryCode` (single-use; case, spaces and hyphens ignored). On success the session is rotated into a two-factor session: a new `__Host-session` cookie with the same attributes as login except Max-Age, which is the session's remaining lifetime (not extended), and the previous session row is deleted. A code whose time step was already used, a used recovery code, a wrong code and a user without confirmed TOTP all get the same `invalid_code`. Failures are limited per user (5 per 15 minutes, shared with enrollment confirmation); further attempts get 429. Responses carry `Cache-Control: no-store`.
          */
         post: operations["postAuthMfaVerify"];
         delete?: never;
@@ -439,7 +439,7 @@ export interface components {
         Me: {
             userId: string;
             email: string;
-            /** @description Active tenant of the session; null when the user has no membership. */
+            /** @description Active tenant of the session; null whenever `role` is null (no membership there). */
             tenantId: string | null;
             /** @description Role in the active tenant; null when the user has no membership. */
             role: components["schemas"]["Role"] | null;
@@ -711,9 +711,10 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Membership added; the session now points at the code's tenant. */
+            /** @description Membership added; the new session points at the code's tenant. */
             200: {
                 headers: {
+                    "Set-Cookie"?: string;
                     [name: string]: unknown;
                 };
                 content: {
