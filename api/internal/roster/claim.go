@@ -24,6 +24,7 @@ var (
 // Claimed is the account a code was spent on.
 type Claimed struct {
 	UserID, TenantID string
+	TenantName       string    // name of the code's organization
 	Token            string    // new session token
 	Expires          time.Time // absolute expiry of the session named by Token
 	VerifyToken      string    // verify_email token to send to the new account; set by Claim only
@@ -98,6 +99,9 @@ func (s *Store) Claim(ctx context.Context, code, email, password, prevToken stri
 			return err
 		}
 		out.TenantID = tenant
+		if out.TenantName, err = tenantName(ctx, tx, tenant); err != nil {
+			return err
+		}
 		if out.Token, err = auth.InsertSession(ctx, tx, out.UserID, &tenant, s.now()); err != nil {
 			return err
 		}
@@ -127,10 +131,22 @@ func (s *Store) Redeem(ctx context.Context, sess auth.Session, token, code strin
 		}
 		out.TenantID = tenant
 		var err error
+		if out.TenantName, err = tenantName(ctx, tx, tenant); err != nil {
+			return err
+		}
 		out.Token, out.Expires, err = auth.RotateSessionIntoTenant(ctx, tx, token, sess.UserID, tenant, s.now())
 		return err
 	})
 	return out, mapClaimError(err)
+}
+
+// tenantName reads the name of organization tenant inside tx (organizations is readable by the app role).
+func tenantName(ctx context.Context, tx pgx.Tx, tenant string) (string, error) {
+	var name string
+	if err := tx.QueryRow(ctx, `SELECT name FROM organizations WHERE id = $1`, tenant).Scan(&name); err != nil {
+		return "", fmt.Errorf("roster: tenant name: %w", err)
+	}
+	return name, nil
 }
 
 func addStudent(ctx context.Context, tx pgx.Tx, tenant, user, member string) error {

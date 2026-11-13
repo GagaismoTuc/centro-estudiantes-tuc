@@ -515,6 +515,13 @@ input:user-invalid {
   font-weight: 600;
   letter-spacing: -0.01em;
 }
+.sidebar__brand > div {
+  min-inline-size: 0;
+}
+.sidebar__school {
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
 .sidebar__subtitle {
   color: var(--muted);
   font-family: var(--font-mono);
@@ -671,6 +678,11 @@ input:user-invalid {
   justify-content: space-between;
   gap: 0.75rem;
 }
+.page-header__school {
+  margin-block-start: 0.25rem;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
 
 .badge {
   display: inline-flex;
@@ -683,9 +695,6 @@ input:user-invalid {
   font-family: var(--font-mono);
   font-size: 0.6875rem;
   white-space: nowrap;
-}
-.badge--role {
-  color: var(--text);
 }
 
 .section-title {
@@ -1087,8 +1096,21 @@ input[type="search"] {
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    min-inline-size: 0;
     font-size: 0.875rem;
     font-weight: 600;
+  }
+  .topbar__names {
+    display: grid;
+    min-inline-size: 0;
+  }
+  .topbar__school {
+    overflow: hidden;
+    color: var(--muted);
+    font-size: 0.75rem;
+    font-weight: 400;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .topbar .chip {
     display: none;

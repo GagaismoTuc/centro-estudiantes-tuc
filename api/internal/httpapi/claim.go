@@ -70,7 +70,7 @@ func (s *server) spendCode(w http.ResponseWriter, r *http.Request, use func() (r
 // factor is required there.
 func studentMe(c roster.Claimed, email string, verified bool) oapi.Me {
 	role := oapi.Student
-	return oapi.Me{UserId: c.UserID, Email: email, EmailVerified: verified, TenantId: &c.TenantID, Role: &role,
+	return oapi.Me{UserId: c.UserID, Email: email, EmailVerified: verified, TenantId: &c.TenantID, TenantName: &c.TenantName, Role: &role,
 		Mfa: oapi.MfaState(auth.MFANotRequired)}
 }
 

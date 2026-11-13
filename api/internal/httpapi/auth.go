@@ -183,7 +183,7 @@ func (s *server) GetAuthMe(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "unauthenticated")
 		return
 	}
-	role, err := s.store.Role(r.Context(), sess)
+	role, tenantName, err := s.store.Membership(r.Context(), sess)
 	if err != nil {
 		slog.Error("me", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal")
@@ -196,6 +196,7 @@ func (s *server) GetAuthMe(w http.ResponseWriter, r *http.Request) {
 		r := oapi.Role(role)
 		me.Role = &r
 		me.TenantId = &sess.TenantID
+		me.TenantName = &tenantName
 	}
 	writeJSON(w, http.StatusOK, me)
 }

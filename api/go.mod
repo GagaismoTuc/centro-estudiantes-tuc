@@ -2,6 +2,8 @@ module github.com/GagaismoTuc/centro-estudiantes-tuc/api
 
 go 1.26.6
 
+toolchain go1.26.11
+
 tool github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
 
 require (

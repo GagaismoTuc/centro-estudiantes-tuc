@@ -67,7 +67,9 @@ type fixture struct {
 	clk    *fakeClock
 	h      http.Handler
 	tenant string
-	mail   *fakeMail
+	// tenantName is the name of the fixture's organization (the test's name).
+	tenantName string
+	mail       *fakeMail
 }
 
 func newFixture(t *testing.T, ctx context.Context) *fixture {
@@ -83,6 +85,7 @@ func newFixtureWith(t *testing.T, ctx context.Context, opt func(*httpapi.Deps)) 
 		Mail: f.mail, BaseURL: baseURL, Background: func(fn func()) { fn() }}
 	opt(&d)
 	f.h = httpapi.NewRouter(d)
+	f.tenantName = t.Name()
 	if err := tdb.Super.QueryRow(ctx,
 		`INSERT INTO organizations (kind, name) VALUES ('school', $1) RETURNING id::text`, t.Name()).Scan(&f.tenant); err != nil {
 		t.Fatal(err)
@@ -290,16 +293,21 @@ func TestMe(t *testing.T) {
 	loneID := f.seedUser(t, ctx, "solo.me@example.com", "")
 	adminToken := f.loginOK(t, "ana.me@example.com")
 	loneToken := f.loginOK(t, "solo.me@example.com")
+	// The name is read on every request, as text: quotes and accents come back JSON-encoded.
+	if _, err := tdb.Super.Exec(ctx, `UPDATE organizations SET name = $2 WHERE id = $1`,
+		f.tenant, `Escuela "Demo" Tucumán`); err != nil {
+		t.Fatal(err)
+	}
 
 	t.Run("valid session", func(t *testing.T) {
 		rec := f.do(http.MethodGet, "/api/auth/me", "", "198.51.100.4", adminToken, nil)
 		wantResponse(t, rec, http.StatusOK, fmt.Sprintf(
-			`{"email":"ana.me@example.com","emailVerified":false,"mfa":"enrollment_required","role":"school_admin","tenantId":"%s","userId":"%s"}`, f.tenant, adminID))
+			`{"email":"ana.me@example.com","emailVerified":false,"mfa":"enrollment_required","role":"school_admin","tenantId":"%s","tenantName":"Escuela \"Demo\" Tucumán","userId":"%s"}`, f.tenant, adminID))
 	})
 	t.Run("user without membership", func(t *testing.T) {
 		rec := f.do(http.MethodGet, "/api/auth/me", "", "198.51.100.4", loneToken, nil)
 		wantResponse(t, rec, http.StatusOK, fmt.Sprintf(
-			`{"email":"solo.me@example.com","emailVerified":false,"mfa":"not_required","role":null,"tenantId":null,"userId":"%s"}`, loneID))
+			`{"email":"solo.me@example.com","emailVerified":false,"mfa":"not_required","role":null,"tenantId":null,"tenantName":null,"userId":"%s"}`, loneID))
 	})
 	t.Run("membership removed after sign-in", func(t *testing.T) {
 		email := uniqueEmail("gone.me")
@@ -311,7 +319,7 @@ func TestMe(t *testing.T) {
 		// The session still names the tenant, but without a role it must not be reported.
 		rec := f.do(http.MethodGet, "/api/auth/me", "", "198.51.100.4", token, nil)
 		wantResponse(t, rec, http.StatusOK, fmt.Sprintf(
-			`{"email":"%s","emailVerified":false,"mfa":"not_required","role":null,"tenantId":null,"userId":"%s"}`, email, goneID))
+			`{"email":"%s","emailVerified":false,"mfa":"not_required","role":null,"tenantId":null,"tenantName":null,"userId":"%s"}`, email, goneID))
 	})
 	t.Run("missing cookie", func(t *testing.T) {
 		wantResponse(t, f.do(http.MethodGet, "/api/auth/me", "", "198.51.100.4", "", nil), http.StatusUnauthorized, unauthBody)

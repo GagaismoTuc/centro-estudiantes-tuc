@@ -18,7 +18,7 @@ Row-Level Security, and the same build runs as SaaS or on the customer's own ser
 
 ## Prerequisites
 
-Go 1.26, Node 26, pnpm 11 and Docker. A C compiler on `PATH` (on Windows, MinGW-w64 GCC) is needed only for
+Go 1.26.11 (pinned by `toolchain` in api/go.mod), Node 26, pnpm 11 and Docker. A C compiler on `PATH` (on Windows, MinGW-w64 GCC) is needed only for
 cgo tooling such as `sqlc` and `go test -race`.
 
 ## Development

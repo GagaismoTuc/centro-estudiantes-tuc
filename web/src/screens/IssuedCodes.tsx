@@ -1,6 +1,7 @@
 import { useEffect, useId, useState } from "react";
 import { createPortal } from "react-dom";
 import type { components } from "../api/schema.gen.ts";
+import { useMe } from "../auth/session.tsx";
 import { ConfirmDialog } from "../components/ConfirmDialog.tsx";
 import { CopyButton } from "../components/CopyButton.tsx";
 import { Icon } from "../components/Icon.tsx";
@@ -111,12 +112,13 @@ export function IssuedCodes({ codes, onHide }: { codes: IssuedMemberCode[]; onHi
 
 /** One cut-out card per student; only visible when printing (no app chrome). */
 function PrintSheet({ codes }: { codes: IssuedMemberCode[] }) {
+  const { tenantName } = useMe();
   const claimUrl = `${window.location.origin}/alta`;
   return (
     <div className="print-sheet" hidden>
       {codes.map((c) => (
         <article className="print-card" key={c.memberId}>
-          <p className="print-card__brand">Centro de Estudiantes</p>
+          <p className="print-card__brand">{tenantName !== null ? <bdi>{tenantName}</bdi> : "Centro de Estudiantes"}</p>
           <p className="print-card__name">
             <bdi>{neutralizeFormula(c.fullName)}</bdi>
           </p>

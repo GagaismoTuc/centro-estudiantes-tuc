@@ -214,22 +214,24 @@ func (s *Store) DeleteSession(ctx context.Context, token string) error {
 	return DeleteSessionIn(ctx, s.pool, token)
 }
 
-// Role returns the session user's role in the session's tenant, or "" without a tenant.
-func (s *Store) Role(ctx context.Context, sess Session) (string, error) {
+// Membership returns the session user's role in the session's tenant and that organization's name,
+// read in one query; both are "" without a tenant or when the membership is gone.
+func (s *Store) Membership(ctx context.Context, sess Session) (role, tenantName string, err error) {
 	if sess.TenantID == "" {
-		return "", nil
+		return "", "", nil
 	}
-	var role string
-	err := db.WithTenant(ctx, s.pool, sess.TenantID, func(tx pgx.Tx) error {
-		return tx.QueryRow(ctx, `SELECT role FROM memberships WHERE user_id = $1`, sess.UserID).Scan(&role)
+	err = db.WithTenant(ctx, s.pool, sess.TenantID, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `
+			SELECT m.role, o.name FROM memberships m JOIN organizations o ON o.id = m.tenant_id
+			WHERE m.user_id = $1`, sess.UserID).Scan(&role, &tenantName)
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", nil // membership removed after sign-in
+		return "", "", nil // membership removed after sign-in
 	}
 	if err != nil {
-		return "", fmt.Errorf("auth: role: %w", err)
+		return "", "", fmt.Errorf("auth: membership: %w", err)
 	}
-	return role, nil
+	return role, tenantName, nil
 }
 
 // Bootstrap creates a school, its first user and a school_admin membership in one transaction.
