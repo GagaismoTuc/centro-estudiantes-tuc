@@ -19,6 +19,7 @@ export function me(overrides: Partial<Me> = {}): Me {
     email: "ana@escuela.edu.ar",
     emailVerified: true,
     tenantId: "t1",
+    tenantName: "Escuela Demo Tucumán",
     role: "student",
     mfa: "not_required",
     ...overrides,

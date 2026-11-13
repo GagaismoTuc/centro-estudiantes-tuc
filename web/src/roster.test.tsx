@@ -241,6 +241,21 @@ describe("issuing access codes", () => {
     expect(sentTo(sent, "POST /roster/access-codes")).toHaveLength(1);
   });
 
+  test.each([
+    ["Escuela Demo Tucumán", "Escuela Demo Tucumán"],
+    [null, "Centro de Estudiantes"],
+  ])("print cards name the school %s as %s", async (tenantName, line) => {
+    await openRoster({
+      "GET /auth/me": ok({ ...admin, tenantName }),
+      "POST /roster/access-codes": ok([issued("m1", "Ana Gómez", "40111222", "AAAA-BBBB-CCCC")], 201),
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Generar códigos faltantes" }));
+    await screen.findByRole("region", { name: "Códigos generados" });
+    const brand = document.querySelector(".print-sheet .print-card .print-card__brand");
+    expect(brand?.textContent).toBe(line);
+    expect(brand?.querySelector("bdi") !== null).toBe(tenantName !== null);
+  });
+
   test("leaving the page asks for confirmation only while codes are visible", async () => {
     await openRoster({
       "POST /roster/access-codes": ok([issued("m1", "Ana Gómez", "40111222", "AAAA-BBBB-CCCC")], 201),

@@ -20,6 +20,11 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         <BrandMark />
         <div>
           <p className="sidebar__title">Centro de Estudiantes</p>
+          {me.tenantName !== null && (
+            <p className="sidebar__school">
+              <bdi>{me.tenantName}</bdi>
+            </p>
+          )}
           <p className="sidebar__subtitle">{me.role ? roleLabel[me.role] : "Sin escuela"}</p>
         </div>
       </div>
@@ -173,6 +178,7 @@ function NavDrawer({ open, onClosed }: { open: boolean; onClosed: () => void }) 
 }
 
 export function AppShell({ page, children }: { page: string; children: ReactNode }) {
+  const me = useMe();
   const [drawerOpen, setDrawerOpen] = useState(false);
   return (
     <div className="shell">
@@ -196,7 +202,14 @@ export function AppShell({ page, children }: { page: string; children: ReactNode
           </button>
           <span className="topbar__brand">
             <BrandMark />
-            Centro de Estudiantes
+            <span className="topbar__names">
+              Centro de Estudiantes
+              {me.tenantName !== null && (
+                <span className="topbar__school">
+                  <bdi>{me.tenantName}</bdi>
+                </span>
+              )}
+            </span>
           </span>
           <span className="chip">
             <span className="chip__muted">Centro /</span> {page}

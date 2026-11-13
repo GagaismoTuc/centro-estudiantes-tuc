@@ -441,6 +441,8 @@ export interface components {
             email: string;
             /** @description Active tenant of the session; null whenever `role` is null (no membership there). */
             tenantId: string | null;
+            /** @description Name of the active tenant's organization, as stored (display it as text); null exactly when `tenantId` is null. */
+            tenantName: string | null;
             /** @description Role in the active tenant; null when the user has no membership. */
             role: components["schemas"]["Role"] | null;
             emailVerified: boolean;

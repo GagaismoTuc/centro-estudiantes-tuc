@@ -50,8 +50,18 @@ export function Home() {
   return (
     <>
       <header className="page-header">
-        <PageTitle eyebrow="Inicio">Hola, {me.email}</PageTitle>
-        <span className="badge badge--role">{me.role ? roleLabel[me.role] : "Sin escuela"}</span>
+        <div>
+          <PageTitle eyebrow="Inicio">Hola, {me.email}</PageTitle>
+          <p className="page-header__school">
+            {me.tenantName !== null && me.role ? (
+              <>
+                <bdi>{me.tenantName}</bdi> · {roleLabel[me.role]}
+              </>
+            ) : (
+              "Sin escuela"
+            )}
+          </p>
+        </div>
       </header>
 
       {!me.emailVerified && <VerifyEmailBanner email={me.email} />}

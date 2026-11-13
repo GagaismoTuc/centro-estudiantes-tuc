@@ -707,7 +707,7 @@ components:
             pattern: "^[0-9A-HJKMNP-TV-Z]{5}-[0-9A-HJKMNP-TV-Z]{5}$"
     Me:
       type: object
-      required: [userId, email, emailVerified, tenantId, role, mfa]
+      required: [userId, email, emailVerified, tenantId, tenantName, role, mfa]
       properties:
         userId:
           type: string
@@ -717,6 +717,12 @@ components:
           type: string
           nullable: true
           description: Active tenant of the session; null whenever `role` is null (no membership there).
+        tenantName:
+          type: string
+          nullable: true
+          description: >
+            Name of the active tenant's organization, as stored (display it as text); null exactly when
+            `tenantId` is null.
         role:
           allOf:
             - $ref: "#/components/schemas/Role"

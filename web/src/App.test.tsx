@@ -137,6 +137,44 @@ describe("T6a advisories: theme", () => {
   });
 });
 
+/** The paragraph whose whole text (across inline children such as <bdi>) is text. */
+function byText(container: HTMLElement, text: string): HTMLElement {
+  return within(container).getByText((_, el) => el?.tagName === "P" && el.textContent === text);
+}
+
+// Inicio's own <header> also maps to "banner" in jsdom, so the top bar is found by class.
+const topbar = () => document.querySelector<HTMLElement>(".topbar") as HTMLElement;
+
+describe("school name", () => {
+  test("the sidebar and the top bar show the active school's name as isolated text", async () => {
+    mockApi({ "GET /auth/me": ok(me({ role: "school_admin", mfa: "satisfied" })) });
+    renderAt("/");
+    const sidebar = await screen.findByRole("complementary", { name: "Barra lateral" });
+    const name = within(sidebar).getByText("Escuela Demo Tucumán");
+    expect(name.tagName).toBe("BDI");
+    expect(within(sidebar).getByText("Centro de Estudiantes")).toBeTruthy();
+    expect(within(topbar()).getByText("Escuela Demo Tucumán").tagName).toBe("BDI");
+  });
+
+  test("markup in the name is shown as text", async () => {
+    mockApi({ "GET /auth/me": ok(me({ tenantName: '<img src=x onerror="alert(1)">' })) });
+    renderAt("/");
+    const sidebar = await screen.findByRole("complementary", { name: "Barra lateral" });
+    expect(within(sidebar).getByText('<img src=x onerror="alert(1)">')).toBeTruthy();
+    expect(document.querySelector("img")).toBeNull();
+  });
+
+  test("without a school the sidebar and the top bar show no name", async () => {
+    mockApi({ "GET /auth/me": ok(me({ tenantId: null, tenantName: null, role: null })) });
+    renderAt("/");
+    const sidebar = await screen.findByRole("complementary", { name: "Barra lateral" });
+    expect(within(sidebar).getAllByText("Sin escuela").length).toBeGreaterThan(0);
+    expect(sidebar.querySelector("bdi")).toBeNull();
+    expect(within(topbar()).getByText("Centro de Estudiantes")).toBeTruthy();
+    expect(topbar().querySelector("bdi")).toBeNull();
+  });
+});
+
 describe("Inicio", () => {
   test("shows role, modules and, for an unverified email, sends a verification link", async () => {
     const sent = mockApi({
@@ -146,7 +184,7 @@ describe("Inicio", () => {
     renderAt("/");
     const main = await screen.findByRole("main");
     await within(main).findByRole("heading", { name: "Hola, ana@escuela.edu.ar" });
-    expect(within(main).getByText("Autoridad escolar")).toBeTruthy();
+    expect(byText(main, "Escuela Demo Tucumán · Autoridad escolar")).toBeTruthy();
     expect(within(main).getByRole("link", { name: /Padrón/ })).toBeTruthy();
     expect(within(main).getAllByText("Próximamente")).toHaveLength(3);
 
@@ -160,6 +198,15 @@ describe("Inicio", () => {
     renderAt("/");
     await screen.findByRole("heading", { name: "Hola, ana@escuela.edu.ar" });
     expect(screen.queryByRole("button", { name: "Enviar enlace de verificación" })).toBeNull();
+  });
+
+  test("without a school the greeting says so and no school name is shown", async () => {
+    mockApi({ "GET /auth/me": ok(me({ tenantId: null, tenantName: null, role: null })) });
+    renderAt("/");
+    const main = await screen.findByRole("main");
+    await within(main).findByRole("heading", { name: "Hola, ana@escuela.edu.ar" });
+    expect(byText(main, "Sin escuela")).toBeTruthy();
+    expect(screen.queryByText(/Escuela Demo/)).toBeNull();
   });
 
   test("an API outage on start shows a retry message instead of a blank page", async () => {

@@ -144,7 +144,10 @@ type Me struct {
 
 	// TenantId Active tenant of the session; null whenever `role` is null (no membership there).
 	TenantId *string `json:"tenantId"`
-	UserId   string  `json:"userId"`
+
+	// TenantName Name of the active tenant's organization, as stored (display it as text); null exactly when `tenantId` is null.
+	TenantName *string `json:"tenantName"`
+	UserId     string  `json:"userId"`
 }
 
 // MfaCodeRequest defines model for MfaCodeRequest.
