@@ -2,6 +2,8 @@ package auth
 
 import (
 	"context"
+	"crypto/hkdf"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"errors"
@@ -77,13 +79,34 @@ const crockford = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 type MFA struct {
 	pool *pgxpool.Pool
 	key  []byte
-	now  func() time.Time
+	// recoveryKey is the HMAC key of recovery codes, derived from key; nil when key is invalid.
+	recoveryKey []byte
+	now         func() time.Time
 }
 
 // NewMFA returns an MFA; key must be totp.KeyLen bytes (cmd/server refuses to start otherwise), or
-// every operation fails.
+// every operation fails. It panics when now is nil.
 func NewMFA(pool *pgxpool.Pool, key []byte, now func() time.Time) *MFA {
-	return &MFA{pool: pool, key: key, now: now}
+	if now == nil {
+		panic("auth: NewMFA needs a clock")
+	}
+	m := &MFA{pool: pool, key: key, now: now}
+	if len(key) == totp.KeyLen {
+		// A separate key per purpose: the AES key itself is never used as an HMAC key.
+		m.recoveryKey, _ = hkdf.Key(sha256.New, key, nil, "recovery-codes", 32)
+	}
+	return m
+}
+
+// recoveryHash returns HMAC-SHA256 of a normalized recovery code under the derived recovery key, so
+// a copy of the database alone does not allow guessing codes offline.
+func (m *MFA) recoveryHash(normalized string) ([]byte, error) {
+	if m.recoveryKey == nil {
+		return nil, errors.New("auth: TOTP key is not configured")
+	}
+	h := hmac.New(sha256.New, m.recoveryKey)
+	h.Write([]byte(normalized))
+	return h.Sum(nil), nil
 }
 
 // Enroll creates (or replaces) the user's pending TOTP secret and returns it for display, once.
@@ -149,13 +172,16 @@ func (m *MFA) Confirm(ctx context.Context, token, userID, code string) (string, 
 			if err != nil {
 				return err
 			}
-			h := sha256.Sum256([]byte(normalizeRecovery(c)))
-			if _, err := tx.Exec(ctx, `INSERT INTO recovery_codes (user_id, code_hash) VALUES ($1, $2)`, userID, h[:]); err != nil {
+			h, err := m.recoveryHash(normalizeRecovery(c))
+			if err != nil {
+				return err
+			}
+			if _, err := tx.Exec(ctx, `INSERT INTO recovery_codes (user_id, code_hash) VALUES ($1, $2)`, userID, h); err != nil {
 				return err
 			}
 			codes = append(codes, c)
 		}
-		newToken, expires, err = rotateSession(ctx, tx, token, userID, now, true)
+		newToken, expires, err = rotateSession(ctx, tx, token, userID, now, true, nil)
 		return err
 	})
 	if err != nil {
@@ -189,9 +215,12 @@ func (m *MFA) Verify(ctx context.Context, token, userID, code, recoveryCode stri
 			if !validRecovery(n) {
 				return ErrInvalidCode
 			}
-			h := sha256.Sum256([]byte(n))
+			h, err := m.recoveryHash(n)
+			if err != nil {
+				return err
+			}
 			tag, err := tx.Exec(ctx, `UPDATE recovery_codes SET used_at = $3
-				WHERE user_id = $1 AND code_hash = $2 AND used_at IS NULL`, userID, h[:], now)
+				WHERE user_id = $1 AND code_hash = $2 AND used_at IS NULL`, userID, h, now)
 			if err != nil {
 				return err
 			}
@@ -207,7 +236,7 @@ func (m *MFA) Verify(ctx context.Context, token, userID, code, recoveryCode stri
 				return err
 			}
 		}
-		newToken, expires, err = rotateSession(ctx, tx, token, userID, now, true)
+		newToken, expires, err = rotateSession(ctx, tx, token, userID, now, true, nil)
 		return err
 	})
 	return newToken, expires, err
@@ -230,11 +259,11 @@ func (m *MFA) check(userID string, sealed []byte, last *int64, code string, now 
 	return step, nil
 }
 
-// rotateSession deletes the live session named by token and inserts a new one for the same user and
-// tenant with the same absolute expiry, returning its token and expiry. With mfa the new session
-// proved the second factor now; otherwise it keeps the old session's mfa_at. A privilege change
-// always gets a new token.
-func rotateSession(ctx context.Context, tx pgx.Tx, token, userID string, now time.Time, mfa bool) (string, time.Time, error) {
+// rotateSession deletes the live session named by token and inserts a new one for the same user with
+// the same absolute expiry, returning its token and expiry. The new session keeps the old tenant, or
+// gets newTenant when it is not nil. With mfa the new session proved the second factor now;
+// otherwise it keeps the old session's mfa_at. A privilege change always gets a new token.
+func rotateSession(ctx context.Context, tx pgx.Tx, token, userID string, now time.Time, mfa bool, newTenant *string) (string, time.Time, error) {
 	h, ok := hashToken(token)
 	if !ok {
 		return "", time.Time{}, ErrNoSession
@@ -253,21 +282,11 @@ func rotateSession(ctx context.Context, tx pgx.Tx, token, userID string, now tim
 	if mfa {
 		mfaAt = &now
 	}
+	if newTenant != nil {
+		tenant = newTenant
+	}
 	// Keep the original absolute expiry: rotating must never extend the session.
 	tok, err := insertSessionUntil(ctx, tx, userID, tenant, now, expires, mfaAt)
-	return tok, expires, err
-}
-
-// RotateSession replaces the session named by token (of userID) with a new token for the same
-// tenant, second-factor state and absolute expiry, returning the token and expiry.
-func (s *Store) RotateSession(ctx context.Context, token, userID string) (string, time.Time, error) {
-	now := s.now().UTC().Truncate(time.Microsecond)
-	var tok string
-	var expires time.Time
-	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) (err error) {
-		tok, expires, err = rotateSession(ctx, tx, token, userID, now, false)
-		return err
-	})
 	return tok, expires, err
 }
 

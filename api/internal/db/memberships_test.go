@@ -3,11 +3,13 @@ package db_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/db"
 )
@@ -165,5 +167,56 @@ func TestCheckAppRole(t *testing.T) {
 	}
 	if err := db.CheckAppRole(ctx, env.super); err == nil {
 		t.Fatal("CheckAppRole(superuser pool) = nil, want an error")
+	}
+}
+
+// A table owner is not subject to its table's RLS unless FORCE is set, and can ALTER or DROP it: a
+// member of ce_app that owns (or is a member of a role that owns) a table in public is refused.
+func TestCheckAppRoleRejectsTableOwners(t *testing.T) {
+	ctx := integration(t)
+	setup := []string{
+		`CREATE ROLE t7b_owner LOGIN PASSWORD 't7b' IN ROLE ce_app`,
+		`CREATE ROLE t7b_owners NOLOGIN`,
+		`CREATE ROLE t7b_via_group LOGIN PASSWORD 't7b' IN ROLE ce_app, t7b_owners`,
+		`CREATE TABLE public.t7b_owned (id int)`,
+		`ALTER TABLE public.t7b_owned OWNER TO t7b_owner`,
+		`CREATE TABLE public.t7b_group_owned (id int)`,
+		`ALTER TABLE public.t7b_group_owned OWNER TO t7b_owners`,
+	}
+	t.Cleanup(func() {
+		for _, q := range []string{`DROP TABLE IF EXISTS public.t7b_owned`, `DROP TABLE IF EXISTS public.t7b_group_owned`,
+			`DROP ROLE IF EXISTS t7b_owner`, `DROP ROLE IF EXISTS t7b_via_group`, `DROP ROLE IF EXISTS t7b_owners`} {
+			_, _ = env.super.Exec(context.Background(), q)
+		}
+	})
+	for _, q := range setup {
+		if _, err := env.super.Exec(ctx, q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, role := range []string{"t7b_owner", "t7b_via_group"} {
+		cfg := env.appConfig.Copy()
+		cfg.ConnConfig.User, cfg.ConnConfig.Password = role, "t7b"
+		pool, err := pgxpool.NewWithConfig(ctx, cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = db.CheckAppRole(ctx, pool)
+		pool.Close()
+		want := fmt.Sprintf(`db: role %q must be a member of ce_app without SUPERUSER or BYPASSRLS and own no table`, role)
+		if err == nil || err.Error() != want {
+			t.Fatalf("CheckAppRole(%s) = %v, want %q", role, err, want)
+		}
+	}
+}
+
+// Redeem no longer switches a session's tenant in place (it rotates the session), so the app role
+// must not keep UPDATE on sessions.tenant_id.
+func TestAppRoleCannotUpdateSessionTenant(t *testing.T) {
+	ctx := integration(t)
+	_, err := env.app.Exec(ctx, `UPDATE sessions SET tenant_id = NULL WHERE false`)
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) || pgErr.Code != "42501" {
+		t.Fatalf("err = %v, want SQLSTATE 42501 (permission denied)", err)
 	}
 }

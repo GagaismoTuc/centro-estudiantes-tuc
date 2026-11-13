@@ -81,3 +81,23 @@ func TestLimiterWithMaxOverridesThePrefix(t *testing.T) {
 		t.Fatal("email keys must keep the default limit of 2")
 	}
 }
+
+// The longest matching prefix sets the limit, whatever the map iteration order.
+func TestLimiterLongestPrefixWins(t *testing.T) {
+	for range 50 {
+		l := auth.NewLimiter(5, time.Minute, newClock().Now).
+			WithMax("ip:", 3).WithMax("ip:10.", 1).WithMax("i", 2)
+		for _, c := range []struct {
+			k    string
+			want int
+		}{{"ip:10.0.0.1", 1}, {"ip:192.0.2.1", 3}, {"id:x", 2}, {"email:a@b", 5}} {
+			n := 0
+			for l.Take(c.k) {
+				n++
+			}
+			if n != c.want {
+				t.Fatalf("%s: allowed %d, want %d", c.k, n, c.want)
+			}
+		}
+	}
+}

@@ -4,7 +4,7 @@
 //
 // creates a school organization, its first user and a school_admin membership. The password is
 // read from the first line of stdin, never from a flag, so it stays out of shell history and the
-// process list.
+// process list; on a terminal it is not echoed. It must have 10 to 128 characters.
 //
 //	admin reset-mfa --email EMAIL
 //
@@ -12,7 +12,8 @@
 // signs in again with the password and, if their role requires it, enrolls a new authenticator.
 // Verify the person's identity out of band before running it.
 //
-// DATABASE_URL must connect as a member of ce_app (the application role).
+// DATABASE_URL must connect as a member of ce_app (the application role); both commands refuse to
+// run otherwise (db.CheckAppRole).
 package main
 
 import (
@@ -27,8 +28,10 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"golang.org/x/term"
 
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/auth"
+	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/db"
 )
 
 const usage = "usage: admin bootstrap --org-name NAME --email EMAIL (password on stdin)\n" +
@@ -59,28 +62,20 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		return 2
 	}
 
-	// shortcut: the password echoes on an interactive terminal; pipe it in (or add golang.org/x/term).
 	fmt.Fprint(stderr, "Password: ")
-	line, err := bufio.NewReader(stdin).ReadString('\n')
-	if err != nil && !errors.Is(err, io.EOF) {
+	password, err := readPassword(stdin, stderr)
+	if err != nil {
 		fmt.Fprintf(stderr, "admin: read password: %v\n", err)
 		return 1
 	}
-	password := strings.TrimRight(line, "\r\n")
-	if len([]rune(password)) < auth.MinPasswordLen {
-		fmt.Fprintf(stderr, "admin: password must have at least %d characters\n", auth.MinPasswordLen)
+	if auth.ValidatePassword(password) != nil {
+		fmt.Fprintf(stderr, "admin: password must have %d to %d characters\n", auth.MinPasswordLen, auth.MaxPasswordLen)
 		return 2
 	}
 
-	dsn := getenv("DATABASE_URL")
-	if dsn == "" {
-		fmt.Fprintln(stderr, "admin: DATABASE_URL is not set")
-		return 1
-	}
-	pool, err := pgxpool.New(ctx, dsn)
-	if err != nil {
-		fmt.Fprintf(stderr, "admin: connect: %v\n", err)
-		return 1
+	pool, code := connect(ctx, stderr, getenv)
+	if pool == nil {
+		return code
 	}
 	defer pool.Close()
 
@@ -109,15 +104,9 @@ func resetMFA(ctx context.Context, args []string, stdout, stderr io.Writer, gete
 		fmt.Fprint(stderr, usage)
 		return 2
 	}
-	dsn := getenv("DATABASE_URL")
-	if dsn == "" {
-		fmt.Fprintln(stderr, "admin: DATABASE_URL is not set")
-		return 1
-	}
-	pool, err := pgxpool.New(ctx, dsn)
-	if err != nil {
-		fmt.Fprintf(stderr, "admin: connect: %v\n", err)
-		return 1
+	pool, code := connect(ctx, stderr, getenv)
+	if pool == nil {
+		return code
 	}
 	defer pool.Close()
 	normalized, err := auth.NewStore(pool, time.Now).ResetMFA(ctx, *email)
@@ -131,4 +120,41 @@ func resetMFA(ctx context.Context, args []string, stdout, stderr io.Writer, gete
 	}
 	fmt.Fprintf(stdout, "reset two-factor authentication of %s and signed out its sessions\n", normalized)
 	return 0
+}
+
+// connect opens DATABASE_URL and checks, before anything else, that its role is subject to
+// Row-Level Security (db.CheckAppRole). On failure it reports to stderr and returns a nil pool and
+// the exit code.
+func connect(ctx context.Context, stderr io.Writer, getenv func(string) string) (*pgxpool.Pool, int) {
+	dsn := getenv("DATABASE_URL")
+	if dsn == "" {
+		fmt.Fprintln(stderr, "admin: DATABASE_URL is not set")
+		return nil, 1
+	}
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		fmt.Fprintf(stderr, "admin: connect: %v\n", err)
+		return nil, 1
+	}
+	if err := db.CheckAppRole(ctx, pool); err != nil {
+		pool.Close()
+		fmt.Fprintf(stderr, "admin: %v\n", err)
+		return nil, 1
+	}
+	return pool, 0
+}
+
+// readPassword reads one line from stdin without echo when stdin is a terminal, and as plain text
+// otherwise (a pipe or a test).
+func readPassword(stdin io.Reader, stderr io.Writer) (string, error) {
+	if f, ok := stdin.(*os.File); ok && term.IsTerminal(int(f.Fd())) {
+		b, err := term.ReadPassword(int(f.Fd()))
+		fmt.Fprintln(stderr) // the Enter key was not echoed
+		return string(b), err
+	}
+	line, err := bufio.NewReader(stdin).ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return "", err
+	}
+	return strings.TrimRight(line, "\r\n"), nil
 }

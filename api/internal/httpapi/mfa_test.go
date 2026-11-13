@@ -3,6 +3,8 @@ package httpapi_test
 import (
 	"bytes"
 	"context"
+	"crypto/hkdf"
+	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base32"
 	"encoding/base64"
@@ -149,9 +151,16 @@ func recoveryHashes(t *testing.T, ctx context.Context, user string) map[string]*
 	return out
 }
 
+// recoveryHash is HMAC-SHA256 of the normalized code under the key derived from TOTP_ENC_KEY with
+// HKDF-SHA256 (info "recovery-codes").
 func recoveryHash(code string) string {
-	sum := sha256.Sum256([]byte(strings.ReplaceAll(code, "-", "")))
-	return string(sum[:])
+	key, err := hkdf.Key(sha256.New, testTOTPKey, nil, "recovery-codes", 32)
+	if err != nil {
+		panic(err)
+	}
+	m := hmac.New(sha256.New, key)
+	m.Write([]byte(strings.ReplaceAll(code, "-", "")))
+	return string(m.Sum(nil))
 }
 
 // sessionMFAAt returns mfa_at of the session for token and whether the row exists.
@@ -251,7 +260,7 @@ func TestEnrollmentConfirmAndRecoveryCodes(t *testing.T) {
 			t.Fatalf("recovery code %q does not match %s", c, recoveryRE)
 		}
 		if used, ok := hashes[recoveryHash(c)]; !ok || used != nil {
-			t.Fatalf("recovery code %s: stored %v, used %v; want only its unused SHA-256", c, ok, used)
+			t.Fatalf("recovery code %s: stored %v, used %v; want only its unused HMAC", c, ok, used)
 		}
 	}
 	newToken := wantRotated(t, ctx, f, rec, token)

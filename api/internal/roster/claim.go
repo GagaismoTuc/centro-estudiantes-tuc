@@ -24,8 +24,9 @@ var (
 // Claimed is the account a code was spent on.
 type Claimed struct {
 	UserID, TenantID string
-	Token            string // new session token; set by Claim only
-	VerifyToken      string // verify_email token to send to the new account; set by Claim only
+	Token            string    // new session token
+	Expires          time.Time // absolute expiry of the session named by Token
+	VerifyToken      string    // verify_email token to send to the new account; set by Claim only
 }
 
 // useCode runs fn in one transaction holding the live code row locked, with the code's tenant
@@ -69,8 +70,10 @@ func (s *Store) useCode(ctx context.Context, code string, fn func(tx pgx.Tx, ten
 }
 
 // Claim creates the account of the code's roster member: user, student membership and session.
-// email must already be normalized and password validated.
-func (s *Store) Claim(ctx context.Context, code, email, password string) (Claimed, error) {
+// email must already be normalized and password validated. prevToken, when not empty, names the
+// session the request arrived with: it is deleted in the same transaction, so a failure there
+// fails the whole claim.
+func (s *Store) Claim(ctx context.Context, code, email, password, prevToken string) (Claimed, error) {
 	var out Claimed
 	err := s.useCode(ctx, code, func(tx pgx.Tx, tenant, member string) error {
 		var taken bool
@@ -79,6 +82,9 @@ func (s *Store) Claim(ctx context.Context, code, email, password string) (Claime
 		}
 		if taken {
 			return auth.ErrEmailTaken
+		}
+		if err := auth.DeleteSessionIn(ctx, tx, prevToken); err != nil {
+			return err
 		}
 		hash, err := auth.HashPassword(password)
 		if err != nil {
@@ -95,14 +101,16 @@ func (s *Store) Claim(ctx context.Context, code, email, password string) (Claime
 		if out.Token, err = auth.InsertSession(ctx, tx, out.UserID, &tenant, s.now()); err != nil {
 			return err
 		}
+		out.Expires = s.now().Add(auth.SessionLifetime)
 		out.VerifyToken, err = auth.IssueEmailToken(ctx, tx, out.UserID, auth.PurposeVerifyEmail, s.now())
 		return err
 	})
 	return out, mapClaimError(err)
 }
 
-// Redeem adds the code's roster member to the signed-in user and switches the session (named by
-// token) to the code's tenant.
+// Redeem adds the code's roster member to the signed-in user and rotates the session named by token
+// into the code's tenant (new token, same absolute expiry and second-factor state), all in one
+// transaction: on any failure nothing changes and the old session stays valid.
 func (s *Store) Redeem(ctx context.Context, sess auth.Session, token, code string) (Claimed, error) {
 	out := Claimed{UserID: sess.UserID}
 	err := s.useCode(ctx, code, func(tx pgx.Tx, tenant, member string) error {
@@ -118,7 +126,9 @@ func (s *Store) Redeem(ctx context.Context, sess auth.Session, token, code strin
 			return err
 		}
 		out.TenantID = tenant
-		return auth.SwitchSessionTenant(ctx, tx, token, tenant)
+		var err error
+		out.Token, out.Expires, err = auth.RotateSessionIntoTenant(ctx, tx, token, sess.UserID, tenant, s.now())
+		return err
 	})
 	return out, mapClaimError(err)
 }

@@ -70,10 +70,17 @@ func (s *server) withSession(next http.Handler) http.Handler {
 	})
 }
 
+// unparsableKey is the shared limiter key of requests whose X-Forwarded-For has an unparsable hop
+// before any untrusted one: they are neither keyed by the proxy (all its clients would share one
+// budget) nor by a value the client could vary.
+const unparsableKey = "ip:unparsable"
+
 // ipKey is the per-IP limiter key of the request's client. The client is the TCP peer unless the
-// peer is a trusted proxy: then it is the right-most X-Forwarded-For address that is not itself a
-// trusted proxy (addresses to its left can be forged by the client). An unparsable hop stops the
-// search and the peer is used. IPv6 clients are keyed by their /64, which one host usually owns.
+// peer is a trusted proxy: then it is the right-most X-Forwarded-For address (all headers, in order)
+// that is not itself a trusted proxy, since addresses to its left can be forged by the client. When
+// every hop is trusted the left-most one is the client; without the header, the peer. Empty hops are
+// skipped, ports are dropped, and an unparsable hop met before any untrusted one yields
+// unparsableKey. IPv6 clients are keyed by their /64, which one host usually owns.
 func (s *server) ipKey(r *http.Request) string {
 	peer, err := netip.ParseAddrPort(r.RemoteAddr)
 	if err != nil {
@@ -83,12 +90,16 @@ func (s *server) ipKey(r *http.Request) string {
 	if s.isTrusted(client) {
 		hops := strings.Split(strings.Join(r.Header.Values("X-Forwarded-For"), ","), ",")
 		for i := len(hops) - 1; i >= 0; i-- {
-			a, err := netip.ParseAddr(strings.TrimSpace(hops[i]))
-			if err != nil {
-				break
+			h := strings.TrimSpace(hops[i])
+			if h == "" {
+				continue
 			}
-			if a = a.Unmap().WithZone(""); !s.isTrusted(a) {
-				client = a
+			a, ok := parseHop(h)
+			if !ok {
+				return unparsableKey
+			}
+			client = a // the left-most hop so far, if every hop is trusted
+			if !s.isTrusted(a) {
 				break
 			}
 		}
@@ -97,6 +108,20 @@ func (s *server) ipKey(r *http.Request) string {
 		return "ip:" + netip.PrefixFrom(client, 64).Masked().String()
 	}
 	return "ip:" + client.String()
+}
+
+// parseHop parses one X-Forwarded-For entry: an address, with or without a port (1.2.3.4:5678,
+// [2001:db8::1]:443) or brackets, returned unmapped and without zone.
+func parseHop(h string) (netip.Addr, bool) {
+	a, err := netip.ParseAddr(strings.TrimSuffix(strings.TrimPrefix(h, "["), "]"))
+	if err != nil {
+		ap, perr := netip.ParseAddrPort(h)
+		if perr != nil {
+			return netip.Addr{}, false
+		}
+		a = ap.Addr()
+	}
+	return a.Unmap().WithZone(""), true
 }
 
 func (s *server) isTrusted(a netip.Addr) bool {

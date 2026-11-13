@@ -115,19 +115,24 @@ func WithUser(ctx context.Context, pool *pgxpool.Pool, userID string, fn func(pg
 }
 
 // CheckAppRole fails unless the pool's role is subject to Row-Level Security: a member of ce_app
-// without SUPERUSER or BYPASSRLS. The server calls it at startup so a misconfigured DSN (for
-// example the owner or superuser) cannot silently disable tenant isolation.
+// without SUPERUSER or BYPASSRLS that neither owns a table in schema public nor is a member of a
+// role that does (an owner can ALTER, DROP or disable RLS on it). The server and the admin CLI call
+// it before anything else so a misconfigured DSN (for example the owner or superuser) cannot
+// silently disable tenant isolation.
 func CheckAppRole(ctx context.Context, pool *pgxpool.Pool) error {
 	var name string
-	var bypass, member bool
+	var bypass, member, owner bool
 	err := pool.QueryRow(ctx, `
-		SELECT rolname, rolsuper OR rolbypassrls, pg_has_role(current_user, 'ce_app', 'MEMBER')
-		FROM pg_roles WHERE rolname = current_user`).Scan(&name, &bypass, &member)
+		SELECT rolname, rolsuper OR rolbypassrls, pg_has_role(current_user, 'ce_app', 'MEMBER'),
+			EXISTS (SELECT FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+			        WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p', 'v', 'm', 'f')
+			          AND pg_has_role(current_user, c.relowner, 'MEMBER'))
+		FROM pg_roles WHERE rolname = current_user`).Scan(&name, &bypass, &member, &owner)
 	if err != nil {
 		return fmt.Errorf("db: check app role: %w", err)
 	}
-	if bypass || !member {
-		return fmt.Errorf("db: role %q must be a member of ce_app without SUPERUSER or BYPASSRLS", name)
+	if bypass || !member || owner {
+		return fmt.Errorf("db: role %q must be a member of ce_app without SUPERUSER or BYPASSRLS and own no table", name)
 	}
 	return nil
 }

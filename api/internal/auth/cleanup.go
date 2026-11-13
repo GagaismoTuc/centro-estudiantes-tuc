@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -10,6 +11,9 @@ import (
 // DeleteExpiredSessions deletes sessions whose expires_at is before now, batch rows per statement so
 // no single DELETE holds many locks, and returns how many it deleted.
 func (s *Store) DeleteExpiredSessions(ctx context.Context, batch int) (int64, error) {
+	if batch <= 0 { // the loop below would never end
+		return 0, errors.New("auth: delete expired sessions: batch must be positive")
+	}
 	var total int64
 	for {
 		tag, err := s.pool.Exec(ctx, `DELETE FROM sessions WHERE ctid IN (

@@ -33,11 +33,24 @@ func (e *InvalidRowsError) Error() string { return fmt.Sprintf("roster: %d inval
 
 type entry struct{ name, doc string }
 
-var dniPattern = regexp.MustCompile(`^[0-9]{7,9}$`)
+// dniPattern is a DNI of 7 to 9 digits, either plain or with dots in every thousands position
+// (40.111.222, 9.876.543).
+var dniPattern = regexp.MustCompile(`^(?:[0-9]{7,9}|[0-9]{1,3}\.[0-9]{3}\.[0-9]{3})$`)
 
-// parseCSV validates a whole roster file. The header must be full_name,document_number.
+// invisible reports format characters (Unicode category Cf): bidi overrides and isolates, zero-width
+// characters and the like, which can make a name display differently from what is stored.
+func invisible(r rune) bool { return unicode.Is(unicode.Cf, r) }
+
+// parseCSV validates a whole roster file. The header must be full_name,document_number; the
+// delimiter is a comma, or a semicolon when the header line has more semicolons than commas (what
+// Excel writes with an Argentine locale).
 func parseCSV(data []byte) ([]entry, error) {
-	r := csv.NewReader(bytes.NewReader(bytes.TrimPrefix(data, []byte("\xef\xbb\xbf")))) // Excel writes a BOM
+	data = bytes.TrimPrefix(data, []byte("\xef\xbb\xbf")) // Excel writes a BOM
+	r := csv.NewReader(bytes.NewReader(data))
+	first, _, _ := bytes.Cut(data, []byte("\n"))
+	if bytes.Count(first, []byte(";")) > bytes.Count(first, []byte(",")) {
+		r.Comma = ';'
+	}
 	r.FieldsPerRecord = -1
 	header, err := r.Read()
 	if err != nil || len(header) != 2 ||
@@ -70,7 +83,8 @@ func parseCSV(data []byte) ([]entry, error) {
 		if len(rec) != 2 {
 			reason = "expected 2 fields"
 		} else {
-			e = entry{strings.TrimSpace(rec[0]), strings.NewReplacer(".", "", " ", "").Replace(strings.TrimSpace(rec[1]))}
+			doc := strings.TrimSpace(rec[1])
+			e = entry{strings.TrimSpace(rec[0]), strings.ReplaceAll(doc, ".", "")}
 			switch {
 			case !utf8.ValidString(rec[0]) || !utf8.ValidString(rec[1]):
 				reason = "file must be saved as CSV UTF-8"
@@ -80,7 +94,9 @@ func parseCSV(data []byte) ([]entry, error) {
 				reason = fmt.Sprintf("full_name must have at most %d characters", maxNameLen)
 			case strings.ContainsFunc(e.name, unicode.IsControl):
 				reason = "full_name must be a single line of text"
-			case !dniPattern.MatchString(e.doc):
+			case strings.ContainsFunc(e.name, invisible):
+				reason = "full_name contains invisible characters"
+			case !dniPattern.MatchString(doc):
 				reason = "document_number must have 7 to 9 digits"
 			case seen[e.doc] != 0:
 				reason = fmt.Sprintf("duplicate document_number (line %d)", seen[e.doc])

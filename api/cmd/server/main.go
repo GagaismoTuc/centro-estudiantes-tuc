@@ -18,8 +18,9 @@
 //     address for rate limits.
 //   - ADDR: listen address (default :8080).
 //
-// SIGINT or SIGTERM stops the server gracefully: in-flight requests get up to 20 s, then the session
-// cleanup stops and queued mail is sent before the process exits.
+// SIGINT or SIGTERM stops the server gracefully: in-flight requests get up to 15 s, then the session
+// cleanup stops and queued mail gets up to 10 s before the process exits (25 s in total; give the
+// container a stop_grace_period of 30 s).
 package main
 
 import (
@@ -54,9 +55,11 @@ func main() {
 	}
 }
 
+// Shutdown budget: shutdownTimeout + drainTimeout (25 s) stays under the orchestrator's grace period
+// (stop_grace_period: 30s) so the process is never SIGKILLed mid-drain.
 const (
-	shutdownTimeout = 20 * time.Second
-	drainTimeout    = 40 * time.Second
+	shutdownTimeout = 15 * time.Second
+	drainTimeout    = 10 * time.Second
 	cleanupInterval = 10 * time.Minute
 )
 
@@ -169,6 +172,10 @@ func parseTrustedProxies(raw string) ([]netip.Prefix, error) {
 		p, err := netip.ParsePrefix(strings.TrimSpace(part))
 		if err != nil || p != p.Masked() {
 			return nil, errors.New("TRUSTED_PROXIES must be a comma-separated list of CIDRs, e.g. 10.0.0.0/8,192.168.1.10/32")
+		}
+		// Client addresses are unmapped before the check, so a ::ffff: prefix would match nothing.
+		if p.Addr().Is4In6() {
+			return nil, errors.New("TRUSTED_PROXIES must list IPv4 proxies as plain IPv4 CIDRs, not IPv4-mapped IPv6 (::ffff:…)")
 		}
 		out = append(out, p)
 	}

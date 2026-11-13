@@ -73,6 +73,11 @@ func (s *server) PostRosterImport(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// Refuse before reading up to 1 MiB from someone who may not import.
+	if err := s.roster.Authorize(r.Context(), sess); err != nil {
+		writeRosterError(w, "import roster", err)
+		return
+	}
 	if mt, _, err := mime.ParseMediaType(r.Header.Get("Content-Type")); err != nil || mt != "text/csv" {
 		writeError(w, http.StatusUnsupportedMediaType, "unsupported_media_type")
 		return

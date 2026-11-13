@@ -69,8 +69,11 @@ type Store struct {
 	dummy string
 }
 
-// NewStore returns a Store; now is the clock used for session expiry.
+// NewStore returns a Store; now is the clock used for session expiry. It panics when now is nil.
 func NewStore(pool *pgxpool.Pool, now func() time.Time) *Store {
+	if now == nil {
+		panic("auth: NewStore needs a clock")
+	}
 	return &Store{pool: pool, now: now, dummy: dummyHash()}
 }
 
@@ -150,18 +153,22 @@ func insertSessionUntil(ctx context.Context, q execer, userID string, tenant *st
 	return base64.RawURLEncoding.EncodeToString(raw), nil
 }
 
-// SwitchSessionTenant makes tenant the active tenant of the session named by token, inside tx.
-func SwitchSessionTenant(ctx context.Context, tx pgx.Tx, token, tenant string) error {
+// RotateSessionIntoTenant replaces, inside tx, the live session named by token (of userID) with a
+// new token whose active tenant is tenant, keeping its second-factor state and absolute expiry. It
+// returns the new token and that expiry, or ErrNoSession.
+func RotateSessionIntoTenant(ctx context.Context, tx pgx.Tx, token, userID, tenant string, now time.Time) (string, time.Time, error) {
+	return rotateSession(ctx, tx, token, userID, now.UTC().Truncate(time.Microsecond), false, &tenant)
+}
+
+// DeleteSessionIn deletes the session named by token through q (the pool or a transaction); an
+// unknown or malformed token is not an error.
+func DeleteSessionIn(ctx context.Context, q execer, token string) error {
 	h, ok := hashToken(token)
 	if !ok {
-		return ErrNoSession
+		return nil
 	}
-	tag, err := tx.Exec(ctx, `UPDATE sessions SET tenant_id = $2 WHERE token_hash = $1`, h, tenant)
-	if err != nil {
-		return fmt.Errorf("auth: switch tenant: %w", err)
-	}
-	if tag.RowsAffected() != 1 {
-		return ErrNoSession
+	if _, err := q.Exec(ctx, `DELETE FROM sessions WHERE token_hash = $1`, h); err != nil {
+		return fmt.Errorf("auth: delete session: %w", err)
 	}
 	return nil
 }
@@ -204,14 +211,7 @@ func (s *Store) Lookup(ctx context.Context, token string) (Session, error) {
 
 // DeleteSession removes the session for token; an unknown token is not an error.
 func (s *Store) DeleteSession(ctx context.Context, token string) error {
-	h, ok := hashToken(token)
-	if !ok {
-		return nil
-	}
-	if _, err := s.pool.Exec(ctx, `DELETE FROM sessions WHERE token_hash = $1`, h); err != nil {
-		return fmt.Errorf("auth: delete session: %w", err)
-	}
-	return nil
+	return DeleteSessionIn(ctx, s.pool, token)
 }
 
 // Role returns the session user's role in the session's tenant, or "" without a tenant.

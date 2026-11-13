@@ -47,10 +47,15 @@ func integration(t *testing.T) context.Context {
 const adminPassword = "clave del administrador"
 
 func runCLI(stdin string, args ...string) (code int, stdout, stderr string) {
+	return runCLIWith(tdb.AppDSN, stdin, args...)
+}
+
+// runCLIWith runs the CLI with DATABASE_URL set to dsn.
+func runCLIWith(dsn, stdin string, args ...string) (code int, stdout, stderr string) {
 	var out, errOut bytes.Buffer
 	getenv := func(k string) string {
 		if k == "DATABASE_URL" {
-			return tdb.AppDSN
+			return dsn
 		}
 		return ""
 	}
@@ -121,7 +126,8 @@ func TestBootstrapUsageErrorsCreateNothing(t *testing.T) {
 		{"unknown command", adminPassword, []string{"nuke"}, "usage: admin bootstrap --org-name NAME --email EMAIL (password on stdin)\n"},
 		{"password flag is not accepted", adminPassword, []string{"bootstrap", "--org-name", "X", "--email", "x@example.com", "--password", "y"}, "flag provided but not defined: -password"},
 		{"missing email", adminPassword, []string{"bootstrap", "--org-name", "X"}, "usage: admin bootstrap --org-name NAME --email EMAIL (password on stdin)\n"},
-		{"short password", "corta\n", []string{"bootstrap", "--org-name", "X", "--email", "x@example.com"}, "Password: admin: password must have at least 10 characters\n"},
+		{"short password", "corta\n", []string{"bootstrap", "--org-name", "X", "--email", "x@example.com"}, "Password: admin: password must have 10 to 128 characters\n"},
+		{"129-character password", strings.Repeat("ñ", 129) + "\n", []string{"bootstrap", "--org-name", "X", "--email", "x@example.com"}, "Password: admin: password must have 10 to 128 characters\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			code, stdout, stderr := runCLI(tc.stdin, tc.args...)
@@ -132,6 +138,33 @@ func TestBootstrapUsageErrorsCreateNothing(t *testing.T) {
 	}
 	if o, u, m := counts(t, ctx); o != orgs || u != users || m != members {
 		t.Fatalf("counts changed to %d/%d/%d, want %d/%d/%d", o, u, m, orgs, users, members)
+	}
+}
+
+// The CLI refuses a DSN that bypasses Row-Level Security (here the superuser) before writing anything.
+func TestCLIChecksTheAppRole(t *testing.T) {
+	ctx := integration(t)
+	suffix := strings.ToLower(rand.Text())
+	user := seedMFAUser(t, ctx, "rol-"+suffix+"@example.com")
+	orgs, users, members := counts(t, ctx)
+	const refused = `admin: db: role "postgres" must be a member of ce_app without SUPERUSER or BYPASSRLS and own no table`
+	for _, tc := range []struct {
+		stdin, prompt string
+		args          []string
+	}{
+		{adminPassword + "\n", "Password: ", []string{"bootstrap", "--org-name", "Rol " + suffix, "--email", "dir-" + suffix + "@example.com"}},
+		{"", "", []string{"reset-mfa", "--email", "rol-" + suffix + "@example.com"}},
+	} {
+		code, stdout, stderr := runCLIWith(tdb.SuperDSN, tc.stdin, tc.args...)
+		if code != 1 || stdout != "" || stderr != tc.prompt+refused+"\n" {
+			t.Fatalf("%s: exit=%d stdout=%q stderr=%q; want 1 and %q", tc.args[0], code, stdout, stderr, refused)
+		}
+	}
+	if o, u, m := counts(t, ctx); o != orgs || u != users || m != members {
+		t.Fatalf("counts changed to %d/%d/%d, want %d/%d/%d", o, u, m, orgs, users, members)
+	}
+	if n := mfaRows(t, ctx, user); n != [3]int{1, 2, 2} {
+		t.Fatalf("rows = %v, want untouched 1/2/2", n)
 	}
 }
 
