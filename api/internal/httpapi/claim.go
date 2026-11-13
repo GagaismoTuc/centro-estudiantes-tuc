@@ -51,7 +51,8 @@ func (s *server) spendCode(w http.ResponseWriter, r *http.Request, use func() (r
 		return roster.Claimed{}, false
 	}
 	c, err := use()
-	if !errors.Is(err, roster.ErrInvalidCode) {
+	// email_in_use keeps the hit too: otherwise one valid code allows unlimited probing of registered emails.
+	if !errors.Is(err, roster.ErrInvalidCode) && !errors.Is(err, auth.ErrEmailTaken) {
 		s.claimLimiter.Refund(key)
 	}
 	switch {

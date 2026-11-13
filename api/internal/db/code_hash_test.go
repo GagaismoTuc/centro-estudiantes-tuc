@@ -106,3 +106,27 @@ func TestCodeHashHelpersRejectBadInput(t *testing.T) {
 		t.Fatalf("SetTenant err = %v, want ErrInvalidTenantID", err)
 	}
 }
+
+func TestCodeHashCannotMoveRowToOtherTenant(t *testing.T) {
+	ctx := integration(t)
+	ana, beto := memberID(t, ctx, env.tenantA, "111"), memberID(t, ctx, env.tenantB, "221")
+	h := randomHash()
+	if _, err := env.super.Exec(ctx, insertCode, env.tenantA, ana, h); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _, _ = env.super.Exec(context.Background(), `DELETE FROM access_codes WHERE code_hash = $1`, h) })
+	err := db.WithCodeHash(ctx, env.app, h, func(tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, `UPDATE access_codes SET tenant_id = $1, roster_member_id = $2 WHERE code_hash = $3`, env.tenantB, beto, h)
+		return err
+	})
+	if err == nil {
+		t.Fatal("code holder moved its code to another tenant")
+	}
+	var tenant string
+	if err := env.super.QueryRow(ctx, `SELECT tenant_id::text FROM access_codes WHERE code_hash = $1`, h).Scan(&tenant); err != nil {
+		t.Fatal(err)
+	}
+	if tenant != env.tenantA {
+		t.Fatalf("tenant_id = %s, want unchanged %s", tenant, env.tenantA)
+	}
+}

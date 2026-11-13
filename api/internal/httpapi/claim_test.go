@@ -254,12 +254,12 @@ func TestClaimIsRateLimitedPerIP(t *testing.T) {
 	f.seedUser(t, ctx, taken, "")
 	const ip = "192.0.2.40"
 
-	// Outcomes other than invalid_code do not count.
+	// Input-validation failures do not count; email_in_use does (it would otherwise allow email probing).
 	for range 3 {
 		wantResponse(t, f.claim(code, taken, password, ip), http.StatusConflict, `{"error":"email_in_use"}`)
 		wantResponse(t, f.claim(code, "nope", password, ip), http.StatusUnprocessableEntity, `{"error":"invalid_email"}`)
 	}
-	for i := range 10 {
+	for i := range 7 {
 		bad := "ABCD-EFGH-JKMN"
 		if i%2 == 1 {
 			bad = "short" // malformed codes count too
@@ -410,4 +410,24 @@ func TestCrossOriginClaimIsRejected(t *testing.T) {
 		}
 	}
 	wantCodeUsed(t, ctx, member, nil)
+}
+
+// Holding one valid code must not allow unlimited probing of which emails already have an account.
+func TestClaimEmailProbesAreLimited(t *testing.T) {
+	ctx := integration(t)
+	f := newFixture(t, ctx)
+	member := seedMember(t, ctx, f.tenant, "Ana", "39111222")
+	code := seedCode(t, ctx, f.tenant, member, "active", f.clk.Now())
+	taken := uniqueEmail("enum")
+	f.seedUser(t, ctx, taken, "")
+	limited := false
+	for range 40 {
+		if f.claim(code, taken, password, "192.0.2.200").Code == http.StatusTooManyRequests {
+			limited = true
+			break
+		}
+	}
+	if !limited {
+		t.Fatal("40 email_in_use probes from one IP were never limited")
+	}
 }
