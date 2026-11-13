@@ -120,7 +120,7 @@ func TestBootstrapUsageErrorsCreateNothing(t *testing.T) {
 		{"unknown command", adminPassword, []string{"nuke"}, "usage: admin bootstrap --org-name NAME --email EMAIL (password on stdin)\n"},
 		{"password flag is not accepted", adminPassword, []string{"bootstrap", "--org-name", "X", "--email", "x@example.com", "--password", "y"}, "flag provided but not defined: -password"},
 		{"missing email", adminPassword, []string{"bootstrap", "--org-name", "X"}, "usage: admin bootstrap --org-name NAME --email EMAIL (password on stdin)\n"},
-		{"short password", "corta\n", []string{"bootstrap", "--org-name", "X", "--email", "x@example.com"}, "Password: admin: password must have at least 12 characters\n"},
+		{"short password", "corta\n", []string{"bootstrap", "--org-name", "X", "--email", "x@example.com"}, "Password: admin: password must have at least 10 characters\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			code, stdout, stderr := runCLI(tc.stdin, tc.args...)

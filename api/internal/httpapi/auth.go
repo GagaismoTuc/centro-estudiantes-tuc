@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"net"
@@ -61,10 +60,8 @@ func clientIP(r *http.Request) string {
 }
 
 func (s *server) PostAuthLogin(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
 	var req oapi.LoginRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_request")
+	if !decodeStrict(w, r, &req) {
 		return
 	}
 	ipKey, emailKey := "ip:"+clientIP(r), "email:"+auth.NormalizeEmail(req.Email)

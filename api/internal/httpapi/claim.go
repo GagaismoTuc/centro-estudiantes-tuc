@@ -8,18 +8,13 @@ import (
 	"net/http"
 	"net/mail"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/auth"
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/oapi"
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/roster"
 )
 
-const (
-	minClaimPassword = 10
-	maxPassword      = 128
-	maxEmail         = 254
-)
+const maxEmail = 254
 
 // decodeStrict reads a JSON body of at most 4 KiB into v, rejecting unknown fields and trailing data.
 func decodeStrict(w http.ResponseWriter, r *http.Request, v any) bool {
@@ -87,7 +82,7 @@ func (s *server) PostAuthClaim(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnprocessableEntity, "invalid_email")
 		return
 	}
-	if n := utf8.RuneCountInString(req.Password); n < minClaimPassword || n > maxPassword {
+	if auth.ValidatePassword(req.Password) != nil {
 		writeError(w, http.StatusUnprocessableEntity, "weak_password")
 		return
 	}
@@ -99,6 +94,7 @@ func (s *server) PostAuthClaim(w http.ResponseWriter, r *http.Request) {
 	}
 	setSessionCookie(w, c.Token, int(auth.SessionLifetime.Seconds()))
 	writeJSON(w, http.StatusCreated, studentMe(c, email))
+	s.sendLink(auth.PurposeVerifyEmail, email, c.VerifyToken)
 }
 
 func (s *server) PostAuthRedeem(w http.ResponseWriter, r *http.Request) {

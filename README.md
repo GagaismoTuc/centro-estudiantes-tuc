@@ -44,6 +44,12 @@ cd web && pnpm gen:api            # after editing openapi/openapi.yaml
 | `DATABASE_URL` | Application connection: a login role member of `ce_app`, without `SUPERUSER` or `BYPASSRLS` |
 | `MIGRATE_DATABASE_URL` | Table owner connection, used only to apply migrations at startup |
 | `ACCESS_CODE_KEY` | Base64 HMAC key (at least 32 random bytes) for roster access codes; generate it with `openssl rand -base64 32`. The server refuses to start without it. Changing it invalidates every unused code |
+| `APP_BASE_URL` | Public origin of the web app used in emailed links, e.g. `https://ce.example.edu.ar` (`http://localhost:5173` is accepted for development). Required |
+| `SMTP_HOST` | SMTP relay of the email provider. When set, mail is sent through it and STARTTLS is mandatory (the server refuses to send without TLS) |
+| `SMTP_PORT` | SMTP submission port (default `587`) |
+| `SMTP_USERNAME`, `SMTP_PASSWORD` | SMTP credentials (PLAIN auth, only over TLS). Required with `SMTP_HOST` |
+| `MAIL_FROM` | Sender address, e.g. `Centro de Estudiantes <no-reply@ce.example.edu.ar>`. Required with `SMTP_HOST` |
+| `MAIL_DEV_DIR` | Development only, used when `SMTP_HOST` is empty: every email is written as an `.eml` file in this directory instead of being sent. With neither variable the server refuses to start |
 | `ADDR` | Listen address (default `:8080`) |
 
 ## Contract-first rule
