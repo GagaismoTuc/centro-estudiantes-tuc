@@ -17,7 +17,7 @@ trendy one, and chose: "Podemos hacer el backend con Go y frontend con typescrip
 | API contract | OpenAPI 3 first: `oapi-codegen` generates the Go server interface, `openapi-typescript` the web client types |
 | Database | PostgreSQL, shared tables with `tenant_id`, Row-Level Security |
 | Frontend | React + Vite + TypeScript; own CSS design system; headless accessible primitives for complex widgets; UI patterns follow [Modern Web Guidance](https://github.com/GoogleChrome/modern-web-guidance-src) (pinned CLI `modern-web-guidance@1.0.0`) |
-| Sessions | `HttpOnly` + `SameSite` cookies, argon2id passwords, TOTP 2FA for privileged roles |
+| Sessions | `HttpOnly` + `SameSite` cookies, argon2id passwords, TOTP 2FA for privileged roles (own RFC 6238 code over stdlib crypto) |
 | Documents | DOCX templates filled by our own Go library; PDF via a LibreOffice converter (Gotenberg) |
 | Deployment | One Go binary that embeds the built frontend; Docker Compose with app, PostgreSQL and Caddy (automatic HTTPS); install script |
 | Quality | `go test` with a real PostgreSQL (testcontainers), Vitest, Playwright; `govulncheck`, `pnpm audit`, OWASP ZAP in CI |
@@ -59,6 +59,27 @@ trendy one, and chose: "Podemos hacer el backend con Go y frontend con typescrip
    path, and a failed send never undoes the change.
 5. A password reset revokes every session of the user. One password rule (10 to 128 characters) applies to
    bootstrap, claim and reset.
+
+### Two-factor authentication rules
+
+1. `school_admin` and `officer` must use TOTP (RFC 6238: HMAC-SHA1, 6 digits, 30-second step), implemented in
+   `internal/totp` on top of the standard library's HMAC and AES; we never write cryptographic primitives.
+   Seeds are 20 random bytes, shown once, and stored only encrypted with AES-256-GCM under `TOTP_ENC_KEY`
+   (exactly 32 bytes, kept out of the database) with a random nonce and the user id as additional data, so a
+   ciphertext copied to another user's row does not decrypt. The server refuses to start without the key.
+2. A code is accepted for the steps now−1, now and now+1, and only if its step is later than the last
+   accepted one (`user_totp.last_used_step`, updated under a row lock), so every code works once.
+   Recovery codes (10 per enrollment, 50 bits each) are single-use and stored as SHA-256 only.
+3. Wrong, replayed and used codes get the same `invalid_code`; failures are limited per user (5 per
+   15 minutes, shared by verification and enrollment confirmation).
+4. Proving the second factor (enrollment confirmation or verification) rotates the session: a new token and
+   cookie with `sessions.mfa_at` set, and the old session row deleted. `mfa_at` is never updated in place
+   (`ce_app` has no UPDATE on it).
+5. The two-factor state is computed per request from the role in the active tenant. Every operation reserved
+   to `school_admin` or `officer` calls `auth.RequireMFA` right after its role check (today
+   `roster.Store.asAdmin`) and answers 403 `mfa_required` without reading or writing anything.
+6. A lost phone is handled by an operator with `admin reset-mfa`, which deletes the TOTP, the recovery codes
+   and every session of the user.
 
 ## Alternatives considered
 

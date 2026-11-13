@@ -53,7 +53,8 @@ func NewStore(pool *pgxpool.Pool, key []byte, now func() time.Time) *Store {
 }
 
 // asAdmin runs fn in the session's tenant after checking, in the same transaction, that the user
-// is a school_admin there. The session's tenant alone is never trusted.
+// is a school_admin there, and then that the session verified the second factor
+// (auth.ErrMFARequired otherwise). The session's tenant alone is never trusted.
 func (s *Store) asAdmin(ctx context.Context, sess auth.Session, fn func(pgx.Tx) error) error {
 	if sess.TenantID == "" {
 		return ErrForbidden
@@ -67,6 +68,9 @@ func (s *Store) asAdmin(ctx context.Context, sess auth.Session, fn func(pgx.Tx) 
 		}
 		if !ok {
 			return ErrForbidden
+		}
+		if err := auth.RequireMFA(sess); err != nil {
+			return err
 		}
 		return fn(tx)
 	})

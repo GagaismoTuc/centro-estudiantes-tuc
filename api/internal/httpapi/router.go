@@ -21,6 +21,8 @@ type Deps struct {
 	Now  func() time.Time // defaults to time.Now
 	// AccessCodeKey is the HMAC key for access codes (ACCESS_CODE_KEY, at least 32 bytes).
 	AccessCodeKey []byte
+	// TOTPKey encrypts TOTP secrets (TOTP_ENC_KEY, exactly 32 bytes).
+	TOTPKey []byte
 	// Mail delivers verification, sign-in and reset links; nil makes every send fail (logged).
 	Mail mail.Sender
 	// BaseURL is the public origin of the web app (APP_BASE_URL) used in emailed links, without a
@@ -42,9 +44,12 @@ type server struct {
 	mailLimiter *auth.Limiter
 	// tokenLimiter counts invalid emailed tokens per client IP.
 	tokenLimiter *auth.Limiter
-	mail         mail.Sender
-	baseURL      string
-	background   func(func())
+	mfa          *auth.MFA
+	// mfaLimiter counts invalid two-factor codes per user (verify and enrollment confirmation).
+	mfaLimiter *auth.Limiter
+	mail       mail.Sender
+	baseURL    string
+	background func(func())
 }
 
 var _ oapi.ServerInterface = (*server)(nil)
@@ -59,6 +64,8 @@ const (
 	mailWindow       = 15 * time.Minute
 	tokenMaxFailures = 10
 	tokenWindow      = 15 * time.Minute
+	mfaMaxFailures   = 5
+	mfaWindow        = 15 * time.Minute
 )
 
 // NewRouter returns the HTTP handler for the whole API, mounted under /api. Cross-origin
@@ -82,6 +89,8 @@ func NewRouter(d Deps) http.Handler {
 		claimLimiter: auth.NewLimiter(claimMaxFailures, claimWindow, d.Now),
 		mailLimiter:  auth.NewLimiter(mailMaxRequests, mailWindow, d.Now),
 		tokenLimiter: auth.NewLimiter(tokenMaxFailures, tokenWindow, d.Now),
+		mfa:          auth.NewMFA(d.Pool, d.TOTPKey, d.Now),
+		mfaLimiter:   auth.NewLimiter(mfaMaxFailures, mfaWindow, d.Now),
 		mail:         d.Mail,
 		baseURL:      strings.TrimSuffix(d.BaseURL, "/"),
 		background:   d.Background,

@@ -27,6 +27,33 @@ func TestRunRefusesToStartWithoutValidAccessCodeKey(t *testing.T) {
 	}
 }
 
+func TestRunRefusesToStartWithoutValidTOTPKey(t *testing.T) {
+	const want = "TOTP_ENC_KEY must be base64 of exactly 32 random bytes (generate it with: openssl rand -base64 32)"
+	for _, tc := range []struct{ name, key string }{
+		{"missing", ""},
+		{"not base64", "not base64!"},
+		{"too short", base64.StdEncoding.EncodeToString(make([]byte, 16))},
+		{"too long", base64.StdEncoding.EncodeToString(make([]byte, 64))},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// Mail and base URL are valid and the databases unreachable: the key must be rejected
+			// before any connection is attempted.
+			env := map[string]string{
+				"DATABASE_URL":         "postgres://nobody@127.0.0.1:1/none",
+				"MIGRATE_DATABASE_URL": "postgres://nobody@127.0.0.1:1/none",
+				"ACCESS_CODE_KEY":      base64.StdEncoding.EncodeToString(make([]byte, 32)),
+				"MAIL_DEV_DIR":         t.TempDir(),
+				"APP_BASE_URL":         "https://ce.example",
+				"TOTP_ENC_KEY":         tc.key,
+			}
+			err := run(func(k string) string { return env[k] })
+			if err == nil || err.Error() != want {
+				t.Fatalf("run() = %v, want %q", err, want)
+			}
+		})
+	}
+}
+
 func TestRunRefusesToStartWithoutMailConfig(t *testing.T) {
 	key := base64.StdEncoding.EncodeToString(make([]byte, 32))
 	const noSender = "set SMTP_HOST (with SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD, MAIL_FROM) or, for development, MAIL_DEV_DIR"
@@ -48,6 +75,7 @@ func TestRunRefusesToStartWithoutMailConfig(t *testing.T) {
 				"DATABASE_URL":         "postgres://nobody@127.0.0.1:1/none",
 				"MIGRATE_DATABASE_URL": "postgres://nobody@127.0.0.1:1/none",
 				"ACCESS_CODE_KEY":      key,
+				"TOTP_ENC_KEY":         key,
 			}
 			for k, v := range tc.env {
 				env[k] = v

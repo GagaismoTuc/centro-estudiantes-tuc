@@ -185,7 +185,7 @@ func wantCodeHash(t *testing.T, ctx context.Context, stored []byte, code string)
 func TestRosterImportInsertsAndSkipsExisting(t *testing.T) {
 	ctx := integration(t)
 	f := newFixture(t, ctx)
-	_, token := f.signIn(t, ctx, "school_admin")
+	_, token, _, _ := f.signInMFA(t, ctx, "school_admin")
 	seedMember(t, ctx, f.tenant, "Carla Castro", "30123456")
 
 	body := "\uFEFF Full_Name , DOCUMENT_NUMBER \r\n" +
@@ -204,7 +204,7 @@ func TestRosterImportInsertsAndSkipsExisting(t *testing.T) {
 
 	t.Run("5000 rows is the limit", func(t *testing.T) {
 		g := newFixture(t, ctx)
-		_, token := g.signIn(t, ctx, "school_admin")
+		_, token, _, _ := g.signInMFA(t, ctx, "school_admin")
 		var b strings.Builder
 		b.WriteString(csvHeader)
 		for i := range 5000 {
@@ -220,7 +220,7 @@ func TestRosterImportInsertsAndSkipsExisting(t *testing.T) {
 func TestRosterImportRejectsInvalidFilesAtomically(t *testing.T) {
 	ctx := integration(t)
 	f := newFixture(t, ctx)
-	_, token := f.signIn(t, ctx, "school_admin")
+	_, token, _, _ := f.signInMFA(t, ctx, "school_admin")
 	seedMember(t, ctx, f.tenant, "Carla Castro", "30123456")
 	before := rosterRows(t, ctx, f.tenant)
 
@@ -317,7 +317,7 @@ func TestRosterEndpointsRequireSchoolAdmin(t *testing.T) {
 func TestRosterIsTenantIsolated(t *testing.T) {
 	ctx := integration(t)
 	f := newFixture(t, ctx)
-	_, token := f.signIn(t, ctx, "school_admin")
+	_, token, _, _ := f.signInMFA(t, ctx, "school_admin")
 	mine := seedMember(t, ctx, f.tenant, "Ana Acosta", "30111222")
 	other := newTenant(t, ctx)
 	theirs := seedMember(t, ctx, other, "Beto Bravo", "40111222")
@@ -361,7 +361,7 @@ func TestRosterIsTenantIsolated(t *testing.T) {
 func TestIssueAccessCode(t *testing.T) {
 	ctx := integration(t)
 	f := newFixture(t, ctx)
-	_, token := f.signIn(t, ctx, "school_admin")
+	_, token, _, _ := f.signInMFA(t, ctx, "school_admin")
 	member := seedMember(t, ctx, f.tenant, "Ana Acosta", "30111222")
 	path := "/api/roster/" + member + "/access-code"
 
@@ -416,7 +416,7 @@ func TestIssueAccessCode(t *testing.T) {
 func TestRosterListReportsCodeAndAccountState(t *testing.T) {
 	ctx := integration(t)
 	f := newFixture(t, ctx)
-	_, token := f.signIn(t, ctx, "school_admin")
+	_, token, _, _ := f.signInMFA(t, ctx, "school_admin")
 	now := f.clk.Now()
 	ids := map[string]string{}
 	for i, name := range []string{"Ana", "Beto", "Carla", "Dani", "Eva", "Fede"} {
@@ -449,7 +449,7 @@ func TestRosterListReportsCodeAndAccountState(t *testing.T) {
 func TestBulkIssueSkipsMembersWithAccountOrActiveCode(t *testing.T) {
 	ctx := integration(t)
 	f := newFixture(t, ctx)
-	_, token := f.signIn(t, ctx, "school_admin")
+	_, token, _, _ := f.signInMFA(t, ctx, "school_admin")
 	now := f.clk.Now()
 	ana := seedMember(t, ctx, f.tenant, "Ana", "30000001")
 	beto := seedMember(t, ctx, f.tenant, "Beto", "30000002")
@@ -502,7 +502,7 @@ func TestBulkIssueSkipsMembersWithAccountOrActiveCode(t *testing.T) {
 func TestRosterImportRejectsNonUTF8(t *testing.T) {
 	ctx := integration(t)
 	f := newFixture(t, ctx)
-	_, token := f.signIn(t, ctx, "school_admin")
+	_, token, _, _ := f.signInMFA(t, ctx, "school_admin")
 	before := rosterRows(t, ctx, f.tenant)
 
 	rec := f.importCSV(token, csvHeader+"Ana,30111221\nMu\xf1oz Ana,30111222\n")
@@ -518,7 +518,7 @@ func TestRosterImportRejectsNonUTF8(t *testing.T) {
 func TestConcurrentBulkIssueDoesNotRevokeIssuedCodes(t *testing.T) {
 	ctx := integration(t)
 	f := newFixture(t, ctx)
-	_, token := f.signIn(t, ctx, "school_admin")
+	_, token, _, _ := f.signInMFA(t, ctx, "school_admin")
 	for i := range 8 {
 		seedMember(t, ctx, f.tenant, fmt.Sprintf("Alumno %d", i), fmt.Sprintf("3100000%d", i))
 	}

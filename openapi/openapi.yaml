@@ -307,11 +307,113 @@ paths:
                 $ref: "#/components/schemas/Error"
         "429":
           $ref: "#/components/responses/TooManyAttempts"
+  /auth/mfa/enrollment:
+    post:
+      operationId: postAuthMfaEnrollment
+      summary: Start (or restart) TOTP enrollment
+      description: >
+        Creates a new random TOTP secret (20 bytes; RFC 6238, HMAC-SHA1, 6 digits, 30 s) for the signed-in
+        user and returns it once, as base32 without padding and as an `otpauth://` URI for a QR code. The
+        secret is stored encrypted (AES-256-GCM). Calling again before confirming replaces the pending
+        secret. Users with a confirmed TOTP get 409 `already_enrolled` (an operator resets it with
+        `admin reset-mfa`). Responses carry `Cache-Control: no-store`.
+      responses:
+        "200":
+          description: Pending secret created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MfaEnrollment"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "409":
+          description: The user already has a confirmed TOTP (`already_enrolled`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /auth/mfa/enrollment/confirm:
+    post:
+      operationId: postAuthMfaEnrollmentConfirm
+      summary: Confirm TOTP enrollment with a first code
+      description: >
+        Checks a code of the pending secret (one step of drift accepted). On success the TOTP is confirmed,
+        10 single-use recovery codes are returned once (`XXXXX-XXXXX`, only their SHA-256 is stored) and the
+        session is rotated into a two-factor session (new `__Host-session` cookie, same attributes as
+        login; the previous session is deleted). Wrong codes and confirming without a pending secret get
+        `invalid_code`. Failures share the per-user limit of `/auth/mfa/verify` (5 per 15 minutes); further
+        attempts get 429. Responses carry `Cache-Control: no-store`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MfaCodeRequest"
+      responses:
+        "200":
+          description: Enrollment confirmed; the rotated session cookie is set.
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecoveryCodes"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "409":
+          description: The TOTP is already confirmed (`already_enrolled`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          $ref: "#/components/responses/InvalidMfaCode"
+        "429":
+          $ref: "#/components/responses/TooManyAttempts"
+  /auth/mfa/verify:
+    post:
+      operationId: postAuthMfaVerify
+      summary: Complete two-factor sign-in
+      description: >
+        Send exactly one of `code` (6 digits from the authenticator app; one step of drift accepted) or
+        `recoveryCode` (single-use; case, spaces and hyphens ignored). On success the session is rotated
+        into a two-factor session: a new `__Host-session` cookie with the same attributes as login, and the
+        previous session row is deleted. A code whose time step was already used, a used recovery code,
+        a wrong code and a user without confirmed TOTP all get the same `invalid_code`. Failures are
+        limited per user (5 per 15 minutes, shared with enrollment confirmation); further attempts get
+        429. Responses carry `Cache-Control: no-store`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MfaVerifyRequest"
+      responses:
+        "204":
+          description: Verified; the rotated session cookie is set.
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "422":
+          $ref: "#/components/responses/InvalidMfaCode"
+        "429":
+          $ref: "#/components/responses/TooManyAttempts"
   /roster:
     get:
       operationId: getRoster
       summary: List the roster of the active tenant
-      description: "School admins only. Responses carry `Cache-Control: no-store` (personal data)."
+      description: >
+        School admins with a two-factor session only. Responses carry `Cache-Control: no-store` (personal
+        data).
       responses:
         "200":
           description: Roster members ordered by name.
@@ -330,7 +432,7 @@ paths:
       operationId: postRosterImport
       summary: Import roster members from CSV
       description: >
-        School admins only. The body is CSV (max 1 MiB, max 5000 data rows) whose first line is the
+        School admins with a two-factor session only. The body is CSV (max 1 MiB, max 5000 data rows) whose first line is the
         header `full_name,document_number` (case-insensitive, trimmed). `document_number` must have 7 to 9
         digits after removing dots and spaces. The import is atomic: any invalid row or a document number
         repeated in the file writes nothing. Rows whose document number already exists in the tenant are
@@ -377,7 +479,7 @@ paths:
       operationId: postRosterMemberAccessCode
       summary: Issue an access code for one roster member
       description: >
-        School admins only. Returns the code in plain text once (`Cache-Control: no-store`); only its HMAC is
+        School admins with a two-factor session only. Returns the code in plain text once (`Cache-Control: no-store`); only its HMAC is
         stored. The code expires after 30 days and revokes the member's previous unused code.
       parameters:
         - name: memberId
@@ -416,7 +518,7 @@ paths:
     post:
       operationId: postRosterAccessCodes
       summary: Issue codes for every member without an account and without an active code
-      description: "School admins only. Codes are shown once, for printing (`Cache-Control: no-store`)."
+      description: "School admins with a two-factor session only. Codes are shown once, for printing (`Cache-Control: no-store`)."
       responses:
         "201":
           description: Codes issued, ordered by name; empty when nobody needed one.
@@ -454,6 +556,12 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+    InvalidMfaCode:
+      description: Wrong, reused or unknown code (`invalid_code`).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
     Unauthenticated:
       description: No valid session (`unauthenticated`).
       content:
@@ -461,7 +569,10 @@ components:
           schema:
             $ref: "#/components/schemas/Error"
     Forbidden:
-      description: The user is not a school admin of the active tenant (`forbidden`).
+      description: >
+        The user is not a school admin of the active tenant (`forbidden`), or is one but the session has not
+        completed two-factor authentication (`mfa_required`; see `mfa` in `/auth/me`). Nothing is read or
+        written.
       content:
         application/json:
           schema:
@@ -540,9 +651,54 @@ components:
     Role:
       type: string
       enum: [school_admin, officer, student]
+    MfaState:
+      type: string
+      enum: [not_required, enrollment_required, pending, satisfied]
+      description: >
+        Two-factor state of the session, computed from the role in the active tenant. `not_required`:
+        student or no membership. `enrollment_required`: school admin or officer without a confirmed TOTP.
+        `pending`: confirmed TOTP but this session has not verified it. `satisfied`: this session verified a
+        code. Endpoints for school admins and officers answer 403 `mfa_required` unless `satisfied`.
+    MfaEnrollment:
+      type: object
+      required: [secret, otpauthUri]
+      properties:
+        secret:
+          type: string
+          description: Base32 (no padding) of the 20-byte secret, for manual entry. Shown once.
+        otpauthUri:
+          type: string
+          description: "`otpauth://totp/Centro%20de%20Estudiantes:<email>?secret=...&issuer=Centro%20de%20Estudiantes`"
+    MfaCodeRequest:
+      type: object
+      required: [code]
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+    MfaVerifyRequest:
+      type: object
+      additionalProperties: false
+      description: Exactly one of `code` and `recoveryCode`; otherwise 400 `bad_request`.
+      properties:
+        code:
+          type: string
+        recoveryCode:
+          type: string
+    RecoveryCodes:
+      type: object
+      required: [recoveryCodes]
+      properties:
+        recoveryCodes:
+          type: array
+          minItems: 10
+          maxItems: 10
+          items:
+            type: string
+            pattern: "^[0-9A-HJKMNP-TV-Z]{5}-[0-9A-HJKMNP-TV-Z]{5}$"
     Me:
       type: object
-      required: [userId, email, tenantId, role]
+      required: [userId, email, emailVerified, tenantId, role, mfa]
       properties:
         userId:
           type: string
@@ -557,6 +713,10 @@ components:
             - $ref: "#/components/schemas/Role"
           nullable: true
           description: Role in the active tenant; null when the user has no membership.
+        emailVerified:
+          type: boolean
+        mfa:
+          $ref: "#/components/schemas/MfaState"
     RosterMember:
       type: object
       required: [id, fullName, documentNumber, hasActiveCode, hasAccount]

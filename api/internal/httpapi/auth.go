@@ -116,7 +116,8 @@ func (s *server) GetAuthMe(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal")
 		return
 	}
-	me := oapi.Me{UserId: sess.UserID, Email: sess.Email}
+	me := oapi.Me{UserId: sess.UserID, Email: sess.Email, EmailVerified: sess.EmailVerified,
+		Mfa: oapi.MfaState(auth.MFAStateOf(sess, role))}
 	if sess.TenantID != "" {
 		me.TenantId = &sess.TenantID
 	}

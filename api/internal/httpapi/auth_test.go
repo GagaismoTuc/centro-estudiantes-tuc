@@ -73,7 +73,7 @@ type fixture struct {
 func newFixture(t *testing.T, ctx context.Context) *fixture {
 	t.Helper()
 	f := &fixture{clk: &fakeClock{t: time.Date(2026, 11, 13, 12, 0, 0, 0, time.UTC)}, mail: &fakeMail{}}
-	f.h = httpapi.NewRouter(httpapi.Deps{Pool: tdb.App, Now: f.clk.Now, AccessCodeKey: testKey,
+	f.h = httpapi.NewRouter(httpapi.Deps{Pool: tdb.App, Now: f.clk.Now, AccessCodeKey: testKey, TOTPKey: testTOTPKey,
 		Mail: f.mail, BaseURL: baseURL, Background: func(fn func()) { fn() }})
 	if err := tdb.Super.QueryRow(ctx,
 		`INSERT INTO organizations (kind, name) VALUES ('school', $1) RETURNING id::text`, t.Name()).Scan(&f.tenant); err != nil {
@@ -285,12 +285,12 @@ func TestMe(t *testing.T) {
 	t.Run("valid session", func(t *testing.T) {
 		rec := f.do(http.MethodGet, "/api/auth/me", "", "198.51.100.4", adminToken, nil)
 		wantResponse(t, rec, http.StatusOK, fmt.Sprintf(
-			`{"email":"ana.me@example.com","role":"school_admin","tenantId":"%s","userId":"%s"}`, f.tenant, adminID))
+			`{"email":"ana.me@example.com","emailVerified":false,"mfa":"enrollment_required","role":"school_admin","tenantId":"%s","userId":"%s"}`, f.tenant, adminID))
 	})
 	t.Run("user without membership", func(t *testing.T) {
 		rec := f.do(http.MethodGet, "/api/auth/me", "", "198.51.100.4", loneToken, nil)
 		wantResponse(t, rec, http.StatusOK, fmt.Sprintf(
-			`{"email":"solo.me@example.com","role":null,"tenantId":null,"userId":"%s"}`, loneID))
+			`{"email":"solo.me@example.com","emailVerified":false,"mfa":"not_required","role":null,"tenantId":null,"userId":"%s"}`, loneID))
 	})
 	t.Run("missing cookie", func(t *testing.T) {
 		wantResponse(t, f.do(http.MethodGet, "/api/auth/me", "", "198.51.100.4", "", nil), http.StatusUnauthorized, unauthBody)

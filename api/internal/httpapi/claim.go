@@ -66,9 +66,12 @@ func (s *server) spendCode(w http.ResponseWriter, r *http.Request, use func() (r
 	return roster.Claimed{}, false
 }
 
-func studentMe(c roster.Claimed, email string) oapi.Me {
+// studentMe is the session after a claim or redeem: a student in the code's tenant, so no second
+// factor is required there.
+func studentMe(c roster.Claimed, email string, verified bool) oapi.Me {
 	role := oapi.Student
-	return oapi.Me{UserId: c.UserID, Email: email, TenantId: &c.TenantID, Role: &role}
+	return oapi.Me{UserId: c.UserID, Email: email, EmailVerified: verified, TenantId: &c.TenantID, Role: &role,
+		Mfa: oapi.MfaState(auth.MFANotRequired)}
 }
 
 func (s *server) PostAuthClaim(w http.ResponseWriter, r *http.Request) {
@@ -93,7 +96,7 @@ func (s *server) PostAuthClaim(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	setSessionCookie(w, c.Token, int(auth.SessionLifetime.Seconds()))
-	writeJSON(w, http.StatusCreated, studentMe(c, email))
+	writeJSON(w, http.StatusCreated, studentMe(c, email, false))
 	s.sendLink(auth.PurposeVerifyEmail, email, c.VerifyToken)
 }
 
@@ -115,5 +118,5 @@ func (s *server) PostAuthRedeem(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, studentMe(c, sess.Email))
+	writeJSON(w, http.StatusOK, studentMe(c, sess.Email, sess.EmailVerified))
 }

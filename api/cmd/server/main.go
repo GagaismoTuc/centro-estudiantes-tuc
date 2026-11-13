@@ -5,6 +5,9 @@
 //   - MIGRATE_DATABASE_URL: owner connection used only to apply migrations at startup.
 //   - ACCESS_CODE_KEY: base64 HMAC key (at least 32 random bytes) for access codes; the server
 //     refuses to start without it. Generate it with `openssl rand -base64 32`.
+//   - TOTP_ENC_KEY: base64 of exactly 32 random bytes; AES-256-GCM key that encrypts TOTP secrets at
+//     rest. The server refuses to start without it. Losing or changing it disables every enrolled
+//     second factor (each user then needs `admin reset-mfa`).
 //   - APP_BASE_URL: public origin of the web app used in emailed links (https://..., or
 //     http://localhost:PORT in development).
 //   - SMTP_HOST, SMTP_PORT (default 587), SMTP_USERNAME, SMTP_PASSWORD, MAIL_FROM: SMTP relay
@@ -29,6 +32,7 @@ import (
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/httpapi"
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/mail"
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/roster"
+	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/totp"
 )
 
 func main() {
@@ -48,6 +52,10 @@ func run(getenv func(string) string) error {
 	codeKey, err := roster.ParseKey(getenv("ACCESS_CODE_KEY"))
 	if err != nil {
 		return errors.New("ACCESS_CODE_KEY must be base64 of at least 32 random bytes (generate it with: openssl rand -base64 32)")
+	}
+	totpKey, err := totp.ParseKey(getenv("TOTP_ENC_KEY"))
+	if err != nil {
+		return errors.New("TOTP_ENC_KEY must be base64 of exactly 32 random bytes (generate it with: openssl rand -base64 32)")
 	}
 	sender, err := mailSender(getenv)
 	if err != nil {
@@ -76,7 +84,7 @@ func run(getenv func(string) string) error {
 	}
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           httpapi.NewRouter(httpapi.Deps{Pool: pool, AccessCodeKey: codeKey, Mail: sender, BaseURL: baseURL}),
+		Handler:           httpapi.NewRouter(httpapi.Deps{Pool: pool, AccessCodeKey: codeKey, TOTPKey: totpKey, Mail: sender, BaseURL: baseURL}),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      15 * time.Second,

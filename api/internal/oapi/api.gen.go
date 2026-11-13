@@ -28,6 +28,30 @@ func (e HealthStatus) Valid() bool {
 	}
 }
 
+// Defines values for MfaState.
+const (
+	EnrollmentRequired MfaState = "enrollment_required"
+	NotRequired        MfaState = "not_required"
+	Pending            MfaState = "pending"
+	Satisfied          MfaState = "satisfied"
+)
+
+// Valid indicates whether the value is a known member of the MfaState enum.
+func (e MfaState) Valid() bool {
+	switch e {
+	case EnrollmentRequired:
+		return true
+	case NotRequired:
+		return true
+	case Pending:
+		return true
+	case Satisfied:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for Role.
 const (
 	Officer     Role = "officer"
@@ -109,7 +133,11 @@ type LoginRequest struct {
 
 // Me defines model for Me.
 type Me struct {
-	Email string `json:"email"`
+	Email         string `json:"email"`
+	EmailVerified bool   `json:"emailVerified"`
+
+	// Mfa Two-factor state of the session, computed from the role in the active tenant. `not_required`: student or no membership. `enrollment_required`: school admin or officer without a confirmed TOTP. `pending`: confirmed TOTP but this session has not verified it. `satisfied`: this session verified a code. Endpoints for school admins and officers answer 403 `mfa_required` unless `satisfied`.
+	Mfa MfaState `json:"mfa"`
 
 	// Role Role in the active tenant; null when the user has no membership.
 	Role *Role `json:"role"`
@@ -119,10 +147,38 @@ type Me struct {
 	UserId   string  `json:"userId"`
 }
 
+// MfaCodeRequest defines model for MfaCodeRequest.
+type MfaCodeRequest struct {
+	Code string `json:"code"`
+}
+
+// MfaEnrollment defines model for MfaEnrollment.
+type MfaEnrollment struct {
+	// OtpauthUri `otpauth://totp/Centro%20de%20Estudiantes:<email>?secret=...&issuer=Centro%20de%20Estudiantes`
+	OtpauthUri string `json:"otpauthUri"`
+
+	// Secret Base32 (no padding) of the 20-byte secret, for manual entry. Shown once.
+	Secret string `json:"secret"`
+}
+
+// MfaState Two-factor state of the session, computed from the role in the active tenant. `not_required`: student or no membership. `enrollment_required`: school admin or officer without a confirmed TOTP. `pending`: confirmed TOTP but this session has not verified it. `satisfied`: this session verified a code. Endpoints for school admins and officers answer 403 `mfa_required` unless `satisfied`.
+type MfaState string
+
+// MfaVerifyRequest Exactly one of `code` and `recoveryCode`; otherwise 400 `bad_request`.
+type MfaVerifyRequest struct {
+	Code         *string `json:"code,omitempty"`
+	RecoveryCode *string `json:"recoveryCode,omitempty"`
+}
+
 // PasswordResetRequest defines model for PasswordResetRequest.
 type PasswordResetRequest struct {
 	Password string `json:"password"`
 	Token    string `json:"token"`
+}
+
+// RecoveryCodes defines model for RecoveryCodes.
+type RecoveryCodes struct {
+	RecoveryCodes []string `json:"recoveryCodes"`
 }
 
 // RedeemRequest defines model for RedeemRequest.
@@ -162,6 +218,9 @@ type BadRequest = Error
 // Forbidden defines model for Forbidden.
 type Forbidden = Error
 
+// InvalidMfaCode defines model for InvalidMfaCode.
+type InvalidMfaCode = Error
+
 // InvalidToken defines model for InvalidToken.
 type InvalidToken = Error
 
@@ -185,6 +244,12 @@ type PostAuthLinkConsumeJSONRequestBody = TokenRequest
 
 // PostAuthLoginJSONRequestBody defines body for PostAuthLogin for application/json ContentType.
 type PostAuthLoginJSONRequestBody = LoginRequest
+
+// PostAuthMfaEnrollmentConfirmJSONRequestBody defines body for PostAuthMfaEnrollmentConfirm for application/json ContentType.
+type PostAuthMfaEnrollmentConfirmJSONRequestBody = MfaCodeRequest
+
+// PostAuthMfaVerifyJSONRequestBody defines body for PostAuthMfaVerify for application/json ContentType.
+type PostAuthMfaVerifyJSONRequestBody = MfaVerifyRequest
 
 // PostAuthPasswordResetJSONRequestBody defines body for PostAuthPasswordReset for application/json ContentType.
 type PostAuthPasswordResetJSONRequestBody = PasswordResetRequest
@@ -221,6 +286,15 @@ type ServerInterface interface {
 	// GetAuthMe Current user
 	// (GET /auth/me)
 	GetAuthMe(w http.ResponseWriter, r *http.Request)
+	// PostAuthMfaEnrollment Start (or restart) TOTP enrollment
+	// (POST /auth/mfa/enrollment)
+	PostAuthMfaEnrollment(w http.ResponseWriter, r *http.Request)
+	// PostAuthMfaEnrollmentConfirm Confirm TOTP enrollment with a first code
+	// (POST /auth/mfa/enrollment/confirm)
+	PostAuthMfaEnrollmentConfirm(w http.ResponseWriter, r *http.Request)
+	// PostAuthMfaVerify Complete two-factor sign-in
+	// (POST /auth/mfa/verify)
+	PostAuthMfaVerify(w http.ResponseWriter, r *http.Request)
 	// PostAuthPasswordReset Set a new password with an emailed token
 	// (POST /auth/password/reset)
 	PostAuthPasswordReset(w http.ResponseWriter, r *http.Request)
@@ -359,6 +433,48 @@ func (siw *ServerInterfaceWrapper) GetAuthMe(w http.ResponseWriter, r *http.Requ
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetAuthMe(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostAuthMfaEnrollment operation middleware
+func (siw *ServerInterfaceWrapper) PostAuthMfaEnrollment(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostAuthMfaEnrollment(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostAuthMfaEnrollmentConfirm operation middleware
+func (siw *ServerInterfaceWrapper) PostAuthMfaEnrollmentConfirm(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostAuthMfaEnrollmentConfirm(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostAuthMfaVerify operation middleware
+func (siw *ServerInterfaceWrapper) PostAuthMfaVerify(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostAuthMfaVerify(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -624,6 +740,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/link/consume", wrapper.PostAuthLinkConsume)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/password/reset-request", wrapper.PostAuthPasswordResetRequest)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/password/reset", wrapper.PostAuthPasswordReset)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/mfa/enrollment", wrapper.PostAuthMfaEnrollment)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/mfa/enrollment/confirm", wrapper.PostAuthMfaEnrollmentConfirm)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/mfa/verify", wrapper.PostAuthMfaVerify)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/roster", wrapper.GetRoster)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/roster/import", wrapper.PostRosterImport)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/roster/{memberId}/access-code", wrapper.PostRosterMemberAccessCode)

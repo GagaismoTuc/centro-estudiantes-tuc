@@ -53,6 +53,12 @@ type Session struct {
 	UserID   string
 	Email    string
 	TenantID string
+	// EmailVerified reports that the user proved access to the inbox.
+	EmailVerified bool
+	// MFAEnrolled reports that the user has a confirmed TOTP.
+	MFAEnrolled bool
+	// MFAVerified reports that this session proved the second factor (sessions.mfa_at is set).
+	MFAVerified bool
 }
 
 // Store reads and writes accounts and sessions through the application pool.
@@ -111,19 +117,32 @@ func (s *Store) CreateSession(ctx context.Context, userID string) (string, error
 	return InsertSession(ctx, s.pool, userID, tenant, s.now())
 }
 
+type execer interface {
+	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
+}
+
 // InsertSession stores a new session for userID with the given active tenant (nil for none) and
 // returns the raw token for the cookie. q is the pool or a transaction.
-func InsertSession(ctx context.Context, q interface {
-	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
-}, userID string, tenant *string, now time.Time) (string, error) {
+func InsertSession(ctx context.Context, q execer, userID string, tenant *string, now time.Time) (string, error) {
+	return insertSession(ctx, q, userID, tenant, now, nil)
+}
+
+// insertSession is InsertSession with mfaAt, set only for a session that proved the second factor.
+func insertSession(ctx context.Context, q execer, userID string, tenant *string, now time.Time, mfaAt *time.Time) (string, error) {
+	return insertSessionUntil(ctx, q, userID, tenant, now, now.Add(SessionLifetime), mfaAt)
+}
+
+// insertSessionUntil is insertSession with an explicit absolute expiry (used when rotating a session,
+// which must never extend its lifetime).
+func insertSessionUntil(ctx context.Context, q execer, userID string, tenant *string, now, expires time.Time, mfaAt *time.Time) (string, error) {
 	raw := make([]byte, tokenLen)
 	if _, err := rand.Read(raw); err != nil {
 		return "", fmt.Errorf("auth: token: %w", err)
 	}
 	sum := sha256.Sum256(raw)
 	if _, err := q.Exec(ctx,
-		`INSERT INTO sessions (token_hash, user_id, tenant_id, created_at, expires_at) VALUES ($1, $2, $3, $4, $5)`,
-		sum[:], userID, tenant, now, now.Add(SessionLifetime)); err != nil {
+		`INSERT INTO sessions (token_hash, user_id, tenant_id, created_at, expires_at, mfa_at) VALUES ($1, $2, $3, $4, $5, $6)`,
+		sum[:], userID, tenant, now, expires, mfaAt); err != nil {
 		return "", fmt.Errorf("auth: insert session: %w", err)
 	}
 	return base64.RawURLEncoding.EncodeToString(raw), nil
@@ -164,9 +183,11 @@ func (s *Store) Lookup(ctx context.Context, token string) (Session, error) {
 	var sess Session
 	var tenant *string
 	err := s.pool.QueryRow(ctx, `
-		SELECT s.user_id::text, u.email, s.tenant_id::text
+		SELECT s.user_id::text, u.email, s.tenant_id::text, u.email_verified_at IS NOT NULL, s.mfa_at IS NOT NULL,
+			EXISTS (SELECT FROM user_totp t WHERE t.user_id = s.user_id AND t.confirmed_at IS NOT NULL)
 		FROM sessions s JOIN users u ON u.id = s.user_id
-		WHERE s.token_hash = $1 AND s.expires_at > $2`, h, s.now()).Scan(&sess.UserID, &sess.Email, &tenant)
+		WHERE s.token_hash = $1 AND s.expires_at > $2`, h, s.now()).
+		Scan(&sess.UserID, &sess.Email, &tenant, &sess.EmailVerified, &sess.MFAVerified, &sess.MFAEnrolled)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Session{}, ErrNoSession
 	}

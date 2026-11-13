@@ -230,7 +230,7 @@ func TestSignInLink(t *testing.T) {
 	wantTime(t, "email_verified_at", verifiedAt(t, ctx, user), f.clk.Now())
 	wantTime(t, "used_at", emailToken(t, ctx, user, tok).Used, f.clk.Now())
 	wantResponse(t, f.do(http.MethodGet, "/api/auth/me", "", "198.51.100.32", m[1], nil), http.StatusOK,
-		meBody(user, email, f.tenant, "officer"))
+		meBody(user, email, f.tenant, "officer", "enrollment_required", true))
 }
 
 func TestDeadTokensAreRejectedIdentically(t *testing.T) {
@@ -397,7 +397,7 @@ func TestSendFailureKeepsTheChangeAndNeverLogsTheToken(t *testing.T) {
 	email := uniqueEmail("send-fail")
 	rec := f.claim(code, email, password, "203.0.113.170")
 	user, _ := userByEmail(t, ctx, email)
-	wantResponse(t, rec, http.StatusCreated, meBody(user, email, f.tenant, "student"))
+	wantResponse(t, rec, http.StatusCreated, meBody(user, email, f.tenant, "student", "not_required", false))
 	verifyTok := f.oneLink(t, email, "Confirmá tu correo", "/verificar")
 	wantResponse(t, f.post("/api/auth/password/reset-request", emailBody(email), "203.0.113.170", ""), http.StatusAccepted, "")
 	resetTok := f.oneLink(t, email, "Restablecer tu contraseña", "/restablecer")
