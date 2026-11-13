@@ -15,13 +15,15 @@ Branch: `feat/auth` (stacked on `feat/mvp-foundation-03-web`) · Delivery: ask-o
 
 ## Tasks
 
-- T1 — S2 — gentle-ai-worker — users, memberships, sessions, password login/logout/me, bootstrap CLI — pending
+- T1 — S2 — gentle-ai-worker — users, memberships, sessions, password login/logout/me, bootstrap CLI — done: RED `undefined: db.WithUser` + `relation "users" does not exist`, mutation checks (no CrossOriginProtection → 204 want 403); GREEN `go test -race -count=1 ./...` ok
 - T2 — S3 — gentle-ai-worker — roster CSV import + access codes — pending
 - T3 — S4 — gentle-ai-worker — claim flow — pending
 - T4 — S5 — gentle-ai-worker — outbox, email verification, magic link, password reset — pending
 - T5 — S6 — gentle-ai-worker — TOTP 2FA for privileged roles — pending
 - T6 — S7 — gentle-ai-worker — web screens — pending
+- T7 — S2 — inline — rate limiter behind a trusted proxy (`X-Forwarded-For` only from configured proxies, per-IP limit sized for school NAT), expired-session cleanup, hidden password prompt in CLI — pending
 
 ## Log
 
 - **L1 (2026-11-13, verbatim):** "Dale, cuando termines las instalaciones anda con los pr nomas y empeza." Scope taken from docs/spec/mvp.md §2–3 and the user's earlier answer quoted in S1. Every task is security-sensitive (Risk item 2): each work-unit commit gets an independent verify.
+- **L2 (2026-11-13):** T1 deviations accepted: two DSNs (app role vs owner) and startup role check; app role may INSERT organizations (bootstrap); read-only `memberships_own_user` policy on `app.user_id` set only by `db.WithUser`; composite FKs with tenant_id (FK checks bypass RLS); argon2id m=19MiB t=2 p=1 (OWASP). ADR rules 6, 8-10 updated. Open items moved to T7. ~1680 authored lines (870 tests): single security unit, over the 400 heuristic.
