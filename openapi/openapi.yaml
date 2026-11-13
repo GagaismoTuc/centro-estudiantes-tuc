@@ -1,0 +1,800 @@
+openapi: 3.0.3
+info:
+  title: Centro de Estudiantes API
+  version: 0.1.0
+  description: Contract shared by the Go API (api/) and the web client (web/). Edit this file first, then regenerate both sides.
+servers:
+  - url: /api
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Liveness check
+      responses:
+        "200":
+          description: The service is running.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+  /auth/login:
+    post:
+      operationId: postAuthLogin
+      summary: Sign in with email and password
+      description: >
+        On success sets the session cookie `__Host-session` (HttpOnly, Secure, SameSite=Lax, Path=/,
+        12 hours) and deletes the session the request arrived with, if any. Unknown email and wrong
+        password get the same 401 body. Failed attempts are limited per email (5 per 15 minutes) and
+        per client IP (50 per 15 minutes, sized for a school behind one address); further attempts get
+        429. Server errors never count.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "204":
+          description: Signed in; the session cookie is set.
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          description: Wrong email or password (always `invalid_credentials`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Too many failed attempts (`too_many_attempts`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /auth/logout:
+    post:
+      operationId: postAuthLogout
+      summary: Sign out
+      description: Deletes the current session, if any, and expires the cookie.
+      responses:
+        "204":
+          description: Signed out.
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+  /auth/me:
+    get:
+      operationId: getAuthMe
+      summary: Current user
+      responses:
+        "200":
+          description: The signed-in user and the active tenant.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Me"
+        "401":
+          description: No valid session (`unauthenticated`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /auth/claim:
+    post:
+      operationId: postAuthClaim
+      summary: Create an account with a school access code
+      description: >
+        No session needed. Creates the user, a `student` membership linked to the code's roster member,
+        consumes the code and signs in (cookie as in login). Inputs are validated before any lookup:
+        email (at most 254 characters, stored lowercase), password (10 to 128 characters, the rule shared
+        by bootstrap, claim and password reset) and code
+        (12 Crockford base32 characters; case, spaces and hyphens are ignored). Unknown, used, revoked,
+        expired and already-linked codes all get the same `invalid_code`. Every `invalid_code` counts
+        against a per-IP limit (50 per 15 minutes); further requests get 429. On success a
+        verification link is emailed to the new address (see `/auth/email/verify`). Responses carry
+        `Cache-Control: no-store`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClaimRequest"
+      responses:
+        "201":
+          description: Account created and signed in; the session cookie is set.
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Me"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          description: >
+            An account with this email exists (`email_in_use`); nothing changed and the code stays usable.
+            Sign in and use `/auth/redeem` instead.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: "`invalid_email`, `weak_password` or `invalid_code`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          $ref: "#/components/responses/TooManyAttempts"
+  /auth/redeem:
+    post:
+      operationId: postAuthRedeem
+      summary: Add a school to the signed-in account with an access code
+      description: >
+        Adds a `student` membership in the code's tenant linked to its roster member, consumes the code
+        and makes that tenant the session's active tenant. The session is rotated: a new cookie with the
+        same absolute expiry (Max-Age is the remaining lifetime) and the old token stops working. Same
+        code rules and rate limit as `/auth/claim`. Responses carry `Cache-Control: no-store`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RedeemRequest"
+      responses:
+        "200":
+          description: Membership added; the new session points at the code's tenant.
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Me"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "409":
+          description: The user already belongs to the code's tenant (`already_member`); the code stays usable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: "`invalid_code`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          $ref: "#/components/responses/TooManyAttempts"
+  /auth/email/verification:
+    post:
+      operationId: postAuthEmailVerification
+      summary: Email a verification link to the signed-in user
+      description: >
+        Sends `{APP_BASE_URL}/verificar#token=...` (valid 48 hours) unless the email is already verified,
+        in which case nothing is sent and the response is the same. Issuing a link invalidates the
+        previous unused one. Shares the limit of the other mail requests (5 per 15 minutes per email,
+        50 per client IP). Responses carry `Cache-Control: no-store`.
+      responses:
+        "202":
+          description: Accepted; a link was sent if the email is not verified yet.
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "429":
+          $ref: "#/components/responses/TooManyAttempts"
+  /auth/email/verify:
+    post:
+      operationId: postAuthEmailVerify
+      summary: Confirm the email address with an emailed token
+      description: >
+        No session needed. Consumes a `verify_email` token and marks the email verified. Tokens are
+        single-use; unknown, used, expired and other-purpose tokens all get `invalid_token`, and each
+        counts against a per-IP limit (50 per 15 minutes, shared by every token endpoint). Responses
+        carry `Cache-Control: no-store`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TokenRequest"
+      responses:
+        "204":
+          description: Email verified.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "422":
+          $ref: "#/components/responses/InvalidToken"
+        "429":
+          $ref: "#/components/responses/TooManyAttempts"
+  /auth/link:
+    post:
+      operationId: postAuthLink
+      summary: Email a sign-in link
+      description: >
+        No session needed. Always 202 with the same response whether or not an account exists; only an
+        existing account gets `{APP_BASE_URL}/ingresar#token=...` (valid 15 minutes, single-use; issuing
+        one invalidates the previous). Limited to 5 requests per 15 minutes per email and 50 per client IP,
+        shared with `/auth/password/reset-request` and `/auth/email/verification`. Responses carry
+        `Cache-Control: no-store`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmailRequest"
+      responses:
+        "202":
+          description: Accepted.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "429":
+          $ref: "#/components/responses/TooManyAttempts"
+  /auth/link/consume:
+    post:
+      operationId: postAuthLinkConsume
+      summary: Sign in with an emailed link
+      description: >
+        Consumes a `sign_in` token, marks the email verified (the link proves inbox access) and signs in
+        exactly like `/auth/login` (same cookie and active tenant). Same token rules and limit as
+        `/auth/email/verify`. Responses carry `Cache-Control: no-store`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TokenRequest"
+      responses:
+        "204":
+          description: Signed in; the session cookie is set.
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "422":
+          $ref: "#/components/responses/InvalidToken"
+        "429":
+          $ref: "#/components/responses/TooManyAttempts"
+  /auth/password/reset-request:
+    post:
+      operationId: postAuthPasswordResetRequest
+      summary: Email a password reset link
+      description: >
+        Same rules as `/auth/link`, but the link is `{APP_BASE_URL}/restablecer#token=...` (valid 30
+        minutes).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmailRequest"
+      responses:
+        "202":
+          description: Accepted.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "429":
+          $ref: "#/components/responses/TooManyAttempts"
+  /auth/password/reset:
+    post:
+      operationId: postAuthPasswordReset
+      summary: Set a new password with an emailed token
+      description: >
+        The password is checked first (10 to 128 characters): `weak_password` leaves the token usable.
+        Then consumes a `reset_password` token, stores the new password and deletes every session of
+        the user. Same token rules and limit as `/auth/email/verify`. Responses carry
+        `Cache-Control: no-store`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordResetRequest"
+      responses:
+        "204":
+          description: Password changed; every session of the user was signed out.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "422":
+          description: "`weak_password` or `invalid_token`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          $ref: "#/components/responses/TooManyAttempts"
+  /auth/mfa/enrollment:
+    post:
+      operationId: postAuthMfaEnrollment
+      summary: Start (or restart) TOTP enrollment
+      description: >
+        Creates a new random TOTP secret (20 bytes; RFC 6238, HMAC-SHA1, 6 digits, 30 s) for the signed-in
+        user and returns it once, as base32 without padding and as an `otpauth://` URI for a QR code. The
+        secret is stored encrypted (AES-256-GCM). Calling again before confirming replaces the pending
+        secret. Users with a confirmed TOTP get 409 `already_enrolled` (an operator resets it with
+        `admin reset-mfa`). Responses carry `Cache-Control: no-store`.
+      responses:
+        "200":
+          description: Pending secret created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MfaEnrollment"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "409":
+          description: The user already has a confirmed TOTP (`already_enrolled`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /auth/mfa/enrollment/confirm:
+    post:
+      operationId: postAuthMfaEnrollmentConfirm
+      summary: Confirm TOTP enrollment with a first code
+      description: >
+        Checks a code of the pending secret (one step of drift accepted). On success the TOTP is confirmed,
+        10 single-use recovery codes are returned once (`XXXXX-XXXXX`, only their SHA-256 is stored) and the
+        session is rotated into a two-factor session (new `__Host-session` cookie, same attributes as
+        login but Max-Age is the session's remaining lifetime, which is not extended; the previous session
+        is deleted). Wrong codes and confirming without a pending secret get
+        `invalid_code`. Failures share the per-user limit of `/auth/mfa/verify` (5 per 15 minutes); further
+        attempts get 429. Responses carry `Cache-Control: no-store`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MfaCodeRequest"
+      responses:
+        "200":
+          description: Enrollment confirmed; the rotated session cookie is set.
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecoveryCodes"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "409":
+          description: The TOTP is already confirmed (`already_enrolled`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          $ref: "#/components/responses/InvalidMfaCode"
+        "429":
+          $ref: "#/components/responses/TooManyAttempts"
+  /auth/mfa/verify:
+    post:
+      operationId: postAuthMfaVerify
+      summary: Complete two-factor sign-in
+      description: >
+        Send exactly one of `code` (6 digits from the authenticator app; one step of drift accepted) or
+        `recoveryCode` (single-use; case, spaces and hyphens ignored). On success the session is rotated
+        into a two-factor session: a new `__Host-session` cookie with the same attributes as login except
+        Max-Age, which is the session's remaining lifetime (not extended), and the previous session row
+        is deleted. A code whose time step was already used, a used recovery code,
+        a wrong code and a user without confirmed TOTP all get the same `invalid_code`. Failures are
+        limited per user (5 per 15 minutes, shared with enrollment confirmation); further attempts get
+        429. Responses carry `Cache-Control: no-store`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MfaVerifyRequest"
+      responses:
+        "204":
+          description: Verified; the rotated session cookie is set.
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "422":
+          $ref: "#/components/responses/InvalidMfaCode"
+        "429":
+          $ref: "#/components/responses/TooManyAttempts"
+  /roster:
+    get:
+      operationId: getRoster
+      summary: List the roster of the active tenant
+      description: >
+        School admins with a two-factor session only. Responses carry `Cache-Control: no-store` (personal
+        data).
+      responses:
+        "200":
+          description: Roster members ordered by name.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RosterMember"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /roster/import:
+    post:
+      operationId: postRosterImport
+      summary: Import roster members from CSV
+      description: >
+        School admins with a two-factor session only. The body is CSV (max 1 MiB, max 5000 data rows) whose first line is the
+        header `full_name,document_number` (case-insensitive, trimmed). `document_number` must have 7 to 9
+        digits after removing dots and spaces. The import is atomic: any invalid row or a document number
+        repeated in the file writes nothing. Rows whose document number already exists in the tenant are
+        skipped, never updated.
+      requestBody:
+        required: true
+        content:
+          text/csv:
+            schema:
+              type: string
+      responses:
+        "200":
+          description: Imported.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportResult"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "413":
+          description: Body larger than 1 MiB (`body_too_large`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "415":
+          description: Content-Type is not `text/csv` (`unsupported_media_type`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: >
+            Nothing was written. `invalid_rows` lists every problem with its 1-based line number (the header
+            is line 1); `too_many_rows` when the file has more than 5000 data rows.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportError"
+  /roster/{memberId}/access-code:
+    post:
+      operationId: postRosterMemberAccessCode
+      summary: Issue an access code for one roster member
+      description: >
+        School admins with a two-factor session only. Returns the code in plain text once (`Cache-Control: no-store`); only its HMAC is
+        stored. The code expires after 30 days and revokes the member's previous unused code.
+      parameters:
+        - name: memberId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "201":
+          description: Code issued.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IssuedCode"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: No such member in the active tenant (`not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: The member already has an account (`member_has_account`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /roster/access-codes:
+    post:
+      operationId: postRosterAccessCodes
+      summary: Issue codes for every member without an account and without an active code
+      description: "School admins with a two-factor session only. Codes are shown once, for printing (`Cache-Control: no-store`)."
+      responses:
+        "201":
+          description: Codes issued, ordered by name; empty when nobody needed one.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/IssuedMemberCode"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+components:
+  responses:
+    BadRequest:
+      description: Body is not JSON, has unknown fields or trailing data, or exceeds 4 KiB (`bad_request`).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    TooManyAttempts:
+      description: Too many attempts from this client or for this email (`too_many_attempts`).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    InvalidToken:
+      description: The token is unknown, used, expired or for another purpose (`invalid_token`).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    InvalidMfaCode:
+      description: Wrong, reused or unknown code (`invalid_code`).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Unauthenticated:
+      description: No valid session (`unauthenticated`).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Forbidden:
+      description: >
+        The user is not a school admin of the active tenant (`forbidden`), or is one but the session has not
+        completed two-factor authentication (`mfa_required`; see `mfa` in `/auth/me`). Nothing is read or
+        written.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+  schemas:
+    Health:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok]
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+    LoginRequest:
+      type: object
+      required: [email, password]
+      additionalProperties: false
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+    ClaimRequest:
+      type: object
+      required: [code, email, password]
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+        email:
+          type: string
+          maxLength: 254
+        password:
+          type: string
+          minLength: 10
+          maxLength: 128
+    EmailRequest:
+      type: object
+      required: [email]
+      additionalProperties: false
+      properties:
+        email:
+          type: string
+          maxLength: 254
+    TokenRequest:
+      type: object
+      required: [token]
+      additionalProperties: false
+      properties:
+        token:
+          type: string
+          description: The value after `#token=` in the emailed link.
+    PasswordResetRequest:
+      type: object
+      required: [token, password]
+      additionalProperties: false
+      properties:
+        token:
+          type: string
+        password:
+          type: string
+          minLength: 10
+          maxLength: 128
+    RedeemRequest:
+      type: object
+      required: [code]
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+    Role:
+      type: string
+      enum: [school_admin, officer, student]
+    MfaState:
+      type: string
+      enum: [not_required, enrollment_required, pending, satisfied]
+      description: >
+        Two-factor state of the session, computed from the role in the active tenant. `not_required`:
+        student or no membership. `enrollment_required`: school admin or officer without a confirmed TOTP.
+        `pending`: confirmed TOTP but this session has not verified it. `satisfied`: this session verified a
+        code. Endpoints for school admins and officers answer 403 `mfa_required` unless `satisfied`.
+    MfaEnrollment:
+      type: object
+      required: [secret, otpauthUri]
+      properties:
+        secret:
+          type: string
+          description: Base32 (no padding) of the 20-byte secret, for manual entry. Shown once.
+        otpauthUri:
+          type: string
+          description: "`otpauth://totp/Centro%20de%20Estudiantes:<email>?secret=...&issuer=Centro%20de%20Estudiantes`"
+    MfaCodeRequest:
+      type: object
+      required: [code]
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+    MfaVerifyRequest:
+      type: object
+      additionalProperties: false
+      description: Exactly one of `code` and `recoveryCode`; otherwise 400 `bad_request`.
+      properties:
+        code:
+          type: string
+        recoveryCode:
+          type: string
+    RecoveryCodes:
+      type: object
+      required: [recoveryCodes]
+      properties:
+        recoveryCodes:
+          type: array
+          minItems: 10
+          maxItems: 10
+          items:
+            type: string
+            pattern: "^[0-9A-HJKMNP-TV-Z]{5}-[0-9A-HJKMNP-TV-Z]{5}$"
+    Me:
+      type: object
+      required: [userId, email, emailVerified, tenantId, tenantName, role, mfa]
+      properties:
+        userId:
+          type: string
+        email:
+          type: string
+        tenantId:
+          type: string
+          nullable: true
+          description: Active tenant of the session; null whenever `role` is null (no membership there).
+        tenantName:
+          type: string
+          nullable: true
+          description: >
+            Name of the active tenant's organization, as stored (display it as text); null exactly when
+            `tenantId` is null.
+        role:
+          allOf:
+            - $ref: "#/components/schemas/Role"
+          nullable: true
+          description: Role in the active tenant; null when the user has no membership.
+        emailVerified:
+          type: boolean
+        mfa:
+          $ref: "#/components/schemas/MfaState"
+    RosterMember:
+      type: object
+      required: [id, fullName, documentNumber, hasActiveCode, hasAccount]
+      properties:
+        id:
+          type: string
+        fullName:
+          type: string
+        documentNumber:
+          type: string
+        hasActiveCode:
+          type: boolean
+          description: An unused, unrevoked and unexpired access code exists.
+        hasAccount:
+          type: boolean
+    ImportResult:
+      type: object
+      required: [inserted, skipped]
+      properties:
+        inserted:
+          type: integer
+        skipped:
+          type: integer
+    ImportError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+        rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/RowError"
+    RowError:
+      type: object
+      required: [line, reason]
+      properties:
+        line:
+          type: integer
+        reason:
+          type: string
+    IssuedCode:
+      type: object
+      required: [code, expiresAt]
+      properties:
+        code:
+          type: string
+          pattern: "^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$"
+        expiresAt:
+          type: string
+          format: date-time
+    IssuedMemberCode:
+      type: object
+      required: [memberId, fullName, documentNumber, code, expiresAt]
+      properties:
+        memberId:
+          type: string
+        fullName:
+          type: string
+        documentNumber:
+          type: string
+        code:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time

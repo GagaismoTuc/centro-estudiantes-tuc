@@ -1,0 +1,113 @@
+package auth
+
+import (
+	"slices"
+	"strings"
+	"sync"
+	"time"
+)
+
+// Limiter counts attempts per key in a sliding window. Sign-in uses one key per client IP and one
+// per lowercased email.
+//
+// shortcut: state lives in this process's memory, so it only holds for a single server instance
+// and resets on restart. Scaling out needs a shared store (PostgreSQL or Redis).
+type Limiter struct {
+	mu        sync.Mutex
+	max       int
+	maxBy     []prefixMax // per key prefix, overriding max; longest prefix first
+	window    time.Duration
+	now       func() time.Time
+	hits      map[string][]time.Time
+	lastSweep time.Time
+}
+
+type prefixMax struct {
+	prefix string
+	max    int
+}
+
+// NewLimiter allows max attempts per key within window.
+func NewLimiter(max int, window time.Duration, now func() time.Time) *Limiter {
+	return &Limiter{max: max, window: window, now: now, hits: map[string][]time.Time{}}
+}
+
+// WithMax sets the limit of keys starting with prefix (for example "ip:") and returns l; when several
+// prefixes match a key, the longest wins. Call it before the limiter is used.
+func (l *Limiter) WithMax(prefix string, max int) *Limiter {
+	l.maxBy = slices.DeleteFunc(l.maxBy, func(p prefixMax) bool { return p.prefix == prefix })
+	l.maxBy = append(l.maxBy, prefixMax{prefix, max})
+	slices.SortStableFunc(l.maxBy, func(a, b prefixMax) int { return len(b.prefix) - len(a.prefix) })
+	return l
+}
+
+// limit returns the limit of key: that of its longest matching prefix, or the default.
+func (l *Limiter) limit(key string) int {
+	for _, p := range l.maxBy {
+		if strings.HasPrefix(key, p.prefix) {
+			return p.max
+		}
+	}
+	return l.max
+}
+
+// Take records one attempt for every key and returns true when all keys are under the limit.
+// When any key is at the limit it records nothing and returns false. Check and record are one
+// atomic step, so concurrent requests cannot overshoot the limit.
+func (l *Limiter) Take(keys ...string) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	now := l.now()
+	l.sweep(now)
+	for _, k := range keys {
+		l.hits[k] = l.live(l.hits[k], now)
+		if len(l.hits[k]) >= l.limit(k) {
+			return false
+		}
+	}
+	for _, k := range keys {
+		l.hits[k] = append(l.hits[k], now)
+	}
+	return true
+}
+
+// Refund removes the most recent attempt of key.
+func (l *Limiter) Refund(key string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if h := l.hits[key]; len(h) > 0 {
+		l.hits[key] = h[:len(h)-1]
+	}
+}
+
+// Reset forgets every attempt of key.
+func (l *Limiter) Reset(key string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	delete(l.hits, key)
+}
+
+// live drops attempts that left the window: an attempt at t counts while t > now-window.
+func (l *Limiter) live(h []time.Time, now time.Time) []time.Time {
+	cut := now.Add(-l.window)
+	i := 0
+	for i < len(h) && !h[i].After(cut) {
+		i++
+	}
+	return h[i:]
+}
+
+// sweep drops idle keys once per window so memory stays bounded by recent traffic.
+func (l *Limiter) sweep(now time.Time) {
+	if now.Sub(l.lastSweep) < l.window {
+		return
+	}
+	l.lastSweep = now
+	for k, h := range l.hits {
+		if h = l.live(h, now); len(h) == 0 {
+			delete(l.hits, k)
+		} else {
+			l.hits[k] = h
+		}
+	}
+}

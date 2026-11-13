@@ -1,0 +1,174 @@
+package roster
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"time"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+
+	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/auth"
+	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/db"
+)
+
+var (
+	// ErrInvalidCode covers malformed, unknown, used, revoked and expired codes, and codes whose roster
+	// member already has an account: callers must not be able to tell them apart.
+	ErrInvalidCode = errors.New("roster: invalid access code")
+	// ErrAlreadyMember means the user already belongs to the code's tenant.
+	ErrAlreadyMember = errors.New("roster: already a member of the code's tenant")
+)
+
+// Claimed is the account a code was spent on.
+type Claimed struct {
+	UserID, TenantID string
+	TenantName       string    // name of the code's organization
+	Token            string    // new session token
+	Expires          time.Time // absolute expiry of the session named by Token
+	VerifyToken      string    // verify_email token to send to the new account; set by Claim only
+}
+
+// useCode runs fn in one transaction holding the live code row locked, with the code's tenant
+// declared, and marks the code used when fn succeeds. A concurrent claim of the same code waits for
+// the lock and then no longer matches used_at IS NULL, so it gets ErrInvalidCode.
+func (s *Store) useCode(ctx context.Context, code string, fn func(tx pgx.Tx, tenant, member string) error) error {
+	if !ValidCode(code) || len(s.key) < MinKeyLen {
+		return ErrInvalidCode
+	}
+	hash := HashCode(s.key, code)
+	return db.WithCodeHash(ctx, s.pool, hash, func(tx pgx.Tx) error {
+		var tenant, member string
+		err := tx.QueryRow(ctx, `
+			SELECT tenant_id::text, roster_member_id::text FROM access_codes
+			WHERE code_hash = $1 AND used_at IS NULL AND revoked_at IS NULL AND expires_at > $2
+			FOR UPDATE`, hash, s.now()).Scan(&tenant, &member)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrInvalidCode
+		}
+		if err != nil {
+			return fmt.Errorf("roster: find code: %w", err)
+		}
+		if err := db.SetTenant(ctx, tx, tenant); err != nil {
+			return err
+		}
+		var linked bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT FROM memberships WHERE roster_member_id = $1)`,
+			member).Scan(&linked); err != nil {
+			return err
+		}
+		if linked {
+			return ErrInvalidCode
+		}
+		if err := fn(tx, tenant, member); err != nil {
+			return err
+		}
+		_, err = tx.Exec(ctx, `UPDATE access_codes SET used_at = $2 WHERE code_hash = $1`,
+			hash, s.now().UTC().Truncate(time.Microsecond))
+		return err
+	})
+}
+
+// Claim creates the account of the code's roster member: user, student membership and session.
+// email must already be normalized and password validated. prevToken, when not empty, names the
+// session the request arrived with: it is deleted in the same transaction, so a failure there
+// fails the whole claim.
+func (s *Store) Claim(ctx context.Context, code, email, password, prevToken string) (Claimed, error) {
+	var out Claimed
+	err := s.useCode(ctx, code, func(tx pgx.Tx, tenant, member string) error {
+		var taken bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT FROM users WHERE lower(email) = $1)`, email).Scan(&taken); err != nil {
+			return err
+		}
+		if taken {
+			return auth.ErrEmailTaken
+		}
+		if err := auth.DeleteSessionIn(ctx, tx, prevToken); err != nil {
+			return err
+		}
+		hash, err := auth.HashPassword(password)
+		if err != nil {
+			return err
+		}
+		if err := tx.QueryRow(ctx, `INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id::text`,
+			email, hash).Scan(&out.UserID); err != nil {
+			return err
+		}
+		if err := addStudent(ctx, tx, tenant, out.UserID, member); err != nil {
+			return err
+		}
+		out.TenantID = tenant
+		if out.TenantName, err = tenantName(ctx, tx, tenant); err != nil {
+			return err
+		}
+		if out.Token, err = auth.InsertSession(ctx, tx, out.UserID, &tenant, s.now()); err != nil {
+			return err
+		}
+		out.Expires = s.now().Add(auth.SessionLifetime)
+		out.VerifyToken, err = auth.IssueEmailToken(ctx, tx, out.UserID, auth.PurposeVerifyEmail, s.now())
+		return err
+	})
+	return out, mapClaimError(err)
+}
+
+// Redeem adds the code's roster member to the signed-in user and rotates the session named by token
+// into the code's tenant (new token, same absolute expiry and second-factor state), all in one
+// transaction: on any failure nothing changes and the old session stays valid.
+func (s *Store) Redeem(ctx context.Context, sess auth.Session, token, code string) (Claimed, error) {
+	out := Claimed{UserID: sess.UserID}
+	err := s.useCode(ctx, code, func(tx pgx.Tx, tenant, member string) error {
+		var already bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT FROM memberships WHERE tenant_id = $1 AND user_id = $2)`,
+			tenant, sess.UserID).Scan(&already); err != nil {
+			return err
+		}
+		if already {
+			return ErrAlreadyMember
+		}
+		if err := addStudent(ctx, tx, tenant, sess.UserID, member); err != nil {
+			return err
+		}
+		out.TenantID = tenant
+		var err error
+		if out.TenantName, err = tenantName(ctx, tx, tenant); err != nil {
+			return err
+		}
+		out.Token, out.Expires, err = auth.RotateSessionIntoTenant(ctx, tx, token, sess.UserID, tenant, s.now())
+		return err
+	})
+	return out, mapClaimError(err)
+}
+
+// tenantName reads the name of organization tenant inside tx (organizations is readable by the app role).
+func tenantName(ctx context.Context, tx pgx.Tx, tenant string) (string, error) {
+	var name string
+	if err := tx.QueryRow(ctx, `SELECT name FROM organizations WHERE id = $1`, tenant).Scan(&name); err != nil {
+		return "", fmt.Errorf("roster: tenant name: %w", err)
+	}
+	return name, nil
+}
+
+func addStudent(ctx context.Context, tx pgx.Tx, tenant, user, member string) error {
+	_, err := tx.Exec(ctx, `INSERT INTO memberships (tenant_id, user_id, role, roster_member_id)
+		VALUES ($1, $2, 'student', $3)`, tenant, user, member)
+	return err
+}
+
+// mapClaimError turns unique violations from concurrent requests into the errors a sequential
+// request would have got.
+func mapClaimError(err error) error {
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) || pgErr.Code != "23505" {
+		return err
+	}
+	switch pgErr.ConstraintName {
+	case "users_email_lower_key":
+		return auth.ErrEmailTaken
+	case "memberships_tenant_id_user_id_key":
+		return ErrAlreadyMember
+	case "memberships_roster_member_id_key":
+		return ErrInvalidCode
+	}
+	return err
+}
