@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"sync"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -272,4 +273,42 @@ func TestRosterImportRejectsInvisibleCharactersAndMisplacedDots(t *testing.T) {
 		}
 	}
 	wantResponse(t, f.importCSV(token, ok.String()), http.StatusOK, `{"inserted":4,"skipped":0}`)
+}
+
+func TestConcurrentRedeemsOfOneCodeSucceedOnce(t *testing.T) {
+	ctx := integration(t)
+	f := newFixture(t, ctx)
+	other := newTenant(t, ctx)
+	member := seedMember(t, ctx, other, "Ana Acosta", "30111299")
+	code := seedCode(t, ctx, other, member, "active", f.clk.Now())
+	tokens := make([]string, 4)
+	for i := range tokens {
+		_, tokens[i] = f.signIn(t, ctx, "student")
+	}
+	recs := make([]*httptest.ResponseRecorder, len(tokens))
+	var wg sync.WaitGroup
+	for i := range tokens {
+		wg.Go(func() { recs[i] = f.redeem(code, tokens[i]) })
+	}
+	wg.Wait()
+	got := map[int]int{}
+	for _, r := range recs {
+		got[r.Code]++
+	}
+	if got[http.StatusOK] != 1 || got[http.StatusUnprocessableEntity] != 3 {
+		t.Fatalf("statuses = %v, want one 200 and three 422", got)
+	}
+	if n := len(memberAccounts(t, ctx, member)); n != 1 {
+		t.Fatalf("memberships = %d, want 1", n)
+	}
+}
+
+func TestRosterImportCommaCSVWithSemicolonInQuotedName(t *testing.T) {
+	ctx := integration(t)
+	f := newFixture(t, ctx)
+	_, token, _, _ := f.signInMFA(t, ctx, "school_admin")
+	wantResponse(t, f.importCSV(token, csvHeader+"\"Ana; Acosta\",30111298\n"), http.StatusOK, `{"inserted":1,"skipped":0}`)
+	if got := rosterRows(t, ctx, f.tenant); !slices.Equal(got, []string{"Ana; Acosta|30111298"}) {
+		t.Fatalf("roster = %q", got)
+	}
 }
