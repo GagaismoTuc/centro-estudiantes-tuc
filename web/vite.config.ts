@@ -8,6 +8,9 @@ export default defineConfig({
     proxy: {
       "/api": "http://localhost:8080",
     },
+    // web/ plus the public API contract, which the error-message test reads.
+    // Nothing else outside web/ (api/, env files) is reachable from the dev server.
+    fs: { allow: [".", "../openapi"] },
   },
   test: {
     environment: "jsdom",

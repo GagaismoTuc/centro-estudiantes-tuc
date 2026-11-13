@@ -1,5 +1,5 @@
 import { cleanup } from "@testing-library/react";
-import { afterEach } from "vitest";
+import { afterEach, vi } from "vitest";
 
 // Node's Request rejects relative URLs such as "/api/health"; browsers resolve
 // them against the page. Mirror the browser so the client keeps baseUrl "/api".
@@ -11,4 +11,14 @@ class BrowserLikeRequest extends NodeRequest {
 }
 globalThis.Request = BrowserLikeRequest;
 
-afterEach(cleanup);
+// openapi-fetch captures globalThis.fetch when the client module loads, so the
+// mock must exist before any test file imports the client (setup files run first).
+globalThis.fetch = vi.fn<typeof fetch>();
+
+afterEach(() => {
+  cleanup();
+  vi.mocked(fetch).mockReset();
+  localStorage.clear();
+  document.documentElement.removeAttribute("data-theme");
+  window.history.replaceState(null, "", "/");
+});
