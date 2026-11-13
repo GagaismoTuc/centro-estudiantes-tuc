@@ -13,7 +13,7 @@ func TestHealthReturnsOK(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/health", nil)
 	rec := httptest.NewRecorder()
 
-	httpapi.NewRouter().ServeHTTP(rec, req)
+	httpapi.NewRouter(httpapi.Deps{}).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
@@ -30,7 +30,7 @@ func TestUnknownRouteReturnsNotFound(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/does-not-exist", nil)
 	rec := httptest.NewRecorder()
 
-	httpapi.NewRouter().ServeHTTP(rec, req)
+	httpapi.NewRouter(httpapi.Deps{}).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusNotFound)

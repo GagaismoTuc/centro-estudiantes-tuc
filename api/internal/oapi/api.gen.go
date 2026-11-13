@@ -25,6 +25,32 @@ func (e HealthStatus) Valid() bool {
 	}
 }
 
+// Defines values for Role.
+const (
+	Officer     Role = "officer"
+	SchoolAdmin Role = "school_admin"
+	Student     Role = "student"
+)
+
+// Valid indicates whether the value is a known member of the Role enum.
+func (e Role) Valid() bool {
+	switch e {
+	case Officer:
+		return true
+	case SchoolAdmin:
+		return true
+	case Student:
+		return true
+	default:
+		return false
+	}
+}
+
+// Error defines model for Error.
+type Error struct {
+	Error string `json:"error"`
+}
+
 // Health defines model for Health.
 type Health struct {
 	Status HealthStatus `json:"status"`
@@ -33,8 +59,41 @@ type Health struct {
 // HealthStatus defines model for Health.Status.
 type HealthStatus string
 
+// LoginRequest defines model for LoginRequest.
+type LoginRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
+// Me defines model for Me.
+type Me struct {
+	Email string `json:"email"`
+
+	// Role Role in the active tenant; null when the user has no membership.
+	Role *Role `json:"role"`
+
+	// TenantId Active tenant of the session; null when the user has no membership.
+	TenantId *string `json:"tenantId"`
+	UserId   string  `json:"userId"`
+}
+
+// Role defines model for Role.
+type Role string
+
+// PostAuthLoginJSONRequestBody defines body for PostAuthLogin for application/json ContentType.
+type PostAuthLoginJSONRequestBody = LoginRequest
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// PostAuthLogin Sign in with email and password
+	// (POST /auth/login)
+	PostAuthLogin(w http.ResponseWriter, r *http.Request)
+	// PostAuthLogout Sign out
+	// (POST /auth/logout)
+	PostAuthLogout(w http.ResponseWriter, r *http.Request)
+	// GetAuthMe Current user
+	// (GET /auth/me)
+	GetAuthMe(w http.ResponseWriter, r *http.Request)
 	// GetHealth Liveness check
 	// (GET /health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
@@ -48,6 +107,48 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// PostAuthLogin operation middleware
+func (siw *ServerInterfaceWrapper) PostAuthLogin(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostAuthLogin(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostAuthLogout operation middleware
+func (siw *ServerInterfaceWrapper) PostAuthLogout(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostAuthLogout(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAuthMe operation middleware
+func (siw *ServerInterfaceWrapper) GetAuthMe(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAuthMe(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // GetHealth operation middleware
 func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Request) {
@@ -184,6 +285,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	}
 
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/health", wrapper.GetHealth)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/login", wrapper.PostAuthLogin)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/logout", wrapper.PostAuthLogout)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/auth/me", wrapper.GetAuthMe)
 
 	return m
 }

@@ -19,6 +19,9 @@ import (
 // ErrInvalidTenantID is returned by WithTenant when the tenant id is not a UUID.
 var ErrInvalidTenantID = errors.New("db: tenant id must be a UUID")
 
+// ErrInvalidUserID is returned by WithUser when the user id is not a UUID.
+var ErrInvalidUserID = errors.New("db: user id must be a UUID")
+
 var uuidPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
 // Migrate applies every pending embedded migration. Run it with a role that owns the schema,
@@ -60,4 +63,38 @@ func WithTenant(ctx context.Context, pool *pgxpool.Pool, tenantID string, fn fun
 		}
 		return fn(tx)
 	})
+}
+
+// WithUser runs fn inside a transaction that declares userID through the transaction-local
+// app.user_id setting. Its only use is reading a user's own memberships across tenants before a
+// tenant is chosen (sign-in): the memberships_own_user policy is SELECT-only and matches nothing
+// else. Only WithUser writes app.user_id, as only WithTenant writes app.tenant_id.
+func WithUser(ctx context.Context, pool *pgxpool.Pool, userID string, fn func(pgx.Tx) error) error {
+	if !uuidPattern.MatchString(userID) {
+		return ErrInvalidUserID
+	}
+	return pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `SELECT set_config('app.user_id', $1, true)`, userID); err != nil {
+			return fmt.Errorf("db: set user: %w", err)
+		}
+		return fn(tx)
+	})
+}
+
+// CheckAppRole fails unless the pool's role is subject to Row-Level Security: a member of ce_app
+// without SUPERUSER or BYPASSRLS. The server calls it at startup so a misconfigured DSN (for
+// example the owner or superuser) cannot silently disable tenant isolation.
+func CheckAppRole(ctx context.Context, pool *pgxpool.Pool) error {
+	var name string
+	var bypass, member bool
+	err := pool.QueryRow(ctx, `
+		SELECT rolname, rolsuper OR rolbypassrls, pg_has_role(current_user, 'ce_app', 'MEMBER')
+		FROM pg_roles WHERE rolname = current_user`).Scan(&name, &bypass, &member)
+	if err != nil {
+		return fmt.Errorf("db: check app role: %w", err)
+	}
+	if bypass || !member {
+		return fmt.Errorf("db: role %q must be a member of ce_app without SUPERUSER or BYPASSRLS", name)
+	}
+	return nil
 }
