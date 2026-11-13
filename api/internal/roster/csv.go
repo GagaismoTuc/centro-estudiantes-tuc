@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 // MaxRows is the maximum number of data rows in one import.
@@ -71,6 +72,8 @@ func parseCSV(data []byte) ([]entry, error) {
 		} else {
 			e = entry{strings.TrimSpace(rec[0]), strings.NewReplacer(".", "", " ", "").Replace(strings.TrimSpace(rec[1]))}
 			switch {
+			case !utf8.ValidString(rec[0]) || !utf8.ValidString(rec[1]):
+				reason = "file must be saved as CSV UTF-8"
 			case e.name == "":
 				reason = "full_name is required"
 			case len([]rune(e.name)) > maxNameLen:

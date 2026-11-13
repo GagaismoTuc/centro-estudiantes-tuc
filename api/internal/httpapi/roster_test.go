@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -490,4 +491,63 @@ func TestBulkIssueSkipsMembersWithAccountOrActiveCode(t *testing.T) {
 
 	rec = f.do(http.MethodPost, "/api/roster/access-codes", "", "198.51.100.16", token, nil)
 	wantResponse(t, rec, http.StatusCreated, `[]`)
+}
+
+func TestRosterImportRejectsNonUTF8(t *testing.T) {
+	ctx := integration(t)
+	f := newFixture(t, ctx)
+	_, token := f.signIn(t, ctx, "school_admin")
+	before := rosterRows(t, ctx, f.tenant)
+
+	rec := f.importCSV(token, csvHeader+"Ana,30111221\nMu\xf1oz Ana,30111222\n")
+
+	wantResponse(t, rec, http.StatusUnprocessableEntity,
+		`{"error":"invalid_rows","rows":[{"line":3,"reason":"file must be saved as CSV UTF-8"}]}`)
+	if got := rosterRows(t, ctx, f.tenant); !slices.Equal(got, before) {
+		t.Fatalf("roster = %q, want unchanged %q", got, before)
+	}
+}
+
+// Two admins pressing "issue codes" at the same time must not revoke codes the first one already handed out.
+func TestConcurrentBulkIssueDoesNotRevokeIssuedCodes(t *testing.T) {
+	ctx := integration(t)
+	f := newFixture(t, ctx)
+	_, token := f.signIn(t, ctx, "school_admin")
+	for i := range 8 {
+		seedMember(t, ctx, f.tenant, fmt.Sprintf("Alumno %d", i), fmt.Sprintf("3100000%d", i))
+	}
+
+	var wg sync.WaitGroup
+	recs := make([]*httptest.ResponseRecorder, 2)
+	for i := range recs {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			recs[i] = f.do(http.MethodPost, "/api/roster/access-codes", "", "198.51.100.30", token, nil)
+		}()
+	}
+	wg.Wait()
+
+	issued := 0
+	for _, rec := range recs {
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("status = %d, want 201: %s", rec.Code, rec.Body)
+		}
+		var got []oapi.IssuedMemberCode
+		if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+			t.Fatal(err)
+		}
+		issued += len(got)
+	}
+	if issued != 8 {
+		t.Fatalf("codes handed out = %d, want 8 (one per member, across both calls)", issued)
+	}
+	var total, revoked int
+	if err := tdb.Super.QueryRow(ctx,
+		`SELECT count(*), count(revoked_at) FROM access_codes WHERE tenant_id = $1`, f.tenant).Scan(&total, &revoked); err != nil {
+		t.Fatal(err)
+	}
+	if total != 8 || revoked != 0 {
+		t.Fatalf("access_codes total=%d revoked=%d, want 8 and 0", total, revoked)
+	}
 }

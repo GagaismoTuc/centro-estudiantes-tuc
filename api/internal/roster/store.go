@@ -124,8 +124,10 @@ func (s *Store) Issue(ctx context.Context, sess auth.Session, memberID string) (
 		if !uuidPattern.MatchString(memberID) {
 			return ErrNotFound
 		}
+		if err := lockIssuance(ctx, tx, sess.TenantID); err != nil {
+			return err
+		}
 		var hasAccount bool
-		// FOR UPDATE serializes concurrent issuing for the same member.
 		err := tx.QueryRow(ctx, `
 			SELECT m.id::text, m.full_name, m.document_number,
 			       EXISTS (SELECT FROM memberships ms WHERE ms.roster_member_id = m.id)
@@ -145,10 +147,22 @@ func (s *Store) Issue(ctx context.Context, sess auth.Session, memberID string) (
 	return out, err
 }
 
+// lockIssuance serializes code issuing per tenant until the transaction ends. Row locks alone are not
+// enough: a concurrent bulk issue would not re-check "has an active code" after waiting and would revoke
+// codes the first call already returned. Under READ COMMITTED, every statement after the lock sees the
+// codes committed by the previous holder.
+func lockIssuance(ctx context.Context, tx pgx.Tx, tenant string) error {
+	_, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('access_codes:' || $1::text, 0))`, tenant)
+	return err
+}
+
 // IssueMissing gives a code to every member without an account and without an active code.
 func (s *Store) IssueMissing(ctx context.Context, sess auth.Session) ([]Issued, error) {
 	out := []Issued{}
 	err := s.asAdmin(ctx, sess, func(tx pgx.Tx) error {
+		if err := lockIssuance(ctx, tx, sess.TenantID); err != nil {
+			return err
+		}
 		rows, err := tx.Query(ctx, `
 			SELECT m.id::text, m.full_name, m.document_number FROM roster_members m
 			WHERE m.tenant_id = $1
