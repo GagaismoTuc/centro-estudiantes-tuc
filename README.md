@@ -18,7 +18,8 @@ Row-Level Security, and the same build runs as SaaS or on the customer's own ser
 
 ## Prerequisites
 
-Go 1.26, Node 26, pnpm 11 and Docker.
+Go 1.26, Node 26, pnpm 11 and Docker. A C compiler on `PATH` (on Windows, MinGW-w64 GCC) is needed only for
+cgo tooling such as `sqlc` and `go test -race`.
 
 ## Development
 
@@ -40,3 +41,17 @@ cd web && pnpm gen:api            # after editing openapi/openapi.yaml
 
 Change the API in `openapi/openapi.yaml` first, then regenerate both sides (`go generate ./...` in `api/`,
 `pnpm gen:api` in `web/`) and commit the generated files together with the change.
+
+## Frontend guidance
+
+UI work in `web/` follows Google Chrome's [Modern Web Guidance](https://github.com/GoogleChrome/modern-web-guidance-src):
+accessible, Baseline-aware patterns with small fallbacks instead of heavy libraries. Before building a UI
+pattern (form, dialog, select, navigation…), look up the guide and apply it:
+
+```sh
+npx modern-web-guidance@1.0.0 search "sign-in form with one-time code"   # find guide ids
+npx modern-web-guidance@1.0.0 retrieve autofill-sign-in-form             # read the guide
+npx modern-web-guidance@1.0.0 legacy-scan web/src                        # spot legacy patterns
+```
+
+The CLI runs offline and has no dependencies. Origin Trial and volatile features stay disabled (no `.mwgrc`).
