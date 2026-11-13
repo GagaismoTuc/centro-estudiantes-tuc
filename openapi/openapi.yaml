@@ -1,0 +1,28 @@
+openapi: 3.0.3
+info:
+  title: Centro de Estudiantes API
+  version: 0.1.0
+  description: Contract shared by the Go API (api/) and the web client (web/). Edit this file first, then regenerate both sides.
+servers:
+  - url: /api
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Liveness check
+      responses:
+        "200":
+          description: The service is running.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+components:
+  schemas:
+    Health:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok]

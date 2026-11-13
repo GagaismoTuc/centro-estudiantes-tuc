@@ -18,7 +18,7 @@ Branch: `feat/mvp-foundation` · Delivery: ask-on-risk, `chain_strategy=feature-
 ## Tasks
 
 - T1 — S1, S3 — inline — docs: MVP spec + ADR (README moves to T4) — done (commit below)
-- T2 — S4 — inline — OpenAPI contract + Go API skeleton with health endpoint (test-first) — pending
+- T2 — S4 — inline — OpenAPI contract + Go API skeleton with health endpoint (test-first) — done: RED `status = 404, want 200`, GREEN `go test ./...` ok, `go vet` clean
 - T3 — S2 — inline — migration with organizations/roster tables + RLS, tenant transaction helper, isolation tests (test-first, Docker) — pending
 - T4 — S4 — inline — web skeleton with generated client + compose.yaml — pending
 
