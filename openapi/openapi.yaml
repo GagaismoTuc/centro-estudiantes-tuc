@@ -39,11 +39,7 @@ paths:
               schema:
                 type: string
         "400":
-          description: The body is not a valid login request.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+          $ref: "#/components/responses/BadRequest"
         "401":
           description: Wrong email or password (always `invalid_credentials`).
           content:
@@ -92,10 +88,12 @@ paths:
       description: >
         No session needed. Creates the user, a `student` membership linked to the code's roster member,
         consumes the code and signs in (cookie as in login). Inputs are validated before any lookup:
-        email (at most 254 characters, stored lowercase), password (10 to 128 characters) and code
+        email (at most 254 characters, stored lowercase), password (10 to 128 characters, the rule shared
+        by bootstrap, claim and password reset) and code
         (12 Crockford base32 characters; case, spaces and hyphens are ignored). Unknown, used, revoked,
         expired and already-linked codes all get the same `invalid_code`. Every `invalid_code` counts
-        against a per-IP limit (10 per 15 minutes); further requests get 429. Responses carry
+        against a per-IP limit (10 per 15 minutes); further requests get 429. On success a
+        verification link is emailed to the new address (see `/auth/email/verify`). Responses carry
         `Cache-Control: no-store`.
       requestBody:
         required: true
@@ -165,6 +163,144 @@ paths:
                 $ref: "#/components/schemas/Error"
         "422":
           description: "`invalid_code`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          $ref: "#/components/responses/TooManyAttempts"
+  /auth/email/verification:
+    post:
+      operationId: postAuthEmailVerification
+      summary: Email a verification link to the signed-in user
+      description: >
+        Sends `{APP_BASE_URL}/verificar#token=...` (valid 48 hours) unless the email is already verified,
+        in which case nothing is sent and the response is the same. Issuing a link invalidates the
+        previous unused one. Shares the limit of the other mail requests (5 per 15 minutes per client IP
+        and per email). Responses carry `Cache-Control: no-store`.
+      responses:
+        "202":
+          description: Accepted; a link was sent if the email is not verified yet.
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "429":
+          $ref: "#/components/responses/TooManyAttempts"
+  /auth/email/verify:
+    post:
+      operationId: postAuthEmailVerify
+      summary: Confirm the email address with an emailed token
+      description: >
+        No session needed. Consumes a `verify_email` token and marks the email verified. Tokens are
+        single-use; unknown, used, expired and other-purpose tokens all get `invalid_token`, and each
+        counts against a per-IP limit (10 per 15 minutes, shared by every token endpoint). Responses
+        carry `Cache-Control: no-store`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TokenRequest"
+      responses:
+        "204":
+          description: Email verified.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "422":
+          $ref: "#/components/responses/InvalidToken"
+        "429":
+          $ref: "#/components/responses/TooManyAttempts"
+  /auth/link:
+    post:
+      operationId: postAuthLink
+      summary: Email a sign-in link
+      description: >
+        No session needed. Always 202 with the same response whether or not an account exists; only an
+        existing account gets `{APP_BASE_URL}/ingresar#token=...` (valid 15 minutes, single-use; issuing
+        one invalidates the previous). Limited to 5 requests per 15 minutes per client IP and per email,
+        shared with `/auth/password/reset-request` and `/auth/email/verification`. Responses carry
+        `Cache-Control: no-store`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmailRequest"
+      responses:
+        "202":
+          description: Accepted.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "429":
+          $ref: "#/components/responses/TooManyAttempts"
+  /auth/link/consume:
+    post:
+      operationId: postAuthLinkConsume
+      summary: Sign in with an emailed link
+      description: >
+        Consumes a `sign_in` token, marks the email verified (the link proves inbox access) and signs in
+        exactly like `/auth/login` (same cookie and active tenant). Same token rules and limit as
+        `/auth/email/verify`. Responses carry `Cache-Control: no-store`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TokenRequest"
+      responses:
+        "204":
+          description: Signed in; the session cookie is set.
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "422":
+          $ref: "#/components/responses/InvalidToken"
+        "429":
+          $ref: "#/components/responses/TooManyAttempts"
+  /auth/password/reset-request:
+    post:
+      operationId: postAuthPasswordResetRequest
+      summary: Email a password reset link
+      description: >
+        Same rules as `/auth/link`, but the link is `{APP_BASE_URL}/restablecer#token=...` (valid 30
+        minutes).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmailRequest"
+      responses:
+        "202":
+          description: Accepted.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "429":
+          $ref: "#/components/responses/TooManyAttempts"
+  /auth/password/reset:
+    post:
+      operationId: postAuthPasswordReset
+      summary: Set a new password with an emailed token
+      description: >
+        The password is checked first (10 to 128 characters): `weak_password` leaves the token usable.
+        Then consumes a `reset_password` token, stores the new password and deletes every session of
+        the user. Same token rules and limit as `/auth/email/verify`. Responses carry
+        `Cache-Control: no-store`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordResetRequest"
+      responses:
+        "204":
+          description: Password changed; every session of the user was signed out.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "422":
+          description: "`weak_password` or `invalid_token`."
           content:
             application/json:
               schema:
@@ -307,7 +443,13 @@ components:
           schema:
             $ref: "#/components/schemas/Error"
     TooManyAttempts:
-      description: Too many invalid codes from this client (`too_many_attempts`).
+      description: Too many attempts from this client or for this email (`too_many_attempts`).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    InvalidToken:
+      description: The token is unknown, used, expired or for another purpose (`invalid_token`).
       content:
         application/json:
           schema:
@@ -341,6 +483,7 @@ components:
     LoginRequest:
       type: object
       required: [email, password]
+      additionalProperties: false
       properties:
         email:
           type: string
@@ -356,6 +499,33 @@ components:
         email:
           type: string
           maxLength: 254
+        password:
+          type: string
+          minLength: 10
+          maxLength: 128
+    EmailRequest:
+      type: object
+      required: [email]
+      additionalProperties: false
+      properties:
+        email:
+          type: string
+          maxLength: 254
+    TokenRequest:
+      type: object
+      required: [token]
+      additionalProperties: false
+      properties:
+        token:
+          type: string
+          description: The value after `#token=` in the emailed link.
+    PasswordResetRequest:
+      type: object
+      required: [token, password]
+      additionalProperties: false
+      properties:
+        token:
+          type: string
         password:
           type: string
           minLength: 10

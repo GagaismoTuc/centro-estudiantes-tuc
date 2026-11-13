@@ -45,6 +45,21 @@ trendy one, and chose: "Podemos hacer el backend con Go y frontend con typescrip
    or is not a member of `ce_app`.
 10. Foreign keys between tenant-owned tables include `tenant_id` (composite), because FK checks bypass RLS.
 
+### Emailed token rules
+
+1. Verification, sign-in and password-reset links carry a token of 32 random bytes; only its SHA-256 is stored
+   (`email_tokens`, platform-level like `sessions`). Each token has one purpose and works only for it.
+2. Tokens are single-use and short-lived (verify 48 h, sign-in 15 min, reset 30 min). Issuing one marks the
+   user's previous unused token of the same purpose as used. The app role may only insert tokens and set
+   `used_at`; it cannot delete them or change anything else.
+3. The token travels in the URL fragment (`/ingresar#token=…`), so it never reaches server logs, proxies or
+   `Referer`. It is never logged, not even when sending fails.
+4. Requests for a link answer the same whether or not the account exists, and are rate limited per IP and per
+   email; invalid tokens are rate limited per IP. Mail is sent after the transaction commits, off the request
+   path, and a failed send never undoes the change.
+5. A password reset revokes every session of the user. One password rule (10 to 128 characters) applies to
+   bootstrap, claim and reset.
+
 ## Alternatives considered
 
 - **Django + PostgreSQL + HTMX.** Strong secure defaults and an admin panel; rejected in favour of the owner's

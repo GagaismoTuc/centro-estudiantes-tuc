@@ -56,6 +56,11 @@ type ClaimRequest struct {
 	Password string `json:"password"`
 }
 
+// EmailRequest defines model for EmailRequest.
+type EmailRequest struct {
+	Email string `json:"email"`
+}
+
 // Error defines model for Error.
 type Error struct {
 	Error string `json:"error"`
@@ -114,6 +119,12 @@ type Me struct {
 	UserId   string  `json:"userId"`
 }
 
+// PasswordResetRequest defines model for PasswordResetRequest.
+type PasswordResetRequest struct {
+	Password string `json:"password"`
+	Token    string `json:"token"`
+}
+
 // RedeemRequest defines model for RedeemRequest.
 type RedeemRequest struct {
 	Code string `json:"code"`
@@ -139,11 +150,20 @@ type RowError struct {
 	Reason string `json:"reason"`
 }
 
+// TokenRequest defines model for TokenRequest.
+type TokenRequest struct {
+	// Token The value after `#token=` in the emailed link.
+	Token string `json:"token"`
+}
+
 // BadRequest defines model for BadRequest.
 type BadRequest = Error
 
 // Forbidden defines model for Forbidden.
 type Forbidden = Error
+
+// InvalidToken defines model for InvalidToken.
+type InvalidToken = Error
 
 // TooManyAttempts defines model for TooManyAttempts.
 type TooManyAttempts = Error
@@ -154,8 +174,23 @@ type Unauthenticated = Error
 // PostAuthClaimJSONRequestBody defines body for PostAuthClaim for application/json ContentType.
 type PostAuthClaimJSONRequestBody = ClaimRequest
 
+// PostAuthEmailVerifyJSONRequestBody defines body for PostAuthEmailVerify for application/json ContentType.
+type PostAuthEmailVerifyJSONRequestBody = TokenRequest
+
+// PostAuthLinkJSONRequestBody defines body for PostAuthLink for application/json ContentType.
+type PostAuthLinkJSONRequestBody = EmailRequest
+
+// PostAuthLinkConsumeJSONRequestBody defines body for PostAuthLinkConsume for application/json ContentType.
+type PostAuthLinkConsumeJSONRequestBody = TokenRequest
+
 // PostAuthLoginJSONRequestBody defines body for PostAuthLogin for application/json ContentType.
 type PostAuthLoginJSONRequestBody = LoginRequest
+
+// PostAuthPasswordResetJSONRequestBody defines body for PostAuthPasswordReset for application/json ContentType.
+type PostAuthPasswordResetJSONRequestBody = PasswordResetRequest
+
+// PostAuthPasswordResetRequestJSONRequestBody defines body for PostAuthPasswordResetRequest for application/json ContentType.
+type PostAuthPasswordResetRequestJSONRequestBody = EmailRequest
 
 // PostAuthRedeemJSONRequestBody defines body for PostAuthRedeem for application/json ContentType.
 type PostAuthRedeemJSONRequestBody = RedeemRequest
@@ -165,6 +200,18 @@ type ServerInterface interface {
 	// PostAuthClaim Create an account with a school access code
 	// (POST /auth/claim)
 	PostAuthClaim(w http.ResponseWriter, r *http.Request)
+	// PostAuthEmailVerification Email a verification link to the signed-in user
+	// (POST /auth/email/verification)
+	PostAuthEmailVerification(w http.ResponseWriter, r *http.Request)
+	// PostAuthEmailVerify Confirm the email address with an emailed token
+	// (POST /auth/email/verify)
+	PostAuthEmailVerify(w http.ResponseWriter, r *http.Request)
+	// PostAuthLink Email a sign-in link
+	// (POST /auth/link)
+	PostAuthLink(w http.ResponseWriter, r *http.Request)
+	// PostAuthLinkConsume Sign in with an emailed link
+	// (POST /auth/link/consume)
+	PostAuthLinkConsume(w http.ResponseWriter, r *http.Request)
 	// PostAuthLogin Sign in with email and password
 	// (POST /auth/login)
 	PostAuthLogin(w http.ResponseWriter, r *http.Request)
@@ -174,6 +221,12 @@ type ServerInterface interface {
 	// GetAuthMe Current user
 	// (GET /auth/me)
 	GetAuthMe(w http.ResponseWriter, r *http.Request)
+	// PostAuthPasswordReset Set a new password with an emailed token
+	// (POST /auth/password/reset)
+	PostAuthPasswordReset(w http.ResponseWriter, r *http.Request)
+	// PostAuthPasswordResetRequest Email a password reset link
+	// (POST /auth/password/reset-request)
+	PostAuthPasswordResetRequest(w http.ResponseWriter, r *http.Request)
 	// PostAuthRedeem Add a school to the signed-in account with an access code
 	// (POST /auth/redeem)
 	PostAuthRedeem(w http.ResponseWriter, r *http.Request)
@@ -217,6 +270,62 @@ func (siw *ServerInterfaceWrapper) PostAuthClaim(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// PostAuthEmailVerification operation middleware
+func (siw *ServerInterfaceWrapper) PostAuthEmailVerification(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostAuthEmailVerification(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostAuthEmailVerify operation middleware
+func (siw *ServerInterfaceWrapper) PostAuthEmailVerify(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostAuthEmailVerify(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostAuthLink operation middleware
+func (siw *ServerInterfaceWrapper) PostAuthLink(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostAuthLink(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostAuthLinkConsume operation middleware
+func (siw *ServerInterfaceWrapper) PostAuthLinkConsume(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostAuthLinkConsume(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // PostAuthLogin operation middleware
 func (siw *ServerInterfaceWrapper) PostAuthLogin(w http.ResponseWriter, r *http.Request) {
 
@@ -250,6 +359,34 @@ func (siw *ServerInterfaceWrapper) GetAuthMe(w http.ResponseWriter, r *http.Requ
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetAuthMe(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostAuthPasswordReset operation middleware
+func (siw *ServerInterfaceWrapper) PostAuthPasswordReset(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostAuthPasswordReset(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostAuthPasswordResetRequest operation middleware
+func (siw *ServerInterfaceWrapper) PostAuthPasswordResetRequest(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostAuthPasswordResetRequest(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -481,6 +618,12 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/auth/me", wrapper.GetAuthMe)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/claim", wrapper.PostAuthClaim)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/redeem", wrapper.PostAuthRedeem)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/email/verification", wrapper.PostAuthEmailVerification)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/email/verify", wrapper.PostAuthEmailVerify)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/link", wrapper.PostAuthLink)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/link/consume", wrapper.PostAuthLinkConsume)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/password/reset-request", wrapper.PostAuthPasswordResetRequest)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/password/reset", wrapper.PostAuthPasswordReset)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/roster", wrapper.GetRoster)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/roster/import", wrapper.PostRosterImport)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/roster/{memberId}/access-code", wrapper.PostRosterMemberAccessCode)

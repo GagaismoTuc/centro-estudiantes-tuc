@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -29,12 +30,23 @@ var (
 	ErrNoSession = errors.New("auth: no session")
 	// ErrEmailTaken is returned when an account with the same email (case-insensitive) exists.
 	ErrEmailTaken = errors.New("auth: email already registered")
-	// ErrWeakPassword is returned for passwords shorter than MinPasswordLen.
-	ErrWeakPassword = fmt.Errorf("auth: password must have at least %d characters", MinPasswordLen)
+	// ErrWeakPassword is returned by ValidatePassword.
+	ErrWeakPassword = fmt.Errorf("auth: password must have %d to %d characters", MinPasswordLen, MaxPasswordLen)
 )
 
-// MinPasswordLen is the minimum length, in characters, of a new password.
-const MinPasswordLen = 12
+// Length limits, in characters (Unicode code points), of every new password: bootstrap, claim and reset.
+const (
+	MinPasswordLen = 10
+	MaxPasswordLen = 128
+)
+
+// ValidatePassword is the one rule for new passwords; it returns ErrWeakPassword or nil.
+func ValidatePassword(password string) error {
+	if n := utf8.RuneCountInString(password); n < MinPasswordLen || n > MaxPasswordLen {
+		return ErrWeakPassword
+	}
+	return nil
+}
 
 // Session is a signed-in user. TenantID is empty when the user has no membership.
 type Session struct {
@@ -199,8 +211,8 @@ func (s *Store) Role(ctx context.Context, sess Session) (string, error) {
 
 // Bootstrap creates a school, its first user and a school_admin membership in one transaction.
 func (s *Store) Bootstrap(ctx context.Context, orgName, email, password string) (orgID string, err error) {
-	if len([]rune(password)) < MinPasswordLen {
-		return "", ErrWeakPassword
+	if err := ValidatePassword(password); err != nil {
+		return "", err
 	}
 	hash, err := HashPassword(password)
 	if err != nil {

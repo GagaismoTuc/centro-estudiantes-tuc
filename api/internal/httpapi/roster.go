@@ -81,7 +81,7 @@ func (s *server) PostRosterImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_request")
+		writeError(w, http.StatusBadRequest, "bad_request")
 		return
 	}
 	inserted, skipped, err := s.roster.Import(r.Context(), sess, data)

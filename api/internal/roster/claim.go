@@ -25,6 +25,7 @@ var (
 type Claimed struct {
 	UserID, TenantID string
 	Token            string // new session token; set by Claim only
+	VerifyToken      string // verify_email token to send to the new account; set by Claim only
 }
 
 // useCode runs fn in one transaction holding the live code row locked, with the code's tenant
@@ -91,7 +92,10 @@ func (s *Store) Claim(ctx context.Context, code, email, password string) (Claime
 			return err
 		}
 		out.TenantID = tenant
-		out.Token, err = auth.InsertSession(ctx, tx, out.UserID, &tenant, s.now())
+		if out.Token, err = auth.InsertSession(ctx, tx, out.UserID, &tenant, s.now()); err != nil {
+			return err
+		}
+		out.VerifyToken, err = auth.IssueEmailToken(ctx, tx, out.UserID, auth.PurposeVerifyEmail, s.now())
 		return err
 	})
 	return out, mapClaimError(err)

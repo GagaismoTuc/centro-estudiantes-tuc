@@ -89,7 +89,7 @@ export interface paths {
         put?: never;
         /**
          * Create an account with a school access code
-         * @description No session needed. Creates the user, a `student` membership linked to the code's roster member, consumes the code and signs in (cookie as in login). Inputs are validated before any lookup: email (at most 254 characters, stored lowercase), password (10 to 128 characters) and code (12 Crockford base32 characters; case, spaces and hyphens are ignored). Unknown, used, revoked, expired and already-linked codes all get the same `invalid_code`. Every `invalid_code` counts against a per-IP limit (10 per 15 minutes); further requests get 429. Responses carry `Cache-Control: no-store`.
+         * @description No session needed. Creates the user, a `student` membership linked to the code's roster member, consumes the code and signs in (cookie as in login). Inputs are validated before any lookup: email (at most 254 characters, stored lowercase), password (10 to 128 characters, the rule shared by bootstrap, claim and password reset) and code (12 Crockford base32 characters; case, spaces and hyphens are ignored). Unknown, used, revoked, expired and already-linked codes all get the same `invalid_code`. Every `invalid_code` counts against a per-IP limit (10 per 15 minutes); further requests get 429. On success a verification link is emailed to the new address (see `/auth/email/verify`). Responses carry `Cache-Control: no-store`.
          */
         post: operations["postAuthClaim"];
         delete?: never;
@@ -112,6 +112,126 @@ export interface paths {
          * @description Adds a `student` membership in the code's tenant linked to its roster member, consumes the code and makes that tenant the session's active tenant. Same code rules and rate limit as `/auth/claim`. Responses carry `Cache-Control: no-store`.
          */
         post: operations["postAuthRedeem"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/email/verification": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Email a verification link to the signed-in user
+         * @description Sends `{APP_BASE_URL}/verificar#token=...` (valid 48 hours) unless the email is already verified, in which case nothing is sent and the response is the same. Issuing a link invalidates the previous unused one. Shares the limit of the other mail requests (5 per 15 minutes per client IP and per email). Responses carry `Cache-Control: no-store`.
+         */
+        post: operations["postAuthEmailVerification"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/email/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm the email address with an emailed token
+         * @description No session needed. Consumes a `verify_email` token and marks the email verified. Tokens are single-use; unknown, used, expired and other-purpose tokens all get `invalid_token`, and each counts against a per-IP limit (10 per 15 minutes, shared by every token endpoint). Responses carry `Cache-Control: no-store`.
+         */
+        post: operations["postAuthEmailVerify"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Email a sign-in link
+         * @description No session needed. Always 202 with the same response whether or not an account exists; only an existing account gets `{APP_BASE_URL}/ingresar#token=...` (valid 15 minutes, single-use; issuing one invalidates the previous). Limited to 5 requests per 15 minutes per client IP and per email, shared with `/auth/password/reset-request` and `/auth/email/verification`. Responses carry `Cache-Control: no-store`.
+         */
+        post: operations["postAuthLink"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/link/consume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign in with an emailed link
+         * @description Consumes a `sign_in` token, marks the email verified (the link proves inbox access) and signs in exactly like `/auth/login` (same cookie and active tenant). Same token rules and limit as `/auth/email/verify`. Responses carry `Cache-Control: no-store`.
+         */
+        post: operations["postAuthLinkConsume"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/password/reset-request": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Email a password reset link
+         * @description Same rules as `/auth/link`, but the link is `{APP_BASE_URL}/restablecer#token=...` (valid 30 minutes).
+         */
+        post: operations["postAuthPasswordResetRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/password/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set a new password with an emailed token
+         * @description The password is checked first (10 to 128 characters): `weak_password` leaves the token usable. Then consumes a `reset_password` token, stores the new password and deletes every session of the user. Same token rules and limit as `/auth/email/verify`. Responses carry `Cache-Control: no-store`.
+         */
+        post: operations["postAuthPasswordReset"];
         delete?: never;
         options?: never;
         head?: never;
@@ -218,6 +338,17 @@ export interface components {
             email: string;
             password: string;
         };
+        EmailRequest: {
+            email: string;
+        };
+        TokenRequest: {
+            /** @description The value after `#token=` in the emailed link. */
+            token: string;
+        };
+        PasswordResetRequest: {
+            token: string;
+            password: string;
+        };
         RedeemRequest: {
             code: string;
         };
@@ -275,8 +406,17 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description Too many invalid codes from this client (`too_many_attempts`). */
+        /** @description Too many attempts from this client or for this email (`too_many_attempts`). */
         TooManyAttempts: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description The token is unknown, used, expired or for another purpose (`invalid_token`). */
+        InvalidToken: {
             headers: {
                 [name: string]: unknown;
             };
@@ -351,15 +491,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description The body is not a valid login request. */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
             /** @description Wrong email or password (always `invalid_credentials`). */
             401: {
                 headers: {
@@ -507,6 +639,158 @@ export interface operations {
                 };
             };
             /** @description `invalid_code`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            429: components["responses"]["TooManyAttempts"];
+        };
+    };
+    postAuthEmailVerification: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accepted; a link was sent if the email is not verified yet. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            429: components["responses"]["TooManyAttempts"];
+        };
+    };
+    postAuthEmailVerify: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TokenRequest"];
+            };
+        };
+        responses: {
+            /** @description Email verified. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            422: components["responses"]["InvalidToken"];
+            429: components["responses"]["TooManyAttempts"];
+        };
+    };
+    postAuthLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmailRequest"];
+            };
+        };
+        responses: {
+            /** @description Accepted. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            429: components["responses"]["TooManyAttempts"];
+        };
+    };
+    postAuthLinkConsume: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TokenRequest"];
+            };
+        };
+        responses: {
+            /** @description Signed in; the session cookie is set. */
+            204: {
+                headers: {
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            422: components["responses"]["InvalidToken"];
+            429: components["responses"]["TooManyAttempts"];
+        };
+    };
+    postAuthPasswordResetRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmailRequest"];
+            };
+        };
+        responses: {
+            /** @description Accepted. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            429: components["responses"]["TooManyAttempts"];
+        };
+    };
+    postAuthPasswordReset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordResetRequest"];
+            };
+        };
+        responses: {
+            /** @description Password changed; every session of the user was signed out. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            /** @description `weak_password` or `invalid_token`. */
             422: {
                 headers: {
                     [name: string]: unknown;

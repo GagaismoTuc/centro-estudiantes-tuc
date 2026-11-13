@@ -66,3 +66,25 @@ func TestVerifyPasswordRejectsMalformedHash(t *testing.T) {
 		})
 	}
 }
+
+// One rule for bootstrap, claim and reset: 10 to 128 characters, counted as Unicode code points.
+func TestValidatePassword(t *testing.T) {
+	for _, tc := range []struct {
+		pw   string
+		want error
+	}{
+		{"123456789", auth.ErrWeakPassword},
+		{strings.Repeat("ñ", 9), auth.ErrWeakPassword},
+		{"1234567890", nil},
+		{strings.Repeat("ñ", 10), nil},
+		{strings.Repeat("a", 128), nil},
+		{strings.Repeat("a", 129), auth.ErrWeakPassword},
+	} {
+		if got := auth.ValidatePassword(tc.pw); got != tc.want {
+			t.Errorf("ValidatePassword(%d runes) = %v, want %v", len([]rune(tc.pw)), got, tc.want)
+		}
+	}
+	if auth.MinPasswordLen != 10 {
+		t.Fatalf("MinPasswordLen = %d, want 10", auth.MinPasswordLen)
+	}
+}

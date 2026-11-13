@@ -67,12 +67,14 @@ type fixture struct {
 	clk    *fakeClock
 	h      http.Handler
 	tenant string
+	mail   *fakeMail
 }
 
 func newFixture(t *testing.T, ctx context.Context) *fixture {
 	t.Helper()
-	f := &fixture{clk: &fakeClock{t: time.Date(2026, 11, 13, 12, 0, 0, 0, time.UTC)}}
-	f.h = httpapi.NewRouter(httpapi.Deps{Pool: tdb.App, Now: f.clk.Now, AccessCodeKey: testKey})
+	f := &fixture{clk: &fakeClock{t: time.Date(2026, 11, 13, 12, 0, 0, 0, time.UTC)}, mail: &fakeMail{}}
+	f.h = httpapi.NewRouter(httpapi.Deps{Pool: tdb.App, Now: f.clk.Now, AccessCodeKey: testKey,
+		Mail: f.mail, BaseURL: baseURL, Background: func(fn func()) { fn() }})
 	if err := tdb.Super.QueryRow(ctx,
 		`INSERT INTO organizations (kind, name) VALUES ('school', $1) RETURNING id::text`, t.Name()).Scan(&f.tenant); err != nil {
 		t.Fatal(err)
@@ -230,7 +232,7 @@ func TestLoginRejectsMalformedBody(t *testing.T) {
 	ctx := integration(t)
 	f := newFixture(t, ctx)
 	rec := f.do(http.MethodPost, "/api/auth/login", `{"email":`, "198.51.100.3", "", nil)
-	wantResponse(t, rec, http.StatusBadRequest, `{"error":"invalid_request"}`)
+	wantResponse(t, rec, http.StatusBadRequest, `{"error":"bad_request"}`)
 }
 
 func TestLoginIsRateLimitedPerEmailAndPerIP(t *testing.T) {
