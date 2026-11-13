@@ -65,6 +65,21 @@ func NormalizeCode(s string) string {
 	return b.String()
 }
 
+// ValidCode reports whether code, after NormalizeCode, has the shape of an issued code: 12 characters
+// of Crockford's alphabet.
+func ValidCode(code string) bool {
+	n := NormalizeCode(code)
+	if len(n) != codeLen {
+		return false
+	}
+	for _, r := range n {
+		if !strings.ContainsRune(crockford, r) {
+			return false
+		}
+	}
+	return true
+}
+
 // HashCode returns HMAC-SHA256(key, NormalizeCode(code)), the only form of a code that is stored.
 func HashCode(key []byte, code string) []byte {
 	m := hmac.New(sha256.New, key)

@@ -4,6 +4,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"regexp"
@@ -21,6 +22,9 @@ var ErrInvalidTenantID = errors.New("db: tenant id must be a UUID")
 
 // ErrInvalidUserID is returned by WithUser when the user id is not a UUID.
 var ErrInvalidUserID = errors.New("db: user id must be a UUID")
+
+// ErrInvalidCodeHash is returned by WithCodeHash when the hash is not 32 bytes (HMAC-SHA256).
+var ErrInvalidCodeHash = errors.New("db: code hash must be 32 bytes")
 
 var uuidPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
@@ -58,8 +62,37 @@ func WithTenant(ctx context.Context, pool *pgxpool.Pool, tenantID string, fn fun
 		return ErrInvalidTenantID
 	}
 	return pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
-		if _, err := tx.Exec(ctx, `SELECT set_config('app.tenant_id', $1, true)`, tenantID); err != nil {
-			return fmt.Errorf("db: set tenant: %w", err)
+		if err := SetTenant(ctx, tx, tenantID); err != nil {
+			return err
+		}
+		return fn(tx)
+	})
+}
+
+// SetTenant declares tenantID in the transaction-local app.tenant_id of tx. Besides WithTenant, only
+// code running inside WithCodeHash may call it, and only with the tenant of the code row it just
+// found: that is how claiming a code may write the new membership.
+func SetTenant(ctx context.Context, tx pgx.Tx, tenantID string) error {
+	if !uuidPattern.MatchString(tenantID) {
+		return ErrInvalidTenantID
+	}
+	if _, err := tx.Exec(ctx, `SELECT set_config('app.tenant_id', $1, true)`, tenantID); err != nil {
+		return fmt.Errorf("db: set tenant: %w", err)
+	}
+	return nil
+}
+
+// WithCodeHash runs fn inside a transaction that declares hash (HMAC of an access code) through the
+// transaction-local app.code_hash setting. The access_codes_holder_* policies then expose that one
+// code row, for SELECT and UPDATE only, so a code can be looked up before any tenant is known. Only
+// WithCodeHash writes app.code_hash.
+func WithCodeHash(ctx context.Context, pool *pgxpool.Pool, hash []byte, fn func(pgx.Tx) error) error {
+	if len(hash) != 32 {
+		return ErrInvalidCodeHash
+	}
+	return pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `SELECT set_config('app.code_hash', $1, true)`, hex.EncodeToString(hash)); err != nil {
+			return fmt.Errorf("db: set code hash: %w", err)
 		}
 		return fn(tx)
 	})

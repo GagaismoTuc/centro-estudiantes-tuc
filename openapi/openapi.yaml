@@ -85,6 +85,92 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /auth/claim:
+    post:
+      operationId: postAuthClaim
+      summary: Create an account with a school access code
+      description: >
+        No session needed. Creates the user, a `student` membership linked to the code's roster member,
+        consumes the code and signs in (cookie as in login). Inputs are validated before any lookup:
+        email (at most 254 characters, stored lowercase), password (10 to 128 characters) and code
+        (12 Crockford base32 characters; case, spaces and hyphens are ignored). Unknown, used, revoked,
+        expired and already-linked codes all get the same `invalid_code`. Every `invalid_code` counts
+        against a per-IP limit (10 per 15 minutes); further requests get 429. Responses carry
+        `Cache-Control: no-store`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClaimRequest"
+      responses:
+        "201":
+          description: Account created and signed in; the session cookie is set.
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Me"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          description: >
+            An account with this email exists (`email_in_use`); nothing changed and the code stays usable.
+            Sign in and use `/auth/redeem` instead.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: "`invalid_email`, `weak_password` or `invalid_code`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          $ref: "#/components/responses/TooManyAttempts"
+  /auth/redeem:
+    post:
+      operationId: postAuthRedeem
+      summary: Add a school to the signed-in account with an access code
+      description: >
+        Adds a `student` membership in the code's tenant linked to its roster member, consumes the code
+        and makes that tenant the session's active tenant. Same code rules and rate limit as `/auth/claim`.
+        Responses carry `Cache-Control: no-store`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RedeemRequest"
+      responses:
+        "200":
+          description: Membership added; the session now points at the code's tenant.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Me"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "409":
+          description: The user already belongs to the code's tenant (`already_member`); the code stays usable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: "`invalid_code`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          $ref: "#/components/responses/TooManyAttempts"
   /roster:
     get:
       operationId: getRoster
@@ -214,6 +300,18 @@ paths:
           $ref: "#/components/responses/Forbidden"
 components:
   responses:
+    BadRequest:
+      description: Body is not JSON, has unknown fields or trailing data, or exceeds 4 KiB (`bad_request`).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    TooManyAttempts:
+      description: Too many invalid codes from this client (`too_many_attempts`).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
     Unauthenticated:
       description: No valid session (`unauthenticated`).
       content:
@@ -247,6 +345,27 @@ components:
         email:
           type: string
         password:
+          type: string
+    ClaimRequest:
+      type: object
+      required: [code, email, password]
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+        email:
+          type: string
+          maxLength: 254
+        password:
+          type: string
+          minLength: 10
+          maxLength: 128
+    RedeemRequest:
+      type: object
+      required: [code]
+      additionalProperties: false
+      properties:
+        code:
           type: string
     Role:
       type: string

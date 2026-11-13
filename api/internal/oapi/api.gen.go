@@ -49,6 +49,13 @@ func (e Role) Valid() bool {
 	}
 }
 
+// ClaimRequest defines model for ClaimRequest.
+type ClaimRequest struct {
+	Code     string `json:"code"`
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
 // Error defines model for Error.
 type Error struct {
 	Error string `json:"error"`
@@ -107,6 +114,11 @@ type Me struct {
 	UserId   string  `json:"userId"`
 }
 
+// RedeemRequest defines model for RedeemRequest.
+type RedeemRequest struct {
+	Code string `json:"code"`
+}
+
 // Role defines model for Role.
 type Role string
 
@@ -127,17 +139,32 @@ type RowError struct {
 	Reason string `json:"reason"`
 }
 
+// BadRequest defines model for BadRequest.
+type BadRequest = Error
+
 // Forbidden defines model for Forbidden.
 type Forbidden = Error
+
+// TooManyAttempts defines model for TooManyAttempts.
+type TooManyAttempts = Error
 
 // Unauthenticated defines model for Unauthenticated.
 type Unauthenticated = Error
 
+// PostAuthClaimJSONRequestBody defines body for PostAuthClaim for application/json ContentType.
+type PostAuthClaimJSONRequestBody = ClaimRequest
+
 // PostAuthLoginJSONRequestBody defines body for PostAuthLogin for application/json ContentType.
 type PostAuthLoginJSONRequestBody = LoginRequest
 
+// PostAuthRedeemJSONRequestBody defines body for PostAuthRedeem for application/json ContentType.
+type PostAuthRedeemJSONRequestBody = RedeemRequest
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// PostAuthClaim Create an account with a school access code
+	// (POST /auth/claim)
+	PostAuthClaim(w http.ResponseWriter, r *http.Request)
 	// PostAuthLogin Sign in with email and password
 	// (POST /auth/login)
 	PostAuthLogin(w http.ResponseWriter, r *http.Request)
@@ -147,6 +174,9 @@ type ServerInterface interface {
 	// GetAuthMe Current user
 	// (GET /auth/me)
 	GetAuthMe(w http.ResponseWriter, r *http.Request)
+	// PostAuthRedeem Add a school to the signed-in account with an access code
+	// (POST /auth/redeem)
+	PostAuthRedeem(w http.ResponseWriter, r *http.Request)
 	// GetHealth Liveness check
 	// (GET /health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
@@ -172,6 +202,20 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// PostAuthClaim operation middleware
+func (siw *ServerInterfaceWrapper) PostAuthClaim(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostAuthClaim(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // PostAuthLogin operation middleware
 func (siw *ServerInterfaceWrapper) PostAuthLogin(w http.ResponseWriter, r *http.Request) {
@@ -206,6 +250,20 @@ func (siw *ServerInterfaceWrapper) GetAuthMe(w http.ResponseWriter, r *http.Requ
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetAuthMe(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostAuthRedeem operation middleware
+func (siw *ServerInterfaceWrapper) PostAuthRedeem(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostAuthRedeem(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -421,6 +479,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/login", wrapper.PostAuthLogin)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/logout", wrapper.PostAuthLogout)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/auth/me", wrapper.GetAuthMe)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/claim", wrapper.PostAuthClaim)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/redeem", wrapper.PostAuthRedeem)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/roster", wrapper.GetRoster)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/roster/import", wrapper.PostRosterImport)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/roster/{memberId}/access-code", wrapper.PostRosterMemberAccessCode)
