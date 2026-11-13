@@ -238,6 +238,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/mfa/enrollment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start (or restart) TOTP enrollment
+         * @description Creates a new random TOTP secret (20 bytes; RFC 6238, HMAC-SHA1, 6 digits, 30 s) for the signed-in user and returns it once, as base32 without padding and as an `otpauth://` URI for a QR code. The secret is stored encrypted (AES-256-GCM). Calling again before confirming replaces the pending secret. Users with a confirmed TOTP get 409 `already_enrolled` (an operator resets it with `admin reset-mfa`). Responses carry `Cache-Control: no-store`.
+         */
+        post: operations["postAuthMfaEnrollment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/mfa/enrollment/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm TOTP enrollment with a first code
+         * @description Checks a code of the pending secret (one step of drift accepted). On success the TOTP is confirmed, 10 single-use recovery codes are returned once (`XXXXX-XXXXX`, only their SHA-256 is stored) and the session is rotated into a two-factor session (new `__Host-session` cookie, same attributes as login; the previous session is deleted). Wrong codes and confirming without a pending secret get `invalid_code`. Failures share the per-user limit of `/auth/mfa/verify` (5 per 15 minutes); further attempts get 429. Responses carry `Cache-Control: no-store`.
+         */
+        post: operations["postAuthMfaEnrollmentConfirm"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/mfa/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Complete two-factor sign-in
+         * @description Send exactly one of `code` (6 digits from the authenticator app; one step of drift accepted) or `recoveryCode` (single-use; case, spaces and hyphens ignored). On success the session is rotated into a two-factor session: a new `__Host-session` cookie with the same attributes as login, and the previous session row is deleted. A code whose time step was already used, a used recovery code, a wrong code and a user without confirmed TOTP all get the same `invalid_code`. Failures are limited per user (5 per 15 minutes, shared with enrollment confirmation); further attempts get 429. Responses carry `Cache-Control: no-store`.
+         */
+        post: operations["postAuthMfaVerify"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/roster": {
         parameters: {
             query?: never;
@@ -247,7 +307,7 @@ export interface paths {
         };
         /**
          * List the roster of the active tenant
-         * @description School admins only. Responses carry `Cache-Control: no-store` (personal data).
+         * @description School admins with a two-factor session only. Responses carry `Cache-Control: no-store` (personal data).
          */
         get: operations["getRoster"];
         put?: never;
@@ -269,7 +329,7 @@ export interface paths {
         put?: never;
         /**
          * Import roster members from CSV
-         * @description School admins only. The body is CSV (max 1 MiB, max 5000 data rows) whose first line is the header `full_name,document_number` (case-insensitive, trimmed). `document_number` must have 7 to 9 digits after removing dots and spaces. The import is atomic: any invalid row or a document number repeated in the file writes nothing. Rows whose document number already exists in the tenant are skipped, never updated.
+         * @description School admins with a two-factor session only. The body is CSV (max 1 MiB, max 5000 data rows) whose first line is the header `full_name,document_number` (case-insensitive, trimmed). `document_number` must have 7 to 9 digits after removing dots and spaces. The import is atomic: any invalid row or a document number repeated in the file writes nothing. Rows whose document number already exists in the tenant are skipped, never updated.
          */
         post: operations["postRosterImport"];
         delete?: never;
@@ -289,7 +349,7 @@ export interface paths {
         put?: never;
         /**
          * Issue an access code for one roster member
-         * @description School admins only. Returns the code in plain text once (`Cache-Control: no-store`); only its HMAC is stored. The code expires after 30 days and revokes the member's previous unused code.
+         * @description School admins with a two-factor session only. Returns the code in plain text once (`Cache-Control: no-store`); only its HMAC is stored. The code expires after 30 days and revokes the member's previous unused code.
          */
         post: operations["postRosterMemberAccessCode"];
         delete?: never;
@@ -309,7 +369,7 @@ export interface paths {
         put?: never;
         /**
          * Issue codes for every member without an account and without an active code
-         * @description School admins only. Codes are shown once, for printing (`Cache-Control: no-store`).
+         * @description School admins with a two-factor session only. Codes are shown once, for printing (`Cache-Control: no-store`).
          */
         post: operations["postRosterAccessCodes"];
         delete?: never;
@@ -354,6 +414,28 @@ export interface components {
         };
         /** @enum {string} */
         Role: "school_admin" | "officer" | "student";
+        /**
+         * @description Two-factor state of the session, computed from the role in the active tenant. `not_required`: student or no membership. `enrollment_required`: school admin or officer without a confirmed TOTP. `pending`: confirmed TOTP but this session has not verified it. `satisfied`: this session verified a code. Endpoints for school admins and officers answer 403 `mfa_required` unless `satisfied`.
+         * @enum {string}
+         */
+        MfaState: "not_required" | "enrollment_required" | "pending" | "satisfied";
+        MfaEnrollment: {
+            /** @description Base32 (no padding) of the 20-byte secret, for manual entry. Shown once. */
+            secret: string;
+            /** @description `otpauth://totp/Centro%20de%20Estudiantes:<email>?secret=...&issuer=Centro%20de%20Estudiantes` */
+            otpauthUri: string;
+        };
+        MfaCodeRequest: {
+            code: string;
+        };
+        /** @description Exactly one of `code` and `recoveryCode`; otherwise 400 `bad_request`. */
+        MfaVerifyRequest: {
+            code?: string;
+            recoveryCode?: string;
+        };
+        RecoveryCodes: {
+            recoveryCodes: string[];
+        };
         Me: {
             userId: string;
             email: string;
@@ -361,6 +443,8 @@ export interface components {
             tenantId: string | null;
             /** @description Role in the active tenant; null when the user has no membership. */
             role: components["schemas"]["Role"] | null;
+            emailVerified: boolean;
+            mfa: components["schemas"]["MfaState"];
         };
         RosterMember: {
             id: string;
@@ -424,6 +508,15 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
+        /** @description Wrong, reused or unknown code (`invalid_code`). */
+        InvalidMfaCode: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
         /** @description No valid session (`unauthenticated`). */
         Unauthenticated: {
             headers: {
@@ -433,7 +526,7 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description The user is not a school admin of the active tenant (`forbidden`). */
+        /** @description The user is not a school admin of the active tenant (`forbidden`), or is one but the session has not completed two-factor authentication (`mfa_required`; see `mfa` in `/auth/me`). Nothing is read or written. */
         Forbidden: {
             headers: {
                 [name: string]: unknown;
@@ -799,6 +892,101 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            429: components["responses"]["TooManyAttempts"];
+        };
+    };
+    postAuthMfaEnrollment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Pending secret created. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MfaEnrollment"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description The user already has a confirmed TOTP (`already_enrolled`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    postAuthMfaEnrollmentConfirm: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MfaCodeRequest"];
+            };
+        };
+        responses: {
+            /** @description Enrollment confirmed; the rotated session cookie is set. */
+            200: {
+                headers: {
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecoveryCodes"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            /** @description The TOTP is already confirmed (`already_enrolled`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            422: components["responses"]["InvalidMfaCode"];
+            429: components["responses"]["TooManyAttempts"];
+        };
+    };
+    postAuthMfaVerify: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MfaVerifyRequest"];
+            };
+        };
+        responses: {
+            /** @description Verified; the rotated session cookie is set. */
+            204: {
+                headers: {
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            422: components["responses"]["InvalidMfaCode"];
             429: components["responses"]["TooManyAttempts"];
         };
     };

@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"flag"
 	"os"
 	"strings"
@@ -131,5 +132,80 @@ func TestBootstrapUsageErrorsCreateNothing(t *testing.T) {
 	}
 	if o, u, m := counts(t, ctx); o != orgs || u != users || m != members {
 		t.Fatalf("counts changed to %d/%d/%d, want %d/%d/%d", o, u, m, orgs, users, members)
+	}
+}
+
+// seedMFAUser creates a user with a confirmed TOTP, two recovery codes and two sessions.
+func seedMFAUser(t *testing.T, ctx context.Context, email string) string {
+	t.Helper()
+	var id string
+	if err := tdb.Super.QueryRow(ctx, `INSERT INTO users (email, password_hash) VALUES ($1, 'x') RETURNING id::text`, email).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	if _, err := tdb.Super.Exec(ctx, `INSERT INTO user_totp (user_id, secret_enc, confirmed_at, last_used_step)
+		VALUES ($1, $2, $3, 1)`, id, make([]byte, 48), now); err != nil {
+		t.Fatal(err)
+	}
+	for i := range 2 {
+		code := make([]byte, 32)
+		_, _ = rand.Read(code)
+		tok := make([]byte, 32)
+		_, _ = rand.Read(tok)
+		if _, err := tdb.Super.Exec(ctx, `INSERT INTO recovery_codes (user_id, code_hash) VALUES ($1, $2)`, id, code); err != nil {
+			t.Fatal(err)
+		}
+		var mfaAt *time.Time // one two-factor session, one pending
+		if i == 0 {
+			mfaAt = &now
+		}
+		if _, err := tdb.Super.Exec(ctx, `INSERT INTO sessions (token_hash, user_id, created_at, expires_at, mfa_at)
+			VALUES ($1, $2, $3, $4, $5)`, tok, id, now, now.Add(time.Hour), mfaAt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return id
+}
+
+// mfaRows counts a user's user_totp, recovery_codes and sessions rows.
+func mfaRows(t *testing.T, ctx context.Context, user string) [3]int {
+	t.Helper()
+	var n [3]int
+	if err := tdb.Super.QueryRow(ctx, `SELECT (SELECT count(*) FROM user_totp WHERE user_id = $1),
+		(SELECT count(*) FROM recovery_codes WHERE user_id = $1), (SELECT count(*) FROM sessions WHERE user_id = $1)`,
+		user).Scan(&n[0], &n[1], &n[2]); err != nil {
+		t.Fatal(err)
+	}
+	return n
+}
+
+func TestResetMFADeletesTOTPRecoveryCodesAndSessions(t *testing.T) {
+	ctx := integration(t)
+	suffix := strings.ToLower(rand.Text())
+	lost := seedMFAUser(t, ctx, "perdio-"+suffix+"@example.com")
+	other := seedMFAUser(t, ctx, "otro-"+suffix+"@example.com")
+
+	code, stdout, stderr := runCLI("", "reset-mfa", "--email", " Perdio-"+strings.ToUpper(suffix)+"@Example.com ")
+	if code != 0 || stderr != "" || stdout != "reset two-factor authentication of perdio-"+suffix+"@example.com and signed out its sessions\n" {
+		t.Fatalf("exit=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+	if n := mfaRows(t, ctx, lost); n != [3]int{} {
+		t.Fatalf("totp/recovery/sessions = %v, want all 0", n)
+	}
+	if n := mfaRows(t, ctx, other); n != [3]int{1, 2, 2} {
+		t.Fatalf("other user's rows = %v, want untouched 1/2/2", n)
+	}
+
+	code, stdout, stderr = runCLI("", "reset-mfa", "--email", "nadie-"+suffix+"@example.com")
+	if code != 1 || stdout != "" || stderr != "admin: no account with that email\n" {
+		t.Fatalf("unknown email: exit=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+	for _, args := range [][]string{{"reset-mfa"}, {"reset-mfa", "--email", "x@example.com", "extra"}, {"reset-mfa", "--email", "sin-arroba"}} {
+		if code, stdout, stderr := runCLI("", args...); code != 2 || stdout != "" || !strings.Contains(stderr, "usage: admin") {
+			t.Fatalf("%v: exit=%d stdout=%q stderr=%q; want usage error", args, code, stdout, stderr)
+		}
+	}
+	if n := mfaRows(t, ctx, other); n != [3]int{1, 2, 2} {
+		t.Fatalf("other user's rows = %v after errors, want 1/2/2", n)
 	}
 }

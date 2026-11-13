@@ -27,8 +27,9 @@ func (f *fixture) redeem(code, token string) *httptest.ResponseRecorder {
 	return f.do(http.MethodPost, "/api/auth/redeem", fmt.Sprintf(`{"code":%q}`, code), "192.0.2.90", token, nil)
 }
 
-func meBody(user, email, tenant, role string) string {
-	return fmt.Sprintf(`{"email":"%s","role":"%s","tenantId":"%s","userId":"%s"}`, email, role, tenant, user)
+func meBody(user, email, tenant, role, mfa string, verified bool) string {
+	return fmt.Sprintf(`{"email":"%s","emailVerified":%t,"mfa":"%s","role":"%s","tenantId":"%s","userId":"%s"}`,
+		email, verified, mfa, role, tenant, user)
 }
 
 func userByEmail(t *testing.T, ctx context.Context, email string) (id, hash string) {
@@ -95,7 +96,7 @@ func TestClaimCreatesLinkedStudentAccount(t *testing.T) {
 	rec := f.claim(strings.ToLower(strings.ReplaceAll(code, "-", " ")), " "+strings.ToUpper(email)+" ", pw, "192.0.2.1")
 
 	userID, hash := userByEmail(t, ctx, email)
-	wantResponse(t, rec, http.StatusCreated, meBody(userID, email, f.tenant, "student"))
+	wantResponse(t, rec, http.StatusCreated, meBody(userID, email, f.tenant, "student", "not_required", false))
 	wantNoStore(t, rec)
 	m := setCookieRE.FindStringSubmatch(rec.Header().Get("Set-Cookie"))
 	if m == nil {
@@ -115,7 +116,7 @@ func TestClaimCreatesLinkedStudentAccount(t *testing.T) {
 		t.Fatalf("sessions = %d, want 1 in the code's tenant", n)
 	}
 	wantResponse(t, f.do(http.MethodGet, "/api/auth/me", "", "192.0.2.1", m[1], nil),
-		http.StatusOK, meBody(userID, email, f.tenant, "student"))
+		http.StatusOK, meBody(userID, email, f.tenant, "student", "not_required", false))
 
 	t.Run("the same code again is dead", func(t *testing.T) {
 		other := uniqueEmail("claim-again")
@@ -199,7 +200,7 @@ func TestClaimWithRegisteredEmailKeepsCodeUsable(t *testing.T) {
 	fresh := uniqueEmail("fresh")
 	rec = f.claim(code, fresh, strings.Repeat("ñ", 128), "192.0.2.20")
 	freshID, _ := userByEmail(t, ctx, fresh)
-	wantResponse(t, rec, http.StatusCreated, meBody(freshID, fresh, f.tenant, "student"))
+	wantResponse(t, rec, http.StatusCreated, meBody(freshID, fresh, f.tenant, "student", "not_required", false))
 }
 
 func TestClaimValidatesInputBeforeTouchingTheDatabase(t *testing.T) {
@@ -344,7 +345,7 @@ func TestRedeemAddsMembershipAndSwitchesTenant(t *testing.T) {
 
 	rec := f.redeem(strings.ToLower(code), token)
 
-	wantResponse(t, rec, http.StatusOK, meBody(userID, email, other, "student"))
+	wantResponse(t, rec, http.StatusOK, meBody(userID, email, other, "student", "not_required", false))
 	wantNoStore(t, rec)
 	if sc := rec.Header().Get("Set-Cookie"); sc != "" {
 		t.Fatalf("Set-Cookie = %q, want none (same session)", sc)
@@ -358,7 +359,7 @@ func TestRedeemAddsMembershipAndSwitchesTenant(t *testing.T) {
 		t.Fatalf("session tenant = %s, want %s (one session)", got, other)
 	}
 	wantResponse(t, f.do(http.MethodGet, "/api/auth/me", "", "192.0.2.90", token, nil),
-		http.StatusOK, meBody(userID, email, other, "student"))
+		http.StatusOK, meBody(userID, email, other, "student", "not_required", false))
 
 	t.Run("already a member keeps the code usable", func(t *testing.T) {
 		second := seedMember(t, ctx, other, "Beto Bravo", "30111227")

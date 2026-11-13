@@ -30,6 +30,8 @@ func writeRosterError(w http.ResponseWriter, op string, err error) {
 	switch {
 	case errors.Is(err, roster.ErrForbidden):
 		writeError(w, http.StatusForbidden, "forbidden")
+	case errors.Is(err, auth.ErrMFARequired):
+		writeError(w, http.StatusForbidden, "mfa_required")
 	case errors.Is(err, roster.ErrNotFound):
 		writeError(w, http.StatusNotFound, "not_found")
 	case errors.Is(err, roster.ErrHasAccount):

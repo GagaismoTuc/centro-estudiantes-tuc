@@ -44,6 +44,7 @@ cd web && pnpm gen:api            # after editing openapi/openapi.yaml
 | `DATABASE_URL` | Application connection: a login role member of `ce_app`, without `SUPERUSER` or `BYPASSRLS` |
 | `MIGRATE_DATABASE_URL` | Table owner connection, used only to apply migrations at startup |
 | `ACCESS_CODE_KEY` | Base64 HMAC key (at least 32 random bytes) for roster access codes; generate it with `openssl rand -base64 32`. The server refuses to start without it. Changing it invalidates every unused code |
+| `TOTP_ENC_KEY` | Base64 of exactly 32 random bytes: the AES-256-GCM key that encrypts two-factor (TOTP) seeds at rest; generate it with `openssl rand -base64 32` and keep it apart from database backups. The server refuses to start without it. Losing or changing it disables every enrolled authenticator (each user then needs `admin reset-mfa`) |
 | `APP_BASE_URL` | Public origin of the web app used in emailed links, e.g. `https://ce.example.edu.ar` (`http://localhost:5173` is accepted for development). Required |
 | `SMTP_HOST` | SMTP relay of the email provider. When set, mail is sent through it and STARTTLS is mandatory (the server refuses to send without TLS) |
 | `SMTP_PORT` | SMTP submission port (default `587`) |
@@ -51,6 +52,15 @@ cd web && pnpm gen:api            # after editing openapi/openapi.yaml
 | `MAIL_FROM` | Sender address, e.g. `Centro de Estudiantes <no-reply@ce.example.edu.ar>`. Required with `SMTP_HOST` |
 | `MAIL_DEV_DIR` | Development only, used when `SMTP_HOST` is empty: every email is written as an `.eml` file in this directory instead of being sent. With neither variable the server refuses to start |
 | `ADDR` | Listen address (default `:8080`) |
+
+### Operator commands
+
+Run with `DATABASE_URL` set to the application role (`cd api && go run ./cmd/admin …`):
+
+| Command | Effect |
+|---|---|
+| `admin bootstrap --org-name NAME --email EMAIL` | Creates a school and its first school admin; the password is read from stdin |
+| `admin reset-mfa --email EMAIL` | Lost phone: deletes the user's TOTP and recovery codes and signs out every session. Confirm the person's identity out of band first; school admins and officers must enroll a new authenticator at their next sign-in |
 
 ## Contract-first rule
 
