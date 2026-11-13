@@ -15,10 +15,20 @@ globalThis.Request = BrowserLikeRequest;
 // mock must exist before any test file imports the client (setup files run first).
 globalThis.fetch = vi.fn<typeof fetch>();
 
+// index.html ships this meta; theme code updates it rather than relying on creating it.
+const colorScheme = document.createElement("meta");
+colorScheme.name = "color-scheme";
+colorScheme.content = "light dark";
+document.head.append(colorScheme);
+
+// jsdom has no element scrolling; the navigation drawer scrolls its sheet in and out.
+Element.prototype.scrollTo ??= () => {};
+
 afterEach(() => {
   cleanup();
   vi.mocked(fetch).mockReset();
   localStorage.clear();
   document.documentElement.removeAttribute("data-theme");
+  colorScheme.content = "light dark";
   window.history.replaceState(null, "", "/");
 });

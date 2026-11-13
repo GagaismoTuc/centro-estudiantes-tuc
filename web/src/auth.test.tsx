@@ -106,6 +106,60 @@ describe("sign-in (/ingresar)", () => {
   });
 });
 
+describe("T6a advisories: sign-in edges", () => {
+  test("a sign-in link opened while signed in asks before replacing the current session", async () => {
+    const sent = mockApi({
+      "GET /auth/me": [ok(me()), ok(me({ email: "otra@escuela.edu.ar" }))],
+      "POST /auth/link/consume": noContent(),
+    });
+    renderAt("/ingresar#token=tok-2");
+    expect(await screen.findByText(/Ya ingresaste como ana@escuela.edu.ar/)).toBeTruthy();
+    expect(sentTo(sent, "POST /auth/link/consume")).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole("button", { name: "Ingresar con el enlace" }));
+    expect(await screen.findByRole("heading", { name: "Hola, otra@escuela.edu.ar" })).toBeTruthy();
+    expect(sentTo(sent, "POST /auth/link/consume").map((s) => s.body)).toEqual([{ token: "tok-2" }]);
+  });
+
+  test("keeping the current session ignores the link", async () => {
+    const sent = mockApi({ "GET /auth/me": ok(me()) });
+    renderAt("/ingresar#token=tok-3");
+    fireEvent.click(await screen.findByRole("button", { name: "Seguir como ana@escuela.edu.ar" }));
+    await expectPath("/");
+    expect(sentTo(sent, "POST /auth/link/consume")).toHaveLength(0);
+  });
+
+  test("if loading the user fails right after sign-in, the retry screen is shown", async () => {
+    mockApi({
+      "POST /auth/login": noContent(),
+      "GET /auth/me": [fail(401, "unauthenticated"), fail(503, "unavailable"), ok(me())],
+    });
+    renderAt("/ingresar");
+    await screen.findByRole("heading", { name: "Ingresá" });
+    type("Mail", "ana@escuela.edu.ar");
+    type("Contraseña", "una-clave-larga");
+    fireEvent.click(screen.getByRole("button", { name: "Ingresar" }));
+
+    fireEvent.click(await screen.findByRole("button", { name: "Reintentar" }));
+    expect(await screen.findByRole("heading", { name: "Hola, ana@escuela.edu.ar" })).toBeTruthy();
+  });
+
+  test("a failed two-factor enrollment start offers «Reintentar»", async () => {
+    const sent = mockApi({
+      "GET /auth/me": ok(me({ role: "school_admin", mfa: "enrollment_required" })),
+      "POST /auth/mfa/enrollment": [
+        fail(503, "unavailable"),
+        ok({ secret: "JBSWY3DPEHPK3PXP", otpauthUri: "otpauth://totp/x?secret=JBSWY3DPEHPK3PXP" }),
+      ],
+    });
+    renderAt("/seguridad/activar");
+    await waitFor(() => expect(liveText()).toContain("Algo salió mal de nuestro lado."));
+    fireEvent.click(screen.getByRole("button", { name: "Reintentar" }));
+    expect(await screen.findByText("JBSW Y3DP EHPK 3PXP")).toBeTruthy();
+    expect(sentTo(sent, "POST /auth/mfa/enrollment")).toHaveLength(2);
+  });
+});
+
 describe("claim and redeem (/alta)", () => {
   test("formats the access code as XXXX-XXXX-XXXX and creates the account", async () => {
     const sent = mockApi({

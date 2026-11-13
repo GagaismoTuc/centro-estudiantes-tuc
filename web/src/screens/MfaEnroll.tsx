@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { call } from "../api/call.ts";
 import { apiClient } from "../api/client.ts";
 import { errorMessage } from "../api/errors.ts";
@@ -25,16 +25,24 @@ function Setup({ onConfirmed }: { onConfirmed: (codes: string[]) => void }) {
   const [enrollment, setEnrollment] = useState<Enrollment | null>(null);
   const [status, setStatus] = useState<Status>(null);
   const [pending, setPending] = useState(false);
+  const [failed, setFailed] = useState(false);
   const started = useRef(false);
+
+  const start = useCallback(() => {
+    setFailed(false);
+    setStatus(null);
+    void call(apiClient.POST("/auth/mfa/enrollment")).then((result) => {
+      if (result.ok) return setEnrollment(result.data);
+      setStatus({ tone: "error", text: errorMessage(result.code) });
+      setFailed(true);
+    });
+  }, []);
 
   useEffect(() => {
     if (started.current) return;
     started.current = true; // a second call would replace the secret already on screen
-    void call(apiClient.POST("/auth/mfa/enrollment")).then((result) => {
-      if (result.ok) setEnrollment(result.data);
-      else setStatus({ tone: "error", text: errorMessage(result.code) });
-    });
-  }, []);
+    start();
+  }, [start]);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -84,6 +92,11 @@ function Setup({ onConfirmed }: { onConfirmed: (codes: string[]) => void }) {
         </ol>
       )}
       {!enrollment && <FormStatus status={status} />}
+      {failed && (
+        <button type="button" className="button button--primary button--block" onClick={start}>
+          Reintentar
+        </button>
+      )}
     </AuthLayout>
   );
 }

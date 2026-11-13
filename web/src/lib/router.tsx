@@ -29,6 +29,23 @@ export function usePathname(): string {
   return useSyncExternalStore(subscribe, () => window.location.pathname);
 }
 
+// A screen holding something that cannot be recovered (issued access codes) asks before
+// the user leaves it through the app. Programmatic redirects are not asked.
+let leaveMessage: string | null = null;
+
+/** Registers the question to ask before leaving the current screen; returns the cleanup. */
+export function guardLeave(message: string): () => void {
+  leaveMessage = message;
+  return () => {
+    if (leaveMessage === message) leaveMessage = null;
+  };
+}
+
+/** True when there is nothing to lose or the user agreed to leave. */
+export function confirmLeave(): boolean {
+  return leaveMessage === null || window.confirm(leaveMessage);
+}
+
 /** True once the user moved between routes in this page load (used to move focus to the new heading). */
 export function hasNavigated(): boolean {
   return navigated;
@@ -45,7 +62,7 @@ export function Link({ to, onClick, ...rest }: LinkProps) {
       return;
     }
     event.preventDefault();
-    if (!active) navigate(to);
+    if (!active && confirmLeave()) navigate(to);
   }
   return <a href={to} aria-current={active ? "page" : undefined} onClick={handleClick} {...rest} />;
 }

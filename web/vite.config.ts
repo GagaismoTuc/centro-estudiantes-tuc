@@ -15,5 +15,7 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],
+    // Process styles.css so `?raw` imports get its text (the token test reads it).
+    css: { include: [/styles\.css/] },
   },
 });

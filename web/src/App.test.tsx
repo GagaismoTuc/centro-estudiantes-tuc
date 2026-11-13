@@ -1,6 +1,9 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, test } from "vitest";
+import themeScript from "../public/theme.js?raw";
 import { App } from "./App.tsx";
+import { THEME_KEY } from "./lib/theme.ts";
+import css from "./styles.css?raw";
 import { fail, me, mockApi, noContent, ok, sentTo } from "./test/api.ts";
 
 function renderAt(url: string) {
@@ -39,6 +42,30 @@ describe("route guard", () => {
 
     await expectPath("/ingresar");
     expect(sentTo(sent, "POST /auth/logout")).toHaveLength(1);
+  });
+});
+
+describe("T6a advisories: sign-out", () => {
+  test("a failed logout keeps the user signed in and says so", async () => {
+    const sent = mockApi({ "GET /auth/me": ok(me()), "POST /auth/logout": fail(503, "unavailable") });
+    renderAt("/");
+    const sidebar = await screen.findByRole("complementary");
+    fireEvent.click(within(sidebar).getByRole("button", { name: "Cerrar sesión" }));
+
+    expect(
+      await within(sidebar).findByText("No se cerró la sesión. Algo salió mal de nuestro lado. Probá de nuevo en un rato."),
+    ).toBeTruthy();
+    expect(window.location.pathname).toBe("/");
+    expect(screen.getByRole("heading", { name: "Hola, ana@escuela.edu.ar" })).toBeTruthy();
+    expect(sentTo(sent, "POST /auth/logout")).toHaveLength(1);
+  });
+
+  test("a logout answered with 401 counts as signed out", async () => {
+    mockApi({ "GET /auth/me": [ok(me()), fail(401, "unauthenticated")], "POST /auth/logout": fail(401, "unauthenticated") });
+    renderAt("/");
+    const sidebar = await screen.findByRole("complementary");
+    fireEvent.click(within(sidebar).getByRole("button", { name: "Cerrar sesión" }));
+    await expectPath("/ingresar");
   });
 });
 
@@ -82,6 +109,31 @@ describe("theme switch", () => {
     expect(localStorage.getItem("color-scheme")).toBeNull();
     expect(document.documentElement.dataset.theme).toBe("system");
     expect(meta?.getAttribute("content")).toBe("light dark");
+  });
+});
+
+describe("T6a advisories: theme", () => {
+  test("the sidebar and drawer switches share one theme store", async () => {
+    mockApi({ "GET /auth/me": ok(me()) });
+    renderAt("/");
+    const sidebar = await screen.findByRole("complementary");
+    fireEvent.click(screen.getByRole("button", { name: "Abrir menú" }));
+    // jsdom has no showModal(), so the drawer's <dialog> never gets `open`.
+    const drawer = document.getElementById("menu-drawer") as HTMLElement;
+    fireEvent.click(within(drawer).getByRole("radio", { name: "Oscuro", hidden: true }));
+    expect((within(sidebar).getByRole("radio", { name: "Oscuro" }) as HTMLInputElement).checked).toBe(true);
+    expect(localStorage.getItem(THEME_KEY)).toBe("dark");
+  });
+
+  test("public/theme.js reads the same storage key as the app", () => {
+    expect(themeScript).toContain(`localStorage.getItem("${THEME_KEY}")`);
+  });
+
+  test("each color token is declared once (light-dark), never duplicated for dark mode", () => {
+    const declared = [...css.matchAll(/^\s*(--[a-z0-9-]+):/gm)].map((m) => m[1]);
+    for (const token of ["--page", "--surface", "--text", "--muted", "--primary", "--accent", "--danger", "--ok", "--shadow"]) {
+      expect(declared.filter((d) => d === token), token).toHaveLength(1);
+    }
   });
 });
 

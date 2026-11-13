@@ -19,7 +19,8 @@ type SessionApi = {
   refresh: () => Promise<Me | null>;
   /** Call after any sign-in: reloads the user and routes by two-factor state. */
   afterSignIn: () => Promise<void>;
-  signOut: () => Promise<void>;
+  /** Ends the session; returns the error code when the server did not, else null. */
+  signOut: () => Promise<string | null>;
 };
 
 const SessionContext = createContext<SessionApi | null>(null);
@@ -52,13 +53,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const afterSignIn = useCallback(async () => {
     const me = await refresh();
-    if (me) navigate(homeFor(me), { replace: true });
+    // Without a user, "/" shows the retry screen (or the sign-in page): never a pending form.
+    navigate(me ? homeFor(me) : "/", { replace: true });
   }, [refresh]);
 
   const signOut = useCallback(async () => {
-    await call(apiClient.POST("/auth/logout"));
+    const result = await call(apiClient.POST("/auth/logout"));
+    // 401: the session was already gone. Any other failure: the cookie may still be valid.
+    if (!result.ok && result.code !== "unauthenticated") return result.code;
     setSession({ status: "anon" });
     navigate("/ingresar", { replace: true });
+    return null;
   }, []);
 
   useEffect(() => {

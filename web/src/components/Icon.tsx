@@ -16,6 +16,7 @@ const paths = {
   mail: "M4 6h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1M3.5 7l8.5 6 8.5-6",
   print: "M7 9V3h10v6M7 18H5a1 1 0 0 1-1-1v-6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v6a1 1 0 0 1-1 1h-2M7 14h10v7H7z",
   arrow: "M5 12h14M13 6l6 6-6 6",
+  upload: "M12 15V4M7 9l5-5 5 5M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4",
 } as const;
 
 export type IconName = keyof typeof paths;
