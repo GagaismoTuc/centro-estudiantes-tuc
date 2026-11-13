@@ -16,7 +16,7 @@ trendy one, and chose: "Podemos hacer el backend con Go y frontend con typescrip
 | Backend | Go, standard library `net/http`, `pgx` driver, `goose` migrations |
 | API contract | OpenAPI 3 first: `oapi-codegen` generates the Go server interface, `openapi-typescript` the web client types |
 | Database | PostgreSQL, shared tables with `tenant_id`, Row-Level Security |
-| Frontend | React + Vite + TypeScript; own CSS design system; headless accessible primitives for complex widgets |
+| Frontend | React + Vite + TypeScript; own CSS design system; headless accessible primitives for complex widgets; UI patterns follow [Modern Web Guidance](https://github.com/GoogleChrome/modern-web-guidance-src) (pinned CLI `modern-web-guidance@1.0.0`) |
 | Sessions | `HttpOnly` + `SameSite` cookies, argon2id passwords, TOTP 2FA for privileged roles |
 | Documents | DOCX templates filled by our own Go library; PDF via a LibreOffice converter (Gotenberg) |
 | Deployment | One Go binary that embeds the built frontend; Docker Compose with app, PostgreSQL and Caddy (automatic HTTPS); install script |

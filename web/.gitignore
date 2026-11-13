@@ -1,0 +1,2 @@
+# TypeScript incremental build cache from `tsc -b`.
+*.tsbuildinfo
