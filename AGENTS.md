@@ -182,9 +182,22 @@ Estas reglas cambian, para este repo, la tabla `### Agentes` y `### Qué rol ten
 - **La sesión de `main` es Gentle Shell (pi)**, no claude. Corre en el checkout principal, sigue `~/orca/stack/MAIN.md` y despacha con `orca-stack despachar`, `revisar`, `rebote`, `reanudar`, `avisar` y `vigilar` desde bash. Puede usar sus propios subagentes y perfiles para su trabajo de orquestación; nunca implementa un ticket en el checkout principal.
 - **Workers:** codex, agy y pi (pi trabaja con ODD). claude no se despacha como worker en este repo.
 - **Guardias sin hooks:** los hooks de Claude Code (`puente-gentle`, `guardia-despacho`) no corren dentro de pi. Antes de cada `gh pr merge`, `main` verifica a mano cada condición del paso 7 de `MAIN.md` y deja la evidencia en un comentario del PR.
-- **Reviews:** un PR de codex lo revisa agy y uno de agy lo revisa codex. Un PR que toca `riesgo` suma el review de un worker pi (otra sesión, contexto limpio). Un PR de pi lo revisan codex y agy (GPT y Gemini, dos familias distintas de Claude).
+- **Reviews: dos criterios a propósito.** El review adversarial (otra familia de modelo) no es mejor por sí mismo: aporta un criterio distinto, evita que el worker se confíe y que `main` mergee de taquito. Por eso:
+  - Un PR de codex lo revisa agy y uno de agy lo revisa codex. Si toca `riesgo`, suma el review de un worker pi (otra sesión, contexto limpio).
+  - Un PR de pi va por RDD (`agentes.pi.review: "rdd"`, paso 6 de `MAIN.md`): `main` lee `## Merge Danger` y decide "sin review" o RDD con lentes, pedido con `orca-stack rebote <pr> --rdd <lentes>`. Si toca `riesgo` o una puerta de una vía, RDD con `risk` es obligatorio.
+  - El humano puede pedir un review adversarial extra (codex o agy) sobre cualquier PR de pi; `main` lo propone en una línea cuando el PR toca auth o datos de menores.
 - **Una sola cuenta de Claude:** `main` y los workers pi comparten la misma cuenta y la misma cuota a propósito.
 - **Esfuerzo:** codex implementa en `high`; `main` puede pedir `medium` en la nota del despacho para tickets mecánicos.
+
+### Notas prácticas para `main` (pi)
+
+- Corré `orca-stack` como `npx -y github:Gagaismo/orca-stack <comando>` desde el checkout principal en `main`; un comando que falla se muestra al humano, nunca se rearma a mano.
+- Esperas largas (CI, reviews, `vigilar`) van en `bash_background` o `monitor`, nunca en un `sleep` en primer plano.
+- En Git Bash, `git show <rama>:<ruta>` necesita `MSYS_NO_PATHCONV=1`.
+- La política de seguridad de Gentle bloquea comandos de bash cuyo texto nombra archivos de secretos: los documentos que los mencionan se escriben con la herramienta de archivos.
+- `gentle_review assess` con `baseRef` necesita un SHA completo o un nombre de rama, nunca un SHA corto.
+- La API de desarrollo (`go run ./cmd/server`) no recarga sola: después de mergear cambios de Go, reiniciala antes de probar en el navegador.
+- Las pruebas en navegador las hace un subagente `gentle-ai-verify` con ego-browser (el explorador no tiene bash), con cuentas QA y nunca con `admin@demo.local`.
 
 ## Producto y privacidad
 

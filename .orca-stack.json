@@ -3,8 +3,15 @@
   "modo": "multiagente",
   "ramaBase": "main",
   "agentes": {
-    "usa": ["codex", "agy", "pi"],
-    "preguntarAntes": []
+    "usa": [
+      "codex",
+      "agy",
+      "pi"
+    ],
+    "preguntarAntes": [],
+    "pi": {
+      "review": "rdd"
+    }
   },
   "verificacion": {
     "suite": "cd api && go test -race -count=1 ./... && cd ../web && pnpm test",
@@ -28,7 +35,9 @@
     "web/pnpm-lock.yaml"
   ],
   "merge": "main mergea sola cuando se cumple la condición de merge",
-  "despliegue": { "despues": false },
+  "despliegue": {
+    "despues": false
+  },
   "idioma": "inglés para código, commits y PRs; la interfaz en español rioplatense",
   "setup": "completo"
 }
