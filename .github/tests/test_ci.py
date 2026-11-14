@@ -142,7 +142,7 @@ class WorkflowTests(unittest.TestCase):
         workflow = WORKFLOW.read_text(encoding="utf-8")
         self.assertIn("gitleaks_8.30.1_linux_x64.tar.gz", workflow)
         self.assertIn("551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb", workflow)
-        self.assertIn('gitleaks" git --redact --log-opts="-m $BASE_SHA..$HEAD_SHA"', workflow)
+        self.assertIn('gitleaks" git --redact --log-opts="--remerge-diff $BASE_SHA..$HEAD_SHA"', workflow)
         with tempfile.TemporaryDirectory() as directory:
             def git(*args):
                 return subprocess.check_output(["git", "-C", directory, *args], text=True, stderr=subprocess.DEVNULL).strip()
@@ -167,6 +167,10 @@ class WorkflowTests(unittest.TestCase):
             options = re.search(r'--log-opts="([^"]+)"', workflow).group(1)
             args = options.replace("$BASE_SHA", base).replace("$HEAD_SHA", "HEAD").split()
             self.assertIn("merge-only-marker", git("log", "-p", "-U0", *args))
+
+    def test_secret_scan_regression_tests_run_with_gitleaks_in_ci(self):
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn('GITLEAKS="$RUNNER_TEMP/gitleaks" python -m unittest discover -s .github/tests -p test_secret_scan.py', workflow)
 
     def test_ci_ok_fails_when_any_needed_job_is_not_successful(self):
         root = WORKFLOW.parents[2]
