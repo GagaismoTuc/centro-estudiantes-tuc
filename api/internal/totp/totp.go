@@ -58,7 +58,7 @@ func EncodeSecret(secret []byte) string { return b32.EncodeToString(secret) }
 func URI(account string, secret []byte) string {
 	issuer := url.PathEscape(Issuer)
 	return "otpauth://totp/" + issuer + ":" + url.PathEscape(account) +
-		"?secret=" + EncodeSecret(secret) + "&issuer=" + issuer
+		"?secret=" + EncodeSecret(secret) + "&issuer=" + issuer + "&algorithm=SHA1&digits=6&period=30"
 }
 
 // StepAt returns the RFC 6238 counter for t: floor(unix seconds / 30).

@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
-	"sync"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 )

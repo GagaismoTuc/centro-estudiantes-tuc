@@ -9,6 +9,7 @@ import { CopyButton } from "../components/CopyButton.tsx";
 import { checks, FieldError, FormStatus, SubmitButton, useFormErrors, type Status } from "../components/Form.tsx";
 import { Icon } from "../components/Icon.tsx";
 import { PageTitle, useDocumentTitle } from "../components/Page.tsx";
+import { QrCode } from "../components/QrCode.tsx";
 import { groupSecret } from "../lib/accessCode.ts";
 import { OtpField, SignOutLink } from "./MfaVerify.tsx";
 
@@ -70,9 +71,10 @@ function Setup({ onConfirmed }: { onConfirmed: (codes: string[]) => void }) {
       {enrollment && (
         <ol className="steps">
           <li>
-            <p>Agregá esta clave en tu app.</p>
+            <p>Escaneá este código QR con tu app.</p>
+            <QrCode text={enrollment.otpauthUri} label="Código QR para tu app de autenticación" />
             <div className="secret">
-              <p className="eyebrow">Clave para tu app</p>
+              <p className="eyebrow">Si no podés escanearlo, usá esta clave</p>
               <code className="secret__value">
                 {groupSecret(enrollment.secret)}
               </code>
@@ -83,7 +85,6 @@ function Setup({ onConfirmed }: { onConfirmed: (codes: string[]) => void }) {
                 </a>
               </div>
             </div>
-            {/* Manual entry and the otpauth: link cover phones for now (no image to scan yet). */}
             <p className="muted small">En la app elegí la opción para ingresar una clave y pegá esta.</p>
           </li>
           <li>

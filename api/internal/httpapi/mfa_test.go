@@ -62,6 +62,10 @@ func (f *fixture) enroll(t *testing.T, token string) []byte {
 	if err != nil || len(secret) != 20 {
 		t.Fatalf("secret %q: %d bytes, %v; want 20", out.Secret, len(secret), err)
 	}
+	query := "?secret=" + out.Secret + "&issuer=Centro%20de%20Estudiantes&algorithm=SHA1&digits=6&period=30"
+	if !strings.HasPrefix(out.OtpauthUri, "otpauth://totp/Centro%20de%20Estudiantes:") || !strings.HasSuffix(out.OtpauthUri, query) {
+		t.Fatalf("otpauthUri = %q, want the issuer label and the query %q", out.OtpauthUri, query)
+	}
 	return secret
 }
 
