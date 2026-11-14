@@ -465,8 +465,17 @@ export interface components {
             rows?: components["schemas"]["RowError"][];
         };
         RowError: {
+            /** @description 1-based line of the file (the header is line 1); 0 when unknown. */
             line: number;
+            /**
+             * @description What is wrong with the line; clients explain it in their own language.
+             * @enum {string}
+             */
+            code: "header_invalid" | "field_count" | "encoding_invalid" | "csv_malformed" | "full_name_required" | "full_name_too_long" | "full_name_invalid" | "full_name_invisible" | "document_number_required" | "document_number_spaces" | "document_number_format" | "document_number_length" | "document_number_duplicate";
+            /** @description The same problem in English, for logs and API users. */
             reason: string;
+            /** @description Only for document_number_duplicate, the line that already has this DNI. */
+            duplicateOfLine?: number;
         };
         IssuedCode: {
             code: string;

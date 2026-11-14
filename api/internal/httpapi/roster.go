@@ -41,7 +41,10 @@ func writeRosterError(w http.ResponseWriter, op string, err error) {
 	case errors.As(err, &invalid):
 		rows := make([]oapi.RowError, len(invalid.Rows))
 		for i, r := range invalid.Rows {
-			rows[i] = oapi.RowError{Line: r.Line, Reason: r.Reason}
+			rows[i] = oapi.RowError{Line: r.Line, Code: oapi.RowErrorCode(r.Code), Reason: r.Reason}
+			if r.DuplicateOf != 0 {
+				rows[i].DuplicateOfLine = &r.DuplicateOf
+			}
 		}
 		writeJSON(w, http.StatusUnprocessableEntity, oapi.ImportError{Error: "invalid_rows", Rows: &rows})
 	default:

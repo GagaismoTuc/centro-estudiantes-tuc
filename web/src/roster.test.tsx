@@ -39,13 +39,18 @@ function rowOf(name: string): HTMLElement {
   return within(table).getByRole("rowheader", { name }).closest("tr") as HTMLElement;
 }
 
+/** Texts of the elements an element's aria-describedby points to. */
+function describedBy(el: HTMLElement): (string | null | undefined)[] {
+  return (el.getAttribute("aria-describedby") ?? "").split(" ").map((id) => document.getElementById(id)?.textContent);
+}
+
 function stat(label: string): string | null | undefined {
   return screen.getByText(label, { selector: "dt" }).nextElementSibling?.textContent;
 }
 
 const csv = "full_name,document_number\nDiego Paz,43444555\n";
 function upload(file: File) {
-  fireEvent.change(screen.getByLabelText("Archivo CSV"), { target: { files: [file] } });
+  fireEvent.change(screen.getByLabelText("Elegir archivo"), { target: { files: [file] } });
 }
 
 describe("roster (/padron)", () => {
@@ -53,6 +58,8 @@ describe("roster (/padron)", () => {
     await openRoster();
     expect(screen.getByRole("heading", { level: 1, name: "Padrón" })).toBeTruthy();
     expect([stat("Alumnos"), stat("Con cuenta"), stat("Con código activo")]).toEqual(["3", "1", "1"]);
+    expect(screen.getAllByRole("term").map((dt) => dt.textContent)).toEqual(["Alumnos", "Con cuenta", "Con código activo"]);
+    expect(screen.getAllByRole("definition").map((dd) => dd.textContent)).toEqual(["3", "1", "1"]);
     expect(screen.getAllByRole("row")).toHaveLength(4);
     expect(within(rowOf("Bruno Díaz")).getByText("41222333")).toBeTruthy();
     expect(within(rowOf("Bruno Díaz")).getByText("Código activo")).toBeTruthy();
@@ -116,29 +123,101 @@ describe("roster import", () => {
     expect(sentTo(sent, "POST /roster/import")).toHaveLength(0);
   });
 
-  test("invalid rows are listed as «Línea N: motivo» in Spanish", async () => {
-    await openRoster({
-      "POST /roster/import": {
-        status: 422,
-        body: {
-          error: "invalid_rows",
-          rows: [
-            { line: 2, reason: "document_number must have 7 to 9 digits" },
-            { line: 5, reason: "duplicate document_number (line 3)" },
-            { line: 7, reason: "something new" },
-          ],
-        },
-      },
-    });
+  test("the file picker is in Spanish and shows the chosen file name", async () => {
+    await openRoster({ "POST /roster/import": ok({ inserted: 1, skipped: 0 }) });
+    const input = screen.getByLabelText("Elegir archivo") as HTMLInputElement;
+    expect(input.type).toBe("file");
+    expect(screen.getByText("Ningún archivo elegido")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Importar CSV" })).toBeNull();
     upload(new File([csv], "padron.csv", { type: "text/csv" }));
+    expect(await screen.findByText("padron.csv")).toBeTruthy();
+    expect(describedBy(input)).toContain("padron.csv");
+  });
 
-    const list = await screen.findByRole("list", { name: "Filas con errores" });
-    expect(within(list).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
-      "Línea 2: el DNI tiene que tener de 7 a 9 números",
-      "Línea 5: el DNI está repetido (ya aparece en la línea 3)",
+  const rejected = (rows: unknown[]): Reply => ({ status: 422, body: { error: "invalid_rows", rows } });
+  const rowTexts = () =>
+    within(screen.getByRole("list", { name: "Filas con errores" }))
+      .getAllByRole("listitem")
+      .map((li) => li.textContent);
+
+  test("a rejected file explains that nothing was loaded on purpose, how many rows are fine and what to do", async () => {
+    await openRoster({
+      "POST /roster/import": rejected([
+        { line: 2, code: "document_number_spaces", reason: "document_number must not contain spaces" },
+        { line: 3, code: "full_name_required", reason: "full_name is required" },
+        { line: 5, code: "document_number_duplicate", duplicateOfLine: 4, reason: "duplicate document_number (line 4)" },
+        { line: 5, code: "document_number_length", reason: "document_number must have 7 to 9 digits" },
+        { line: 7, code: "something_new", reason: "something new" },
+      ]),
+    });
+    // 6 data lines (the blank line does not count) with errors on 4 distinct lines: 2 rows are fine.
+    const file = ["full_name,document_number", "A,42 345 678", ",40111222", "C,30111222", "D,30111222", "", "E,1", "F,40111223", ""];
+    upload(new File([file.join("\r\n")], "padron.csv", { type: "text/csv" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("No se cargó ningún alumno");
+    expect(alert.textContent).toContain("El archivo tiene 4 filas con errores y 2 filas bien.");
+    expect(alert.textContent).toContain("Para que el padrón no quede cargado a medias");
+    expect(alert.textContent).toContain("Corregí esas líneas y volvé a subir el archivo.");
+    expect(rowTexts()).toEqual([
+      "Línea 2: el DNI no puede tener espacios (escribilo 42345678 o 42.345.678)",
+      "Línea 3: falta el nombre",
+      "Línea 5: el DNI está repetido (ya aparece en la línea 4)",
+      "Línea 5: el DNI tiene que tener de 7 a 9 números",
       "Línea 7: revisá los datos de esta fila",
     ]);
-    expect(liveText()).toContain("El archivo tiene filas con errores. No se cargó nada.");
+    expect(liveText()).not.toContain("El archivo tiene filas con errores");
+  });
+
+  test.each([
+    ["header_invalid", 1, "Línea 1: la primera línea tiene que ser full_name,document_number"],
+    ["field_count", 2, "Línea 2: tiene que tener 2 columnas: nombre y DNI"],
+    ["encoding_invalid", 2, "Línea 2: el archivo tiene que estar guardado como «CSV UTF-8»"],
+    ["csv_malformed", 0, "Archivo: el CSV está mal armado; revisá las comillas"],
+    ["full_name_too_long", 2, "Línea 2: el nombre puede tener hasta 200 caracteres"],
+    ["full_name_invalid", 2, "Línea 2: el nombre tiene que estar en una sola línea"],
+    ["full_name_invisible", 2, "Línea 2: el nombre tiene caracteres invisibles; escribilo de nuevo"],
+    ["document_number_required", 2, "Línea 2: falta el DNI"],
+    ["document_number_format", 2, "Línea 2: el DNI solo puede tener números, con o sin puntos de miles (42345678 o 42.345.678)"],
+  ])("row code %s is explained in Spanish", async (code, line, text) => {
+    await openRoster({ "POST /roster/import": rejected([{ line, code, reason: "x" }]) });
+    upload(new File([csv], "padron.csv", { type: "text/csv" }));
+    await screen.findByRole("alert");
+    expect(rowTexts()).toEqual([text]);
+  });
+
+  test("a bad header does not claim a count of fine rows", async () => {
+    await openRoster({
+      "POST /roster/import": rejected([{ line: 1, code: "header_invalid", reason: "header must be full_name,document_number" }]),
+    });
+    upload(new File(["nombre,dni\nAna,40111222\n"], "padron.csv", { type: "text/csv" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("No se cargó ningún alumno");
+    expect(alert.textContent).not.toMatch(/\d+ filas? bien/);
+  });
+
+  test("the import message goes away when codes are issued", async () => {
+    await openRoster({
+      "POST /roster/import": ok({ inserted: 1, skipped: 0 }),
+      "POST /roster/m1/access-code": ok({ code: "AAAA-BBBB-CCCC", expiresAt: "2026-12-13T15:00:00Z" }, 201),
+    });
+    upload(new File([csv], "padron.csv", { type: "text/csv" }));
+    await waitFor(() => expect(liveText()).toContain("Se cargó 1 alumno nuevo."));
+    fireEvent.click(within(rowOf("Ana Gómez")).getByRole("button", { name: "Generar código" }));
+    await screen.findByRole("region", { name: "Códigos generados" });
+    expect(liveText()).not.toContain("Se cargó 1 alumno nuevo.");
+  });
+
+  test("starting a new import clears the previous codes message", async () => {
+    await openRoster({
+      "POST /roster/import": ok({ inserted: 1, skipped: 0 }),
+      "POST /roster/access-codes": ok([issued("m1", "Ana Gómez", "40111222", "AAAA-BBBB-CCCC")], 201),
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Generar códigos faltantes" }));
+    await waitFor(() => expect(liveText()).toContain("Se generó 1 código."));
+    upload(new File([csv], "padron.csv", { type: "text/csv" }));
+    await waitFor(() => expect(liveText()).toContain("Se cargó 1 alumno nuevo."));
+    expect(liveText()).not.toContain("Se generó 1 código.");
   });
 
   test.each([
@@ -178,15 +257,18 @@ describe("issuing access codes", () => {
     const panel = await screen.findByRole("region", { name: "Códigos generados" });
     expect(within(panel).getByText("AAAA-BBBB-CCCC")).toBeTruthy();
     expect(screen.queryByRole("dialog")).toBeNull();
+    expect(within(rowOf("Ana Gómez")).getByRole("button", { name: "Generar código nuevo" })).toBeTruthy();
 
-    fireEvent.click(within(rowOf("Bruno Díaz")).getByRole("button", { name: "Generar código" }));
+    const again = within(rowOf("Bruno Díaz")).getByRole("button", { name: "Generar código nuevo" });
+    expect(describedBy(again)).toContain("Reemplaza el código activo.");
+    fireEvent.click(again);
     const dialog = screen.getByRole("dialog", { name: "¿Generar un código nuevo para Bruno Díaz?" });
     expect(within(dialog).getByText(/El código anterior va a dejar de funcionar/)).toBeTruthy();
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancelar" }));
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(sentTo(sent, "POST /roster/m2/access-code")).toHaveLength(0);
 
-    fireEvent.click(within(rowOf("Bruno Díaz")).getByRole("button", { name: "Generar código" }));
+    fireEvent.click(within(rowOf("Bruno Díaz")).getByRole("button", { name: "Generar código nuevo" }));
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Generar código nuevo" }));
     expect(await within(panel).findByText("DDDD-EEEE-FFFF")).toBeTruthy();
     expect(sentTo(sent, "POST /roster/m2/access-code")).toHaveLength(1);
@@ -271,13 +353,16 @@ describe("issuing access codes", () => {
     await screen.findByRole("region", { name: "Códigos generados" });
     expect(leave()).toBe(true);
 
-    const confirm = vi.spyOn(window, "confirm").mockReturnValueOnce(false).mockReturnValueOnce(true);
+    // Leaving through the app asks in the in-app dialog (A6).
     const nav = screen.getByRole("navigation", { name: "Principal" });
     fireEvent.click(within(nav).getByRole("link", { name: "Inicio" }));
+    const ask = await screen.findByRole("dialog", { name: "¿Salir de esta pantalla?" });
+    fireEvent.click(within(ask).getByRole("button", { name: "Cancelar" }));
     expect(window.location.pathname).toBe("/padron");
     fireEvent.click(within(nav).getByRole("link", { name: "Inicio" }));
+    const again = await screen.findByRole("dialog", { name: "¿Salir de esta pantalla?" });
+    fireEvent.click(within(again).getByRole("button", { name: "Salir igual" }));
     await waitFor(() => expect(window.location.pathname).toBe("/"));
-    expect(confirm).toHaveBeenCalledTimes(2);
     expect(leave()).toBe(false);
   });
 });

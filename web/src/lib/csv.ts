@@ -14,6 +14,17 @@ function csvCell(value: string): string {
   return /[",;\r\n]/.test(safe) ? `"${safe.replaceAll('"', '""')}"` : safe;
 }
 
+/**
+ * Non-empty lines after the header: the rows the API checks one by one (it skips empty lines,
+ * like Go's encoding/csv). An estimate when a quoted cell spans lines, which roster files never need.
+ */
+export function countDataLines(text: string): number {
+  return text
+    .split(/\r?\n/)
+    .slice(1)
+    .filter((line) => line !== "").length;
+}
+
 /** RFC 4180 rows (CRLF line ends), every cell neutralized. */
 export function toCsv(rows: string[][]): string {
   return rows.map((row) => row.map(csvCell).join(",") + "\r\n").join("");

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 import { call } from "../api/call.ts";
 import { apiClient } from "../api/client.ts";
 import { errorMessage } from "../api/errors.ts";
@@ -6,7 +6,6 @@ import type { components } from "../api/schema.gen.ts";
 import { useSession } from "../auth/session.tsx";
 import { ConfirmDialog } from "../components/ConfirmDialog.tsx";
 import { FormStatus, type Status } from "../components/Form.tsx";
-import { Icon } from "../components/Icon.tsx";
 import { PageTitle, useDocumentTitle } from "../components/Page.tsx";
 import { IssuedCodes, type IssuedMemberCode } from "./IssuedCodes.tsx";
 import { RosterImport } from "./RosterImport.tsx";
@@ -38,13 +37,14 @@ function useDescribeFailure() {
 export function Roster() {
   useDocumentTitle("Padrón");
   const describeFailure = useDescribeFailure();
-  const fileInput = useRef<HTMLInputElement>(null);
   const [members, setMembers] = useState<Member[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [codes, setCodes] = useState<IssuedMemberCode[]>([]);
   const [status, setStatus] = useState<Status>(null);
   const [busy, setBusy] = useState<string | null>(null); // a member id, or "bulk"
   const [confirming, setConfirming] = useState<Member | null>(null);
+  // Bumped when codes are issued: remounts the import panel so its old result does not linger.
+  const [importKey, setImportKey] = useState(0);
 
   const load = useCallback(async () => {
     setLoadError(null);
@@ -68,6 +68,7 @@ export function Roster() {
     setConfirming(null);
     setBusy(member.id);
     setStatus(null);
+    setImportKey((k) => k + 1);
     const result = await call(
       apiClient.POST("/roster/{memberId}/access-code", { params: { path: { memberId: member.id } } }),
     );
@@ -82,6 +83,7 @@ export function Roster() {
   async function issueMissing() {
     setBusy("bulk");
     setStatus(null);
+    setImportKey((k) => k + 1);
     const result = await call(apiClient.POST("/roster/access-codes"));
     setBusy(null);
     if (!result.ok) return setStatus({ tone: "error", text: describeFailure(result.code) });
@@ -102,10 +104,6 @@ export function Roster() {
       <header className="page-header">
         <PageTitle eyebrow="Escuela">Padrón</PageTitle>
         <div className="page-actions">
-          <button type="button" className="button button--primary" onClick={() => fileInput.current?.click()}>
-            <Icon name="upload" />
-            Importar CSV
-          </button>
           <button
             type="button"
             className="button button--primary"
@@ -136,7 +134,12 @@ export function Roster() {
       <FormStatus status={status} />
       {codes.length > 0 && <IssuedCodes codes={codes} onHide={() => setCodes([])} />}
 
-      <RosterImport inputRef={fileInput} onImported={() => void load()} describeFailure={describeFailure} />
+      <RosterImport
+        key={importKey}
+        onStart={() => setStatus(null)}
+        onImported={() => void load()}
+        describeFailure={describeFailure}
+      />
 
       {loadError !== null ? (
         <section className="panel">
@@ -244,15 +247,21 @@ function MemberTable({ members, busy, onIssue }: TableProps) {
                     className="button button--secondary button--small"
                     disabled={m.hasAccount || busy !== null}
                     aria-busy={busy === m.id || undefined}
-                    aria-describedby={m.hasAccount ? `${id}-${m.id}-why` : undefined}
+                    aria-describedby={m.hasAccount || m.hasActiveCode ? `${id}-${m.id}-why` : undefined}
                     onClick={() => onIssue(m)}
                   >
-                    Generar código
+                    {m.hasActiveCode && !m.hasAccount ? "Generar código nuevo" : "Generar código"}
                   </button>
-                  {m.hasAccount && (
+                  {m.hasAccount ? (
                     <p id={`${id}-${m.id}-why`} className="muted small">
                       Ya creó su cuenta: no necesita código.
                     </p>
+                  ) : (
+                    m.hasActiveCode && (
+                      <p id={`${id}-${m.id}-why`} className="muted small">
+                        Reemplaza el código activo.
+                      </p>
+                    )
                   )}
                 </td>
               </tr>

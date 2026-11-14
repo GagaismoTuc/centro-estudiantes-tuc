@@ -73,6 +73,57 @@ func (e Role) Valid() bool {
 	}
 }
 
+// Defines values for RowErrorCode.
+const (
+	CsvMalformed            RowErrorCode = "csv_malformed"
+	DocumentNumberDuplicate RowErrorCode = "document_number_duplicate"
+	DocumentNumberFormat    RowErrorCode = "document_number_format"
+	DocumentNumberLength    RowErrorCode = "document_number_length"
+	DocumentNumberRequired  RowErrorCode = "document_number_required"
+	DocumentNumberSpaces    RowErrorCode = "document_number_spaces"
+	EncodingInvalid         RowErrorCode = "encoding_invalid"
+	FieldCount              RowErrorCode = "field_count"
+	FullNameInvalid         RowErrorCode = "full_name_invalid"
+	FullNameInvisible       RowErrorCode = "full_name_invisible"
+	FullNameRequired        RowErrorCode = "full_name_required"
+	FullNameTooLong         RowErrorCode = "full_name_too_long"
+	HeaderInvalid           RowErrorCode = "header_invalid"
+)
+
+// Valid indicates whether the value is a known member of the RowErrorCode enum.
+func (e RowErrorCode) Valid() bool {
+	switch e {
+	case CsvMalformed:
+		return true
+	case DocumentNumberDuplicate:
+		return true
+	case DocumentNumberFormat:
+		return true
+	case DocumentNumberLength:
+		return true
+	case DocumentNumberRequired:
+		return true
+	case DocumentNumberSpaces:
+		return true
+	case EncodingInvalid:
+		return true
+	case FieldCount:
+		return true
+	case FullNameInvalid:
+		return true
+	case FullNameInvisible:
+		return true
+	case FullNameRequired:
+		return true
+	case FullNameTooLong:
+		return true
+	case HeaderInvalid:
+		return true
+	default:
+		return false
+	}
+}
+
 // ClaimRequest defines model for ClaimRequest.
 type ClaimRequest struct {
 	Code     string `json:"code"`
@@ -205,9 +256,21 @@ type RosterMember struct {
 
 // RowError defines model for RowError.
 type RowError struct {
-	Line   int    `json:"line"`
+	// Code What is wrong with the line; clients explain it in their own language.
+	Code RowErrorCode `json:"code"`
+
+	// DuplicateOfLine Only for document_number_duplicate, the line that already has this DNI.
+	DuplicateOfLine *int `json:"duplicateOfLine,omitempty"`
+
+	// Line 1-based line of the file (the header is line 1); 0 when unknown.
+	Line int `json:"line"`
+
+	// Reason The same problem in English, for logs and API users.
 	Reason string `json:"reason"`
 }
+
+// RowErrorCode What is wrong with the line; clients explain it in their own language.
+type RowErrorCode string
 
 // TokenRequest defines model for TokenRequest.
 type TokenRequest struct {
