@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { call } from "../api/call.ts";
 import { apiClient } from "../api/client.ts";
 import type { components } from "../api/schema.gen.ts";
+import { destinationFor, readNext, safeNext } from "../lib/next.ts";
 import { navigate } from "../lib/router.tsx";
 
 export type Me = components["schemas"]["Me"];
@@ -17,8 +18,8 @@ type SessionApi = {
   session: Session;
   /** Reloads GET /auth/me; returns the user or null when signed out or on error. */
   refresh: () => Promise<Me | null>;
-  /** Call after any sign-in: reloads the user and routes by two-factor state. */
-  afterSignIn: () => Promise<void>;
+  /** Call after any sign-in: reloads the user and routes to `next` (or two-factor first). */
+  afterSignIn: (next?: string) => Promise<void>;
   /** Ends the session; returns the error code when the server did not, else null. */
   signOut: () => Promise<string | null>;
 };
@@ -51,11 +52,20 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     return null;
   }, []);
 
-  const afterSignIn = useCallback(async () => {
-    const me = await refresh();
-    // Without a user, "/" shows the retry screen (or the sign-in page): never a pending form.
-    navigate(me ? homeFor(me) : "/", { replace: true });
-  }, [refresh]);
+  const afterSignIn = useCallback(
+    async (next?: string) => {
+      const target = safeNext(next ?? readNext(window.location.search));
+      const me = await refresh();
+      if (!me) {
+        // Without a user, target shows the retry screen (or the sign-in page): never a pending form.
+        navigate(target, { replace: true });
+        return;
+      }
+      const home = homeFor(me);
+      navigate(destinationFor(home, target), { replace: true });
+    },
+    [refresh],
+  );
 
   const signOut = useCallback(async () => {
     const result = await call(apiClient.POST("/auth/logout"));

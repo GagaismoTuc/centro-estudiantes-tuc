@@ -539,3 +539,150 @@ describe("T3 copy fixes", () => {
   });
 });
 
+describe("return to requested screen (next)", () => {
+  test("password sign-in returns to next", async () => {
+    mockApi({
+      "POST /auth/login": noContent(),
+      "GET /auth/me": [fail(401, "unauthenticated"), ok(me({ role: "student", mfa: "not_required" }))],
+    });
+    renderAt("/seguridad");
+    await expectPath("/ingresar");
+    expect(window.location.search).toBe("?next=%2Fseguridad");
+    await screen.findByRole("heading", { level: 1, name: "Ingresá" });
+
+    type("Mail", "ana@escuela.edu.ar");
+    type("Contraseña", "una-clave-larga");
+    fireEvent.click(screen.getByRole("button", { name: "Ingresar" }));
+
+    await expectPath("/seguridad");
+    expect(window.location.search).toBe("");
+    expect(await screen.findByRole("heading", { level: 1, name: "Seguridad" })).toBeTruthy();
+  });
+
+  test("password sign-in with two-factor verification returns to next", async () => {
+    mockApi({
+      "POST /auth/login": noContent(),
+      "POST /auth/mfa/verify": noContent(),
+      "GET /auth/me": [
+        fail(401, "unauthenticated"),
+        ok(me({ role: "school_admin", mfa: "pending" })),
+        ok(me({ role: "school_admin", mfa: "satisfied" })),
+      ],
+      "GET /roster": ok([]),
+    });
+    renderAt("/padron");
+    await expectPath("/ingresar");
+    await screen.findByRole("heading", { level: 1, name: "Ingresá" });
+
+    type("Mail", "ana@escuela.edu.ar");
+    type("Contraseña", "una-clave-larga");
+    fireEvent.click(screen.getByRole("button", { name: "Ingresar" }));
+
+    await expectPath("/seguridad/verificar");
+    await screen.findByRole("heading", { level: 1, name: "Verificá que sos vos" });
+    type("Código de 6 dígitos", "123456");
+    fireEvent.click(screen.getByRole("button", { name: "Verificar" }));
+
+    await expectPath("/padron");
+    expect(window.location.search).toBe("");
+    expect(await screen.findByRole("heading", { level: 1, name: "Padrón" })).toBeTruthy();
+  });
+
+  test("password sign-in with two-factor enrollment returns to next", async () => {
+    mockApi({
+      "POST /auth/login": noContent(),
+      "POST /auth/mfa/enrollment": ok({ secret: "JBSWY3DPEHPK3PXP", otpauthUri: "otpauth://totp/x?secret=JBSWY3DPEHPK3PXP" }),
+      "POST /auth/mfa/enrollment/confirm": ok({ recoveryCodes: ["AAAAA-BBBBB"] }),
+      "GET /auth/me": [
+        fail(401, "unauthenticated"),
+        ok(me({ role: "school_admin", mfa: "enrollment_required" })),
+        ok(me({ role: "school_admin", mfa: "satisfied" })),
+      ],
+      "GET /roster": ok([]),
+    });
+    renderAt("/padron");
+    await expectPath("/ingresar");
+    await screen.findByRole("heading", { level: 1, name: "Ingresá" });
+
+    type("Mail", "ana@escuela.edu.ar");
+    type("Contraseña", "una-clave-larga");
+    fireEvent.click(screen.getByRole("button", { name: "Ingresar" }));
+
+    await expectPath("/seguridad/activar");
+    await screen.findByText("JBSW Y3DP EHPK 3PXP");
+    type("Código de 6 dígitos", "123456");
+    fireEvent.click(screen.getByRole("button", { name: "Activar" }));
+
+    fireEvent.click(await screen.findByLabelText("Ya los guardé en un lugar seguro"));
+    fireEvent.click(screen.getByRole("button", { name: "Continuar" }));
+
+    await expectPath("/padron");
+    expect(window.location.search).toBe("");
+    expect(await screen.findByRole("heading", { level: 1, name: "Padrón" })).toBeTruthy();
+  });
+
+  test.each(["https://evil.example", "//evil.example", "javascript:alert(1)", "/\\evil.example"])(
+    "unsafe next=%s falls back to / after sign-in",
+    async (badNext) => {
+      mockApi({
+        "POST /auth/login": noContent(),
+        "GET /auth/me": [fail(401, "unauthenticated"), ok(me())],
+      });
+      renderAt(`/ingresar?next=${encodeURIComponent(badNext)}`);
+      await screen.findByRole("heading", { level: 1, name: "Ingresá" });
+
+      type("Mail", "ana@escuela.edu.ar");
+      type("Contraseña", "una-clave-larga");
+      fireEvent.click(screen.getByRole("button", { name: "Ingresar" }));
+
+      await expectPath("/");
+      expect(window.location.search).toBe("");
+      expect(await screen.findByRole("heading", { level: 1, name: "¡Hola!" })).toBeTruthy();
+    },
+  );
+
+  test("requesting a sign-in link saves next in sessionStorage, uses and clears it in the same browser, and never sends next to the server", async () => {
+    const sent1 = mockApi({ "POST /auth/link": noContent(202) });
+    const first = renderAt("/padron");
+    await expectPath("/ingresar");
+    expect(window.location.search).toBe("?next=%2Fpadron");
+    await screen.findByRole("heading", { level: 1, name: "Ingresá" });
+
+    type("Mail", "ana@escuela.edu.ar");
+    fireEvent.click(screen.getByRole("button", { name: "Enviarme un enlace para ingresar" }));
+    await waitFor(() =>
+      expect(liveText()).toContain(
+        "Si el mail tiene una cuenta, te enviamos un enlace para ingresar. Vence en 15 minutos.",
+      ),
+    );
+    expect(sentTo(sent1, "POST /auth/link")[0]?.body).toEqual({ email: "ana@escuela.edu.ar" });
+    expect(sent1.every((s) => !JSON.stringify(s.body ?? "").includes("padron"))).toBe(true);
+    expect(Object.values(sessionStorage)).toContain("/padron");
+    first.unmount();
+
+    const sent2 = mockApi({
+      "POST /auth/link/consume": noContent(),
+      "GET /auth/me": [fail(401, "unauthenticated"), ok(me({ role: "school_admin", mfa: "satisfied" }))],
+      "GET /roster": ok([]),
+    });
+    renderAt("/ingresar#token=tok-same");
+
+    await expectPath("/padron");
+    expect(await screen.findByRole("heading", { level: 1, name: "Padrón" })).toBeTruthy();
+    expect(sentTo(sent2, "POST /auth/link/consume")[0]?.body).toEqual({ token: "tok-same" });
+    expect(sessionStorage.length).toBe(0);
+  });
+
+  test("opening a sign-in link without stored next in sessionStorage goes to /", async () => {
+    mockApi({
+      "POST /auth/link/consume": noContent(),
+      "GET /auth/me": [fail(401, "unauthenticated"), ok(me())],
+    });
+    expect(sessionStorage.length).toBe(0);
+    renderAt("/ingresar#token=tok-other");
+
+    await expectPath("/");
+    expect(await screen.findByRole("heading", { level: 1, name: "¡Hola!" })).toBeTruthy();
+  });
+});
+

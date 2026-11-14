@@ -24,6 +24,14 @@ describe("route guard", () => {
     expect(await screen.findByRole("heading", { level: 1, name: "Ingresá" })).toBeTruthy();
   });
 
+  test("signed-out access to /padron redirects to /ingresar?next=%2Fpadron", async () => {
+    mockApi({});
+    renderAt("/padron");
+    await expectPath("/ingresar");
+    expect(window.location.search).toBe("?next=%2Fpadron");
+    expect(await screen.findByRole("heading", { level: 1, name: "Ingresá" })).toBeTruthy();
+  });
+
   test("a session with pending two-factor is sent to /seguridad/verificar instead of Inicio", async () => {
     mockApi({ "GET /auth/me": ok(me({ role: "school_admin", mfa: "pending" })) });
     renderAt("/");
