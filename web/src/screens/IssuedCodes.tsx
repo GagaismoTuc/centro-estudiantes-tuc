@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useId, useLayoutEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import type { components } from "../api/schema.gen.ts";
 import { useMe } from "../auth/session.tsx";
@@ -17,7 +17,9 @@ const formatDate = (iso: string) => dateFormat.format(new Date(iso));
 
 /** Asks before the page is closed, reloaded or left through the app while codes are on screen. */
 function useLeaveGuard() {
-  useEffect(() => {
+  // Layout effect: the guard must be active as soon as the codes commit to the DOM,
+  // before paint or any interaction can race a deferred passive effect.
+  useLayoutEffect(() => {
     const onBeforeUnload = (event: BeforeUnloadEvent) => event.preventDefault();
     window.addEventListener("beforeunload", onBeforeUnload);
     const release = guardLeave(LEAVE);
