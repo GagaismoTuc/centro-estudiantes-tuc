@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-subjects=$(git log --format=%s "$1..$2")
+subjects=$(git log --no-merges --format=%s "$1..$2")
 if [[ -z "$subjects" ]]; then
   echo "No commits found in pull request range" >&2
   exit 1

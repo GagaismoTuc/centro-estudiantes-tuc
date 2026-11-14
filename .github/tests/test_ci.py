@@ -79,6 +79,65 @@ class WorkflowTests(unittest.TestCase):
         workflow = WORKFLOW.read_text(encoding="utf-8")
         self.assertIn(".github/scripts/check-commits.sh", workflow)
 
+    def test_commit_lint_skips_merge_commits(self):
+        root = WORKFLOW.parents[2]
+        script = root / ".github/scripts/check-commits.sh"
+        bash = "C:/Program Files/Git/bin/bash.exe" if pathlib.Path("C:/Program Files/Git/bin/bash.exe").exists() else shutil.which("bash")
+        with tempfile.TemporaryDirectory() as directory:
+            def git(*args):
+                return subprocess.check_output(["git", "-C", directory, *args], text=True, stderr=subprocess.DEVNULL).strip()
+            git("init")
+            git("config", "user.name", "Test")
+            git("config", "user.email", "test@example.invalid")
+            git("commit", "--allow-empty", "-m", "chore: base")
+            base = git("rev-parse", "HEAD")
+            git("commit", "--allow-empty", "-m", "feat(web): x")
+            valid = git("rev-parse", "HEAD")
+            tree = git("rev-parse", "HEAD^{tree}")
+            merge = git("commit-tree", tree, "-p", valid, "-p", base, "-m", "Merge remote-tracking branch 'origin/main' into rama")
+            result = subprocess.run([bash, str(script), base, merge], cwd=directory, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stderr, "")
+
+    def test_commit_lint_rejects_invalid_normal_commit_with_error(self):
+        script = WORKFLOW.parents[2] / ".github/scripts/check-commits.sh"
+        bash = "C:/Program Files/Git/bin/bash.exe" if pathlib.Path("C:/Program Files/Git/bin/bash.exe").exists() else shutil.which("bash")
+        with tempfile.TemporaryDirectory() as directory:
+            def git(*args):
+                return subprocess.check_output(["git", "-C", directory, *args], text=True, stderr=subprocess.DEVNULL).strip()
+            git("init")
+            git("config", "user.name", "Test")
+            git("config", "user.email", "test@example.invalid")
+            git("commit", "--allow-empty", "-m", "chore: base")
+            base = git("rev-parse", "HEAD")
+            git("commit", "--allow-empty", "-m", "arreglos varios")
+            result = subprocess.run([bash, str(script), base, "HEAD"], cwd=directory, capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("Invalid commit subject", result.stderr)
+
+    def test_commit_lint_rejects_merge_only_range(self):
+        script = WORKFLOW.parents[2] / ".github/scripts/check-commits.sh"
+        bash = "C:/Program Files/Git/bin/bash.exe" if pathlib.Path("C:/Program Files/Git/bin/bash.exe").exists() else shutil.which("bash")
+        with tempfile.TemporaryDirectory() as directory:
+            def git(*args):
+                return subprocess.check_output(["git", "-C", directory, *args], text=True, stderr=subprocess.DEVNULL).strip()
+            git("init")
+            git("config", "user.name", "Test")
+            git("config", "user.email", "test@example.invalid")
+            git("commit", "--allow-empty", "-m", "chore: base")
+            ancestor = git("rev-parse", "HEAD")
+            git("commit", "--allow-empty", "-m", "feat: change")
+            base = git("rev-parse", "HEAD")
+            merge = git("commit-tree", git("rev-parse", "HEAD^{tree}"), "-p", base, "-p", ancestor, "-m", "Merge remote-tracking branch 'origin/main' into rama")
+            result = subprocess.run([bash, str(script), base, merge], cwd=directory, capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("No commits found in pull request range", result.stderr)
+
+    def test_commit_lint_rules_run_in_ci(self):
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn("python -m unittest discover -s ../.github/tests", workflow)
+        self.assertIn(".github/scripts/check-commits.sh", workflow)
+
     def test_gitleaks_scans_the_pull_request_commit_range(self):
         workflow = WORKFLOW.read_text(encoding="utf-8")
         self.assertIn("gitleaks_8.30.1_linux_x64.tar.gz", workflow)
