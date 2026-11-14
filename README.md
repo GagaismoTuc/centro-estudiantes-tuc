@@ -39,6 +39,17 @@ cd web && pnpm gen:api            # after editing openapi/openapi.yaml
 
 ### Server environment
 
+Copy the example outside the repository, replace its placeholders with local values, and source it in your shell before starting the API:
+
+```sh
+mkdir -p "$HOME/centro-dev"
+cp docs/dev/devvars.example.sh "$HOME/centro-dev/devvars.sh"
+# Edit "$HOME/centro-dev/devvars.sh" with your local values first.
+. "$HOME/centro-dev/devvars.sh"
+```
+
+Use separate database roles as described below, and generate fresh keys rather than using the placeholders. The Compose `.env` file and this shell file serve different purposes; keep both private.
+
 | Variable | Purpose |
 |---|---|
 | `DATABASE_URL` | Application connection: a login role member of `ce_app`, without `SUPERUSER` or `BYPASSRLS` |

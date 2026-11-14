@@ -17,6 +17,8 @@ const formatDate = (iso: string) => dateFormat.format(new Date(iso));
 
 /** Asks before the page is closed, reloaded or left through the app while codes are on screen. */
 function useLeaveGuard() {
+  // Layout effect: the guard must be active as soon as the codes commit to the DOM,
+  // before paint or any interaction can race a deferred passive effect.
   useLayoutEffect(() => {
     const onBeforeUnload = (event: BeforeUnloadEvent) => event.preventDefault();
     window.addEventListener("beforeunload", onBeforeUnload);

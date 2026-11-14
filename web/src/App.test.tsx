@@ -397,4 +397,41 @@ describe("A6 under StrictMode: the leave dialog stays until the user answers", (
     expect(await screen.findByRole("heading", { level: 1, name: "¡Hola!" })).toBeTruthy();
     expect(screen.queryByRole("dialog", { name: leaveTitle })).toBeNull();
   });
+
+  test("the leave guard is active as soon as generated codes appear in the DOM", async () => {
+    const sent = mockApi({
+      "GET /auth/me": ok(admin),
+      "GET /roster": ok([member]),
+      "POST /roster/m1/access-code": ok({ code: "AAAA-BBBB-CCCC", expiresAt: "2026-12-13T15:00:00Z" }, 201),
+      "POST /auth/logout": noContent(),
+    });
+    window.history.replaceState(null, "", "/");
+    renderStrict(<App />);
+    const nav = await screen.findByRole("navigation", { name: "Principal" });
+    fireEvent.click(within(nav).getByRole("link", { name: "Padrón" }));
+    const table = await screen.findByRole("table", { name: "Alumnos del padrón" });
+
+    // Resolve on the DOM-commit microtask, before any passive-effect task can run.
+    const codesMounted = new Promise<void>((resolve) => {
+      const observer = new MutationObserver(() => {
+        if (screen.queryByRole("region", { name: "Códigos generados" })) {
+          observer.disconnect();
+          resolve();
+        }
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+    });
+
+    fireEvent.click(within(table).getByRole("button", { name: "Generar código" }));
+    await codesMounted;
+
+    const unload = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(unload);
+    expect(unload.defaultPrevented).toBe(true);
+
+    fireEvent.click(within(screen.getByRole("complementary")).getByRole("button", { name: "Cerrar sesión" }));
+    await settle();
+    expect(screen.getByRole("dialog", { name: leaveTitle })).toBeTruthy();
+    expect(sentTo(sent, "POST /auth/logout")).toHaveLength(0);
+  });
 });
