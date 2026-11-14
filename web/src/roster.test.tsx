@@ -386,4 +386,71 @@ describe("A6 under StrictMode: «Generar código nuevo» confirmation", () => {
       restoreDialog();
     }
   });
+
+  test("confirming Generar código nuevo moves focus to the Códigos generados heading", async () => {
+    const restoreDialog = emulateDialog();
+    try {
+      mockApi({
+        "GET /auth/me": ok(admin),
+        "GET /roster": ok(members),
+        "POST /roster/m1/access-code": ok({ code: "AAAA-BBBB-CCCC", expiresAt: "2026-12-13T15:00:00Z" }, 201),
+        "POST /roster/m2/access-code": [
+          ok({ code: "DDDD-EEEE-FFFF", expiresAt: "2026-12-13T15:00:00Z" }, 201),
+          ok({ code: "GGGG-HHHH-JJJJ", expiresAt: "2026-12-13T15:00:00Z" }, 201),
+        ],
+      });
+      window.history.replaceState(null, "", "/padron");
+      renderStrict(<App />);
+      await screen.findByRole("table", { name: "Alumnos del padrón" });
+
+      fireEvent.click(within(rowOf("Bruno Díaz")).getByRole("button", { name: "Generar código nuevo" }));
+      await settle();
+      fireEvent.click(
+        within(screen.getByRole("dialog", { name: "¿Generar un código nuevo para Bruno Díaz?" })).getByRole("button", {
+          name: "Generar código nuevo",
+        }),
+      );
+      const heading = await screen.findByRole("heading", { name: "Códigos generados" });
+      expect(heading.getAttribute("tabindex")).toBe("-1");
+      await waitFor(() => expect(document.activeElement).toBe(heading));
+
+      // Also when the Códigos generados panel is already mounted on screen.
+      fireEvent.click(within(rowOf("Ana Gómez")).getByRole("button", { name: "Generar código" }));
+      await waitFor(() => expect(within(rowOf("Ana Gómez")).getByRole("button", { name: "Generar código nuevo" })).toBeTruthy());
+      fireEvent.click(within(rowOf("Bruno Díaz")).getByRole("button", { name: "Generar código nuevo" }));
+      await settle();
+      fireEvent.click(
+        within(screen.getByRole("dialog", { name: "¿Generar un código nuevo para Bruno Díaz?" })).getByRole("button", {
+          name: "Generar código nuevo",
+        }),
+      );
+      const panel = screen.getByRole("region", { name: "Códigos generados" });
+      await waitFor(() => expect(within(panel).getByText("GGGG-HHHH-JJJJ")).toBeTruthy());
+      await waitFor(() => expect(document.activeElement).toBe(heading));
+    } finally {
+      restoreDialog();
+    }
+  });
+
+  test("cancelling Ocultar códigos keeps the codes visible", async () => {
+    const restoreDialog = emulateDialog();
+    try {
+      await openRoster({
+        "POST /roster/m1/access-code": ok({ code: "AAAA-BBBB-CCCC", expiresAt: "2026-12-13T15:00:00Z" }, 201),
+      });
+      fireEvent.click(within(rowOf("Ana Gómez")).getByRole("button", { name: "Generar código" }));
+      const panel = await screen.findByRole("region", { name: "Códigos generados" });
+      fireEvent.click(within(panel).getByRole("button", { name: "Ocultar códigos" }));
+      await settle();
+      const dialog = screen.getByRole("dialog", { name: "¿Ocultar los códigos?" });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Cancelar" }));
+      await settle();
+      expect(screen.queryByRole("dialog")).toBeNull();
+      const region = screen.getByRole("region", { name: "Códigos generados" });
+      expect(region).toBeTruthy();
+      expect(within(region).getByText("AAAA-BBBB-CCCC")).toBeTruthy();
+    } finally {
+      restoreDialog();
+    }
+  });
 });

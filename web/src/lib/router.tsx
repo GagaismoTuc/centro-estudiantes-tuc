@@ -1,4 +1,4 @@
-import { useEffect, useSyncExternalStore, type AnchorHTMLAttributes, type MouseEvent } from "react";
+import { useEffect, useRef, useSyncExternalStore, type AnchorHTMLAttributes, type MouseEvent } from "react";
 import { createPortal } from "react-dom";
 import { ConfirmDialog } from "../components/ConfirmDialog.tsx";
 
@@ -27,10 +27,13 @@ function onPopState() {
     return;
   }
   window.history.pushState(null, "", shownPath);
-  confirmLeave(() => {
-    passNextPop = true;
-    window.history.back();
-  });
+  askLeave(
+    () => {
+      passNextPop = true;
+      window.history.back();
+    },
+    { focusHeadingOnCancel: true },
+  );
 }
 
 function subscribe(listener: () => void) {
@@ -69,7 +72,7 @@ export function guardLeave(message: string): () => void {
 
 // The pending question lives here, not in the control that asked: a link in the phone
 // menu unmounts as soon as the menu closes, and the question must outlive it.
-type Asking = { message: string; leave: () => void };
+type Asking = { message: string; leave: () => void; focusHeadingOnCancel?: boolean };
 let asking: Asking | null = null;
 const askingListeners = new Set<() => void>();
 
@@ -85,13 +88,17 @@ function subscribeAsking(listener: () => void) {
   };
 }
 
+function askLeave(leave: () => void, options?: { focusHeadingOnCancel?: boolean }): void {
+  if (leaveMessage === null) leave();
+  else setAsking({ message: leaveMessage, leave, ...options });
+}
+
 /**
  * Runs `leave` right away when there is nothing to lose; otherwise asks first in the
  * in-app dialog shown by <LeaveConfirmHost>.
  */
 export function confirmLeave(leave: () => void): void {
-  if (leaveMessage === null) leave();
-  else setAsking({ message: leaveMessage, leave });
+  askLeave(leave);
 }
 
 /**
@@ -100,16 +107,28 @@ export function confirmLeave(leave: () => void): void {
  */
 export function LeaveConfirmHost() {
   const current = useSyncExternalStore(subscribeAsking, () => asking);
+  const focusHeadingOnClose = useRef(false);
   // Leaving the shell (signed out, another page) drops a question nobody can see.
   useEffect(() => () => setAsking(null), []);
+  // Wait until ConfirmDialog unmounts and calls dialog.close() so the screen is no longer inert.
+  useEffect(() => {
+    if (!current && focusHeadingOnClose.current) {
+      focusHeadingOnClose.current = false;
+      document.querySelector<HTMLElement>("main h1, h1")?.focus();
+    }
+  }, [current]);
   if (!current) return null;
   // A portal: the host may sit inside markup where a dialog cannot.
   return createPortal(
     <ConfirmDialog
       title="¿Salir de esta pantalla?"
       confirmLabel="Salir igual"
-      onCancel={() => setAsking(null)}
+      onCancel={() => {
+        if (current.focusHeadingOnCancel) focusHeadingOnClose.current = true;
+        setAsking(null);
+      }}
       onConfirm={() => {
+        focusHeadingOnClose.current = false;
         setAsking(null);
         current.leave();
       }}

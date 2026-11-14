@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { describe, expect, test, vi } from "vitest";
 import { App } from "./App.tsx";
 import { encodeQr } from "./lib/qr/encode.ts";
+import css from "./styles.css?raw";
 import { fail, me, mockApi, noContent, ok, sentTo } from "./test/api.ts";
 
 function renderAt(url: string) {
@@ -432,6 +433,31 @@ describe("T3 Spanish form validation (A5) and focus after errors (A8)", () => {
     await waitFor(() => expect(box.getAttribute("aria-invalid")).toBe("true"));
     expect(fieldError(box)).toContain("Marcá la casilla cuando hayas guardado los códigos.");
     expect(document.activeElement).toBe(box);
+  });
+
+  test("an invalid checkbox styles its container with --danger while a valid one keeps no invalid state", async () => {
+    mockApi({
+      "GET /auth/me": ok(me({ role: "school_admin", mfa: "enrollment_required" })),
+      "POST /auth/mfa/enrollment": ok({ secret: "JBSWY3DPEHPK3PXP", otpauthUri: "otpauth://totp/x?secret=JBSWY3DPEHPK3PXP" }),
+      "POST /auth/mfa/enrollment/confirm": ok({ recoveryCodes: ["AAAAA-BBBBB"] }),
+    });
+    renderAt("/seguridad/activar");
+    await screen.findByText("JBSW Y3DP EHPK 3PXP");
+    type("Código de 6 dígitos", "123456");
+    fireEvent.click(screen.getByRole("button", { name: "Activar" }));
+    await screen.findByRole("list", { name: "Códigos de recuperación" });
+
+    const box = screen.getByLabelText("Ya los guardé en un lugar seguro");
+    expect(box.closest(".check")).toBeTruthy();
+    expect(box.getAttribute("aria-invalid")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Continuar" }));
+    await waitFor(() => expect(box.getAttribute("aria-invalid")).toBe("true"));
+    expect(document.activeElement).toBe(box);
+    expect(css).toMatch(/\.check:has\([^)]*aria-invalid="true"[^)]*\)\s*\{[^}]*--danger/s);
+
+    fireEvent.click(box);
+    await waitFor(() => expect(box.getAttribute("aria-invalid")).toBeNull());
   });
 
   test("a wrong 6-digit code is caught in Spanish before calling the API", async () => {

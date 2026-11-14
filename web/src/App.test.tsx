@@ -387,6 +387,40 @@ describe("A6 under StrictMode: the leave dialog stays until the user answers", (
     expect(await screen.findByRole("heading", { level: 1, name: "¡Hola!" })).toBeTruthy();
   });
 
+  test("cancelling a Back-triggered leave dialog moves focus to the screen h1", async () => {
+    await codesOnScreen();
+    const h1 = screen.getByRole("heading", { level: 1, name: "Padrón" });
+
+    window.history.back();
+    await settle();
+    const dialog = screen.getByRole("dialog", { name: leaveTitle });
+    const cancel = within(dialog).getByRole("button", { name: "Cancelar" });
+    cancel.focus();
+    fireEvent.click(cancel);
+    await settle();
+    expect(document.activeElement).toBe(h1);
+
+    window.history.back();
+    await settle();
+    const dialog2 = screen.getByRole("dialog", { name: leaveTitle });
+    within(dialog2).getByRole("button", { name: "Cancelar" }).focus();
+    pressEscape(dialog2);
+    await settle();
+    expect(document.activeElement).toBe(h1);
+  });
+
+  test("cancelling a link-triggered leave dialog does not move focus to the h1", async () => {
+    await codesOnScreen();
+    const h1 = screen.getByRole("heading", { level: 1, name: "Padrón" });
+    const link = within(screen.getByRole("complementary")).getByRole("link", { name: "Inicio" });
+    link.focus();
+    fireEvent.click(link);
+    await settle();
+    fireEvent.click(within(screen.getByRole("dialog", { name: leaveTitle })).getByRole("button", { name: "Cancelar" }));
+    await settle();
+    expect(document.activeElement).not.toBe(h1);
+  });
+
   test("Back with nothing to lose just goes back", async () => {
     mockApi({ "GET /auth/me": ok(admin), "GET /roster": ok([member]) });
     window.history.replaceState(null, "", "/");

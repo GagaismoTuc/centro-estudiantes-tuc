@@ -1,4 +1,4 @@
-import { useId, useLayoutEffect, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { components } from "../api/schema.gen.ts";
 import { useMe } from "../auth/session.tsx";
@@ -37,12 +37,21 @@ function useLeaveGuard() {
 export function IssuedCodes({ codes, onHide }: { codes: IssuedMemberCode[]; onHide: () => void }) {
   useLeaveGuard();
   const id = useId();
+  const headingRef = useRef<HTMLHeadingElement>(null);
   const [confirmHide, setConfirmHide] = useState(false);
+
+  // Move focus here when codes appear or update (for example after confirming a replacement),
+  // since the triggering table button may have been disabled while the request was in flight.
+  useEffect(() => {
+    headingRef.current?.focus();
+  }, [codes]);
 
   return (
     <section className="panel issued" aria-labelledby={`${id}-title`}>
       <div className="panel__header">
-        <h2 id={`${id}-title`}>Códigos generados</h2>
+        <h2 ref={headingRef} id={`${id}-title`} tabIndex={-1}>
+          Códigos generados
+        </h2>
         <div className="panel__actions">
           <button type="button" className="button button--secondary" onClick={() => window.print()}>
             <Icon name="print" />
