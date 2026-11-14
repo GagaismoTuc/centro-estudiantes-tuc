@@ -4,9 +4,9 @@ import { apiClient } from "../api/client.ts";
 import { errorMessage } from "../api/errors.ts";
 import { homeFor, useSession } from "../auth/session.tsx";
 import { AuthLayout } from "../components/AuthLayout.tsx";
-import { Field, FormStatus, PasswordField, SubmitButton, type Status } from "../components/Form.tsx";
+import { checks, Field, FormStatus, PasswordField, SubmitButton, useFormErrors, type Status } from "../components/Form.tsx";
 import { PageTitle, useDocumentTitle } from "../components/Page.tsx";
-import { takeFragmentToken } from "../lib/fragment.ts";
+import { useFragmentToken } from "../lib/fragment.ts";
 import { Link, Redirect } from "../lib/router.tsx";
 
 const LINK_SENT = "Si el mail tiene una cuenta, te enviamos un enlace para ingresar. Vence en 15 minutos.";
@@ -14,18 +14,20 @@ const LINK_SENT = "Si el mail tiene una cuenta, te enviamos un enlace para ingre
 export function SignIn() {
   useDocumentTitle("Ingresar");
   const { session, afterSignIn } = useSession();
-  // Taken once: the token was already removed from the address bar by App.
-  const [linkToken, setLinkToken] = useState(() => takeFragmentToken("/ingresar"));
+  // The token was already removed from the address bar; a newer link replaces it.
+  const [linkToken, setLinkToken] = useFragmentToken("/ingresar");
   // A link opened while signed in would replace that session: only after the user agrees.
   const [linkApproved, setLinkApproved] = useState(session.status !== "user");
   const [status, setStatus] = useState<Status>(linkToken ? { tone: "info", text: "Ingresando con tu enlace…" } : null);
   const [pending, setPending] = useState(Boolean(linkToken));
-  const emailRef = useRef<HTMLInputElement>(null);
-  const started = useRef(false);
+  const form = useFormErrors();
+  const started = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!linkToken || !linkApproved || started.current) return;
-    started.current = true; // single-use token: never send it twice (StrictMode re-runs effects)
+    if (!linkToken || !linkApproved || started.current === linkToken) return;
+    started.current = linkToken; // single-use token: never send it twice (StrictMode re-runs effects)
+    setStatus({ tone: "info", text: "Ingresando con tu enlace…" });
+    setPending(true);
     void call(apiClient.POST("/auth/link/consume", { body: { token: linkToken } })).then(async (result) => {
       if (result.ok) return afterSignIn();
       setStatus({ tone: "error", text: errorMessage(result.code) });
@@ -53,30 +55,28 @@ export function SignIn() {
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    if (!form.validate({ email: checks.email, password: checks.password })) return setStatus(null);
+    const data = new FormData(event.currentTarget);
     setPending(true);
     setStatus(null);
     const result = await call(
       apiClient.POST("/auth/login", {
-        body: { email: String(form.get("email")), password: String(form.get("password")) },
+        body: { email: String(data.get("email")), password: String(data.get("password")) },
       }),
     );
     if (result.ok) return afterSignIn();
     setStatus({ tone: "error", text: errorMessage(result.code) });
     setPending(false);
+    form.failed(result.code);
   }
 
   async function sendLink() {
-    const email = emailRef.current;
-    if (!email) return;
-    if (!email.checkValidity()) {
-      email.reportValidity?.();
-      email.focus();
-      return;
-    }
     setStatus(null);
-    const result = await call(apiClient.POST("/auth/link", { body: { email: email.value } }));
+    if (!form.validate({ email: checks.email })) return;
+    const email = form.value("email").trim();
+    const result = await call(apiClient.POST("/auth/link", { body: { email } }));
     setStatus(result.ok ? { tone: "ok", text: LINK_SENT } : { tone: "error", text: errorMessage(result.code) });
+    if (!result.ok) form.failed(result.code);
   }
 
   return (
@@ -89,11 +89,10 @@ export function SignIn() {
     >
       <PageTitle eyebrow="Bienvenida">Ingresá</PageTitle>
       <p className="lead">Usá el mail y la contraseña de tu cuenta.</p>
-      <form method="post" action="/ingresar" onSubmit={(e) => void onSubmit(e)} aria-busy={pending || undefined}>
+      <form method="post" action="/ingresar" {...form.formProps} onSubmit={(e) => void onSubmit(e)} aria-busy={pending || undefined}>
         <Field
-          ref={emailRef}
+          {...form.field("email")}
           label="Mail"
-          name="email"
           type="email"
           autoComplete="username"
           spellCheck={false}
@@ -102,14 +101,14 @@ export function SignIn() {
           required
         />
         <PasswordField
+          {...form.field("password")}
           label="Contraseña"
-          name="password"
           autoComplete="current-password"
           enterKeyHint="done"
           maxLength={128}
           required
         />
-        <FormStatus status={status} />
+        <FormStatus status={status} {...form.statusProps} />
         <SubmitButton pending={pending}>Ingresar</SubmitButton>
       </form>
       <div className="auth__links">

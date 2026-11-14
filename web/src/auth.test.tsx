@@ -25,7 +25,7 @@ function liveText(): string {
 
 describe("sign-in (/ingresar)", () => {
   test.each([
-    ["not_required", "/", "Hola, ana@escuela.edu.ar"],
+    ["not_required", "/", "¡Hola!"],
     ["enrollment_required", "/seguridad/activar", "Activá la verificación en dos pasos"],
     ["pending", "/seguridad/verificar", "Verificá que sos vos"],
   ] as const)("password sign-in with mfa %s goes to %s", async (mfa, path, heading) => {
@@ -91,7 +91,7 @@ describe("sign-in (/ingresar)", () => {
     expect(window.location.pathname).toBe("/ingresar");
 
     await expectPath("/");
-    expect(await screen.findByRole("heading", { name: "Hola, ana@escuela.edu.ar" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "¡Hola!" })).toBeTruthy();
     const consumed = sentTo(sent, "POST /auth/link/consume");
     expect(consumed).toHaveLength(1);
     expect(consumed[0]?.body).toEqual({ token: "tok-abc" });
@@ -117,7 +117,7 @@ describe("T6a advisories: sign-in edges", () => {
     expect(sentTo(sent, "POST /auth/link/consume")).toHaveLength(0);
 
     fireEvent.click(screen.getByRole("button", { name: "Ingresar con el enlace" }));
-    expect(await screen.findByRole("heading", { name: "Hola, otra@escuela.edu.ar" })).toBeTruthy();
+    expect((await screen.findAllByText("otra@escuela.edu.ar")).length).toBeGreaterThan(0);
     expect(sentTo(sent, "POST /auth/link/consume").map((s) => s.body)).toEqual([{ token: "tok-2" }]);
   });
 
@@ -141,7 +141,7 @@ describe("T6a advisories: sign-in edges", () => {
     fireEvent.click(screen.getByRole("button", { name: "Ingresar" }));
 
     fireEvent.click(await screen.findByRole("button", { name: "Reintentar" }));
-    expect(await screen.findByRole("heading", { name: "Hola, ana@escuela.edu.ar" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "¡Hola!" })).toBeTruthy();
   });
 
   test("a failed two-factor enrollment start offers «Reintentar»", async () => {
@@ -248,7 +248,7 @@ describe("emailed tokens", () => {
     expect(window.location.hash).toBe("");
     await screen.findByRole("heading", { name: "Elegí una contraseña nueva" });
 
-    type("Contraseña nueva", "corta");
+    type("Contraseña nueva", "rechazada-por-el-servidor");
     fireEvent.click(screen.getByRole("button", { name: "Guardar contraseña" }));
     await waitFor(() => expect(liveText()).toContain("La contraseña tiene que tener entre 10 y 128 caracteres."));
     expect(screen.getByLabelText("Contraseña nueva")).toBeTruthy();
@@ -257,7 +257,7 @@ describe("emailed tokens", () => {
     fireEvent.click(screen.getByRole("button", { name: "Guardar contraseña" }));
     await waitFor(() => expect(liveText()).toContain("Listo, ya podés ingresar con tu contraseña nueva."));
     expect(sentTo(sent, "POST /auth/password/reset").map((s) => s.body)).toEqual([
-      { token: "rt-1", password: "corta" },
+      { token: "rt-1", password: "rechazada-por-el-servidor" },
       { token: "rt-1", password: "una-clave-larga" },
     ]);
   });
@@ -289,7 +289,7 @@ describe("two-factor authentication", () => {
     expect(sentTo(sent, "POST /auth/mfa/enrollment/confirm")[0]?.body).toEqual({ code: "123456" });
 
     fireEvent.click(screen.getByRole("button", { name: "Continuar" }));
-    await waitFor(() => expect(liveText()).toContain("Marcá la casilla cuando hayas guardado los códigos."));
+    expect(await screen.findByText("Marcá la casilla cuando hayas guardado los códigos.")).toBeTruthy();
     expect(window.location.pathname).toBe("/seguridad/activar");
 
     fireEvent.click(screen.getByLabelText("Ya los guardé en un lugar seguro"));
@@ -327,3 +327,215 @@ describe("two-factor authentication", () => {
     );
   });
 });
+
+
+/** The inline error the field points to through aria-describedby. */
+function fieldError(input: HTMLElement): string {
+  const ids = (input.getAttribute("aria-describedby") ?? "").split(" ").filter(Boolean);
+  return ids.map((id) => document.getElementById(id)?.textContent ?? "").join(" ");
+}
+
+/** Submits like pressing Enter in a field (implicit submission, no submitter). */
+function pressEnter(input: HTMLElement) {
+  (input as HTMLInputElement).form?.requestSubmit();
+}
+
+describe("T3 Spanish form validation (A5) and focus after errors (A8)", () => {
+  test("an empty sign-in shows Spanish messages next to the fields and focuses the first one", async () => {
+    const sent = mockApi({});
+    renderAt("/ingresar");
+    await screen.findByRole("heading", { name: "Ingresá" });
+    const email = screen.getByLabelText("Mail");
+    expect(email.closest("form")?.noValidate).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "Ingresar" }));
+
+    await waitFor(() => expect(email.getAttribute("aria-invalid")).toBe("true"));
+    expect(fieldError(email)).toContain("Escribí tu mail.");
+    const password = screen.getByLabelText("Contraseña");
+    expect(password.getAttribute("aria-invalid")).toBe("true");
+    expect(fieldError(password)).toContain("Escribí tu contraseña.");
+    expect(document.activeElement).toBe(email);
+    expect(sentTo(sent, "POST /auth/login")).toHaveLength(0);
+
+    type("Mail", "ana@escuela.edu.ar");
+    await waitFor(() => expect(email.getAttribute("aria-invalid")).toBeNull());
+  });
+
+  test("a malformed email is caught before sending a sign-in link", async () => {
+    const sent = mockApi({});
+    renderAt("/ingresar");
+    await screen.findByRole("heading", { name: "Ingresá" });
+    type("Mail", "ana-escuela");
+    fireEvent.click(screen.getByRole("button", { name: "Enviarme un enlace para ingresar" }));
+    const email = screen.getByLabelText("Mail");
+    await waitFor(() => expect(fieldError(email)).toContain("Revisá el mail"));
+    expect(document.activeElement).toBe(email);
+    expect(sent.filter((s) => s.path !== "/auth/me")).toHaveLength(0);
+  });
+
+  test("claim with Enter validates code, email and password length in Spanish", async () => {
+    const sent = mockApi({});
+    renderAt("/alta");
+    await screen.findByRole("heading", { name: "Activá tu cuenta" });
+    type("Código de acceso", "abcd");
+    type("Mail", "ana@");
+    type("Contraseña", "corta");
+    pressEnter(screen.getByLabelText("Contraseña"));
+
+    const code = screen.getByLabelText("Código de acceso");
+    await waitFor(() => expect(code.getAttribute("aria-invalid")).toBe("true"));
+    expect(fieldError(code)).toContain("El código tiene 12 letras y números");
+    expect(fieldError(screen.getByLabelText("Mail"))).toContain("Revisá el mail");
+    expect(fieldError(screen.getByLabelText("Contraseña"))).toContain("La contraseña tiene que tener entre 10 y 128 caracteres.");
+    expect(document.activeElement).toBe(code);
+    expect(sentTo(sent, "POST /auth/claim")).toHaveLength(0);
+  });
+
+  test("a too-short new password is caught before calling the API", async () => {
+    const sent = mockApi({});
+    renderAt("/restablecer#token=rt-9");
+    await screen.findByRole("heading", { name: "Elegí una contraseña nueva" });
+    type("Contraseña nueva", "corta");
+    fireEvent.click(screen.getByRole("button", { name: "Guardar contraseña" }));
+    const password = screen.getByLabelText("Contraseña nueva");
+    await waitFor(() => expect(fieldError(password)).toContain("La contraseña tiene que tener entre 10 y 128 caracteres."));
+    expect(document.activeElement).toBe(password);
+    expect(sentTo(sent, "POST /auth/password/reset")).toHaveLength(0);
+  });
+
+  test("the recovery-codes checkbox explains itself next to the box and takes focus", async () => {
+    mockApi({
+      "GET /auth/me": ok(me({ role: "school_admin", mfa: "enrollment_required" })),
+      "POST /auth/mfa/enrollment": ok({ secret: "JBSWY3DPEHPK3PXP", otpauthUri: "otpauth://totp/x?secret=JBSWY3DPEHPK3PXP" }),
+      "POST /auth/mfa/enrollment/confirm": ok({ recoveryCodes: ["AAAAA-BBBBB"] }),
+    });
+    renderAt("/seguridad/activar");
+    await screen.findByText("JBSW Y3DP EHPK 3PXP");
+    type("Código de 6 dígitos", "123456");
+    fireEvent.click(screen.getByRole("button", { name: "Activar" }));
+    await screen.findByRole("list", { name: "Códigos de recuperación" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Continuar" }));
+    const box = screen.getByLabelText("Ya los guardé en un lugar seguro");
+    await waitFor(() => expect(box.getAttribute("aria-invalid")).toBe("true"));
+    expect(fieldError(box)).toContain("Marcá la casilla cuando hayas guardado los códigos.");
+    expect(document.activeElement).toBe(box);
+  });
+
+  test("a wrong 6-digit code is caught in Spanish before calling the API", async () => {
+    const sent = mockApi({ "GET /auth/me": ok(me({ role: "officer", mfa: "pending" })) });
+    renderAt("/seguridad/verificar");
+    await screen.findByRole("heading", { name: "Verificá que sos vos" });
+    type("Código de 6 dígitos", "12a");
+    fireEvent.click(screen.getByRole("button", { name: "Verificar" }));
+    const code = screen.getByLabelText("Código de 6 dígitos");
+    await waitFor(() => expect(fieldError(code)).toContain("El código tiene 6 números."));
+    expect(sentTo(sent, "POST /auth/mfa/verify")).toHaveLength(0);
+  });
+
+  test("invalid credentials mark both fields invalid and move focus to the first", async () => {
+    mockApi({ "POST /auth/login": fail(401, "invalid_credentials") });
+    renderAt("/ingresar");
+    await screen.findByRole("heading", { name: "Ingresá" });
+    type("Mail", "ana@escuela.edu.ar");
+    type("Contraseña", "equivocada-123");
+    fireEvent.click(screen.getByRole("button", { name: "Ingresar" }));
+
+    const email = screen.getByLabelText("Mail");
+    await waitFor(() => expect(document.activeElement).toBe(email));
+    expect(email.getAttribute("aria-invalid")).toBe("true");
+    expect(screen.getByLabelText("Contraseña").getAttribute("aria-invalid")).toBe("true");
+    expect(fieldError(email)).toContain("El mail o la contraseña no coinciden.");
+  });
+
+  test("an error not tied to a field moves focus to the message, which says to wait about 15 minutes (A13)", async () => {
+    mockApi({ "POST /auth/login": fail(429, "too_many_attempts") });
+    renderAt("/ingresar");
+    await screen.findByRole("heading", { name: "Ingresá" });
+    type("Mail", "ana@escuela.edu.ar");
+    type("Contraseña", "equivocada-123");
+    fireEvent.click(screen.getByRole("button", { name: "Ingresar" }));
+
+    await waitFor(() => expect(document.activeElement?.textContent).toContain("Esperá unos 15 minutos"));
+    expect(document.activeElement).not.toBe(document.body);
+  });
+});
+
+describe("T3 copy fixes", () => {
+  test("A7: a wrong recovery code does not talk about the app", async () => {
+    mockApi({
+      "GET /auth/me": ok(me({ role: "officer", mfa: "pending" })),
+      "POST /auth/mfa/verify": fail(422, "invalid_code"),
+    });
+    renderAt("/seguridad/verificar");
+    await screen.findByRole("heading", { name: "Verificá que sos vos" });
+    fireEvent.click(screen.getByRole("button", { name: "Usar un código de recuperación" }));
+    type("Código de recuperación", "abcde-fghjk");
+    fireEvent.click(screen.getByRole("button", { name: "Verificar" }));
+    await waitFor(() => expect(liveText()).toContain("El código de recuperación no es correcto o ya se usó."));
+    expect(liveText()).not.toContain("tu app");
+  });
+
+  test("A10: /restablecer does not claim the mail was sent before sending it", async () => {
+    mockApi({});
+    renderAt("/restablecer");
+    const card = (await screen.findByRole("heading", { name: "Restablecé tu contraseña" })).closest("main") as HTMLElement;
+    expect(card.textContent).not.toMatch(/Te mandamos|Te enviamos/i);
+  });
+
+  test("A11: a used or expired verification link says so once, without repeating the advice", async () => {
+    mockApi({ "POST /auth/email/verify": fail(422, "invalid_token") });
+    renderAt("/verificar#token=used");
+    await waitFor(() => expect(liveText()).toContain("El enlace ya se usó o venció."));
+    const main = screen.getByRole("main");
+    expect(main.textContent?.match(/nuevo/g) ?? []).toHaveLength(1);
+  });
+
+  test("A11: a failed verification gives the reason before the next step", async () => {
+    mockApi({ "POST /auth/email/verify": fail(422, "invalid_token") });
+    renderAt("/verificar#token=used");
+    const reason = await screen.findByText("El enlace ya se usó o venció.", { exact: false });
+    const hint = screen.getByText("Ingresá y desde el inicio pedí un enlace nuevo.");
+    expect(reason.compareDocumentPosition(hint) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  test("A11: a new #token arriving on /verificar is processed", async () => {
+    const sent = mockApi({ "POST /auth/email/verify": [fail(422, "invalid_token"), noContent()] });
+    renderAt("/verificar#token=old");
+    await waitFor(() => expect(liveText()).toContain("El enlace ya se usó o venció."));
+
+    window.history.replaceState(null, "", "/verificar#token=fresh");
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+
+    expect(await screen.findByRole("heading", { name: "¡Mail verificado!" })).toBeTruthy();
+    expect(window.location.hash).toBe("");
+    expect(sentTo(sent, "POST /auth/email/verify").map((s) => s.body)).toEqual([{ token: "old" }, { token: "fresh" }]);
+  });
+
+  test("A11: a new #token arriving on /ingresar signs in with it", async () => {
+    const sent = mockApi({
+      "POST /auth/link/consume": noContent(),
+      "GET /auth/me": [fail(401, "unauthenticated"), ok(me())],
+    });
+    renderAt("/ingresar");
+    await screen.findByRole("heading", { name: "Ingresá" });
+
+    window.history.replaceState(null, "", "/ingresar#token=tok-new");
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+
+    await expectPath("/");
+    expect(sentTo(sent, "POST /auth/link/consume").map((s) => s.body)).toEqual([{ token: "tok-new" }]);
+  });
+
+  test("A14: enrollment copy does not mention a QR", async () => {
+    mockApi({
+      "GET /auth/me": ok(me({ role: "school_admin", mfa: "enrollment_required" })),
+      "POST /auth/mfa/enrollment": ok({ secret: "JBSWY3DPEHPK3PXP", otpauthUri: "otpauth://totp/x?secret=JBSWY3DPEHPK3PXP" }),
+    });
+    renderAt("/seguridad/activar");
+    await screen.findByText("JBSW Y3DP EHPK 3PXP");
+    expect(screen.getByRole("main").textContent).not.toMatch(/QR/i);
+  });
+});
+

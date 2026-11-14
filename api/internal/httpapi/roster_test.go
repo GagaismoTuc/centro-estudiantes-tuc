@@ -217,6 +217,15 @@ func TestRosterImportInsertsAndSkipsExisting(t *testing.T) {
 	})
 }
 
+// Every code the parser reports is in the contract's RowError.code enum.
+func TestRowErrorCodesAreInTheContract(t *testing.T) {
+	for _, c := range roster.RowErrorCodes {
+		if !oapi.RowErrorCode(c).Valid() {
+			t.Errorf("roster code %q is missing from openapi RowError.code", c)
+		}
+	}
+}
+
 func TestRosterImportRejectsInvalidFilesAtomically(t *testing.T) {
 	ctx := integration(t)
 	f := newFixture(t, ctx)
@@ -237,20 +246,23 @@ func TestRosterImportRejectsInvalidFilesAtomically(t *testing.T) {
 		{"invalid rows", "text/csv",
 			csvHeader + "Ana,123\n,40111222\nBeto,40.111.22a\nCarla,30111222,extra\nDani,30111223\nEva,1234567890\n",
 			http.StatusUnprocessableEntity, `{"error":"invalid_rows","rows":[` +
-				`{"line":2,"reason":"document_number must have 7 to 9 digits"},` +
-				`{"line":3,"reason":"full_name is required"},` +
-				`{"line":4,"reason":"document_number must have 7 to 9 digits"},` +
-				`{"line":5,"reason":"expected 2 fields"},` +
-				`{"line":7,"reason":"document_number must have 7 to 9 digits"}]}`},
+				`{"code":"document_number_length","line":2,"reason":"document_number must have 7 to 9 digits"},` +
+				`{"code":"full_name_required","line":3,"reason":"full_name is required"},` +
+				`{"code":"document_number_format","line":4,"reason":"document_number must have only digits, with or without dots"},` +
+				`{"code":"field_count","line":5,"reason":"expected 2 fields"},` +
+				`{"code":"document_number_length","line":7,"reason":"document_number must have 7 to 9 digits"}]}`},
+		{"DNI with spaces", "text/csv", csvHeader + "Ana,42 345 678\n", http.StatusUnprocessableEntity,
+			`{"error":"invalid_rows","rows":[{"code":"document_number_spaces","line":2,` +
+				`"reason":"document_number must not contain spaces"}]}`},
 		{"duplicate in file", "text/csv", csvHeader + "Ana,30111222\nBeto,40111222\nAna bis,30.111.222\n",
 			http.StatusUnprocessableEntity,
-			`{"error":"invalid_rows","rows":[{"line":4,"reason":"duplicate document_number (line 2)"}]}`},
+			`{"error":"invalid_rows","rows":[{"code":"document_number_duplicate","duplicateOfLine":2,"line":4,"reason":"duplicate document_number (line 2)"}]}`},
 		{"missing header", "text/csv", "Ana,30111222\n", http.StatusUnprocessableEntity,
-			`{"error":"invalid_rows","rows":[{"line":1,"reason":"header must be full_name,document_number"}]}`},
+			`{"error":"invalid_rows","rows":[{"code":"header_invalid","line":1,"reason":"header must be full_name,document_number"}]}`},
 		{"empty body", "text/csv", "", http.StatusUnprocessableEntity,
-			`{"error":"invalid_rows","rows":[{"line":1,"reason":"header must be full_name,document_number"}]}`},
+			`{"error":"invalid_rows","rows":[{"code":"header_invalid","line":1,"reason":"header must be full_name,document_number"}]}`},
 		{"malformed CSV", "text/csv", csvHeader + "Ana,30111222\n\"Beto,40111222\n", http.StatusUnprocessableEntity,
-			`{"error":"invalid_rows","rows":[{"line":3,"reason":"malformed CSV"}]}`},
+			`{"error":"invalid_rows","rows":[{"code":"csv_malformed","line":3,"reason":"malformed CSV"}]}`},
 		{"too many rows", "text/csv", tooMany.String(), http.StatusUnprocessableEntity, `{"error":"too_many_rows"}`},
 		{"body too large", "text/csv", csvHeader + strings.Repeat("a", 1<<20) + ",30111222\n",
 			http.StatusRequestEntityTooLarge, `{"error":"body_too_large"}`},
@@ -508,7 +520,7 @@ func TestRosterImportRejectsNonUTF8(t *testing.T) {
 	rec := f.importCSV(token, csvHeader+"Ana,30111221\nMu\xf1oz Ana,30111222\n")
 
 	wantResponse(t, rec, http.StatusUnprocessableEntity,
-		`{"error":"invalid_rows","rows":[{"line":3,"reason":"file must be saved as CSV UTF-8"}]}`)
+		`{"error":"invalid_rows","rows":[{"code":"encoding_invalid","line":3,"reason":"file must be saved as CSV UTF-8"}]}`)
 	if got := rosterRows(t, ctx, f.tenant); !slices.Equal(got, before) {
 		t.Fatalf("roster = %q, want unchanged %q", got, before)
 	}

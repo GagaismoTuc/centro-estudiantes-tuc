@@ -224,7 +224,7 @@ func TestRosterImportAcceptsSemicolonCSV(t *testing.T) {
 	// A semicolon file is still validated row by row.
 	rec := f.importCSV(token, "full_name;document_number\nEva;123\n")
 	wantResponse(t, rec, http.StatusUnprocessableEntity,
-		`{"error":"invalid_rows","rows":[{"line":2,"reason":"document_number must have 7 to 9 digits"}]}`)
+		`{"error":"invalid_rows","rows":[{"code":"document_number_length","line":2,"reason":"document_number must have 7 to 9 digits"}]}`)
 }
 
 // Names may not hide text direction overrides or zero-width characters (Unicode category Cf), and
@@ -233,19 +233,21 @@ func TestRosterImportRejectsInvisibleCharactersAndMisplacedDots(t *testing.T) {
 	ctx := integration(t)
 	f := newFixture(t, ctx)
 	_, token, _, _ := f.signInMFA(t, ctx, "school_admin")
-	const invisible = "full_name contains invisible characters"
-	const dni = "document_number must have 7 to 9 digits"
+	const invisible = `"code":"full_name_invisible","line":%d,"reason":"full_name contains invisible characters"`
+	const dots = `"code":"document_number_format","line":%d,` +
+		`"reason":"document_number must have only digits, with or without dots"`
+	const spaces = `"code":"document_number_spaces","line":%d,"reason":"document_number must not contain spaces"`
 	rows := []struct{ name, doc, reason string }{
 		{"Ana \u202Eatsoca", "30111301", invisible}, // right-to-left override
 		{"Beto\u2066 Bravo", "30111302", invisible}, // left-to-right isolate
 		{"Car\u200Bla", "30111303", invisible},      // zero-width space
 		{"Dani\u202A", "30111304", invisible},       // left-to-right embedding
 		{"Eva\u2069", "30111305", invisible},        // pop directional isolate
-		{"Fede", "1.2.3.4.5.6.7", dni},
-		{"Gabi", "40.111222", dni},
-		{"Hugo", "4011.1222", dni},
-		{"Ines", "40.111.2222", dni},
-		{"Juan", "9 876 543", dni},
+		{"Fede", "1.2.3.4.5.6.7", dots},
+		{"Gabi", "40.111222", dots},
+		{"Hugo", "4011.1222", dots},
+		{"Ines", "40.111.2222", dots},
+		{"Juan", "9 876 543", spaces},
 		{"Karina", "40.111.222", ""},
 		{"Lucas", "9.876.543", ""},
 		{"Mora", "123.456.789", ""},
@@ -257,7 +259,7 @@ func TestRosterImportRejectsInvisibleCharactersAndMisplacedDots(t *testing.T) {
 	for i, r := range rows {
 		fmt.Fprintf(&body, "%s,%s\n", r.name, r.doc)
 		if r.reason != "" {
-			want = append(want, fmt.Sprintf(`{"line":%d,"reason":%q}`, i+2, r.reason))
+			want = append(want, "{"+fmt.Sprintf(r.reason, i+2)+"}")
 		}
 	}
 	wantResponse(t, f.importCSV(token, body.String()), http.StatusUnprocessableEntity,

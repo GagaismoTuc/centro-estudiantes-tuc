@@ -12,8 +12,7 @@ export function SignOutButton({ className, children }: { className: string; chil
   const { signOut } = useSession();
   const [status, setStatus] = useState<Status>(null);
 
-  async function onClick() {
-    if (!confirmLeave()) return;
+  async function signOutNow() {
     setStatus(null);
     const code = await signOut();
     if (code) setStatus({ tone: "error", text: `No se cerró la sesión. ${errorMessage(code)}` });
@@ -21,7 +20,7 @@ export function SignOutButton({ className, children }: { className: string; chil
 
   return (
     <>
-      <button type="button" className={className} onClick={() => void onClick()}>
+      <button type="button" className={className} onClick={() => confirmLeave(() => void signOutNow())}>
         {children}
       </button>
       <FormStatus status={status} />

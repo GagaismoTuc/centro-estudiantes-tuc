@@ -662,6 +662,8 @@ input:user-invalid {
 
 .content {
   display: grid;
+  /* minmax(0, 1fr): a wide child (a long file name, a table) must not stretch the column past the screen. */
+  grid-template-columns: minmax(0, 1fr);
   align-content: start;
   gap: 1.5rem;
   inline-size: min(100%, 64rem);
@@ -794,6 +796,7 @@ input:user-invalid {
 
 .panel {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.5rem;
   padding: 1.25rem;
   border: 1px solid var(--border);
@@ -829,9 +832,10 @@ input:user-invalid {
   cursor: not-allowed;
 }
 
+/* Always three in a row (never 2 + 1); compact on narrow phones. */
 .stats {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.75rem;
   margin: 0;
 }
@@ -856,6 +860,22 @@ input:user-invalid {
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
+}
+@media (max-width: 30rem) {
+  .stats {
+    gap: 0.5rem;
+  }
+  .stats > div {
+    align-content: space-between;
+    padding: 0.625rem 0.625rem;
+  }
+  .stats dt {
+    font-size: 0.625rem;
+    letter-spacing: 0.04em;
+  }
+  .stats dd {
+    font-size: 1.25rem;
+  }
 }
 
 .mono,
@@ -894,8 +914,10 @@ input[type="search"] {
   font-size: max(1rem, 1em);
 }
 
-/* Import drop zone: the native file input stays visible and labelled. */
+/* Import drop zone: the native file input stays focusable and labelled, but its English
+   "Choose File / No file chosen" look is replaced by a Spanish button and the file name. */
 .dropzone {
+  position: relative;
   display: grid;
   justify-items: center;
   gap: 0.375rem;
@@ -915,24 +937,60 @@ input[type="search"] {
   block-size: 1.25rem;
   color: var(--muted);
 }
-.dropzone label {
+.dropzone__title {
+  margin: 0;
   font-weight: 500;
 }
-.dropzone input[type="file"] {
-  max-inline-size: 100%;
-  font: inherit;
-  font-size: 0.875rem;
+.file-input {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  opacity: 0;
 }
-.dropzone input[type="file"]::file-selector-button {
-  min-block-size: 2.5rem;
-  margin-inline-end: 0.75rem;
-  padding: 0.375rem 0.875rem;
+.file-button {
+  margin-block-start: 0.25rem;
+  cursor: pointer;
+}
+.file-input:focus-visible + .file-button {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.file-input:disabled + .file-button {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.file-name {
+  max-inline-size: 100%;
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+}
+
+/* Rejected import: calm, explains why nothing was loaded and what to do next. */
+.import-result {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.875rem 1rem;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  background: var(--surface);
-  color: var(--text);
-  font: inherit;
-  cursor: pointer;
+  background: var(--surface-2);
+  font-size: 0.9375rem;
+}
+.import-result p {
+  margin: 0;
+}
+.import-result__title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+}
+.import-result__title .icon {
+  inline-size: 1.125rem;
+  block-size: 1.125rem;
+  color: var(--danger);
 }
 
 .row-errors {
@@ -944,8 +1002,9 @@ input[type="search"] {
   overflow-y: auto;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  color: var(--danger);
+  background: var(--surface);
   font-size: 0.875rem;
+  overflow-wrap: anywhere;
 }
 
 /* Data table (Modern Web Guidance `responsive-table`): sticky header, stacked cards
@@ -1290,4 +1349,15 @@ input[type="search"] {
   .card--link:active {
     transform: none;
   }
+}
+
+/* Fields flagged by form validation or a server error. */
+input[aria-invalid="true"],
+textarea[aria-invalid="true"],
+select[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+
+.field__error {
+  margin-block-start: 0.375rem;
 }

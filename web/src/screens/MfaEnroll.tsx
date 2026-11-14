@@ -6,7 +6,7 @@ import type { components } from "../api/schema.gen.ts";
 import { useSession } from "../auth/session.tsx";
 import { AuthLayout } from "../components/AuthLayout.tsx";
 import { CopyButton } from "../components/CopyButton.tsx";
-import { FormStatus, SubmitButton, type Status } from "../components/Form.tsx";
+import { checks, FieldError, FormStatus, SubmitButton, useFormErrors, type Status } from "../components/Form.tsx";
 import { Icon } from "../components/Icon.tsx";
 import { PageTitle, useDocumentTitle } from "../components/Page.tsx";
 import { groupSecret } from "../lib/accessCode.ts";
@@ -27,6 +27,7 @@ function Setup({ onConfirmed }: { onConfirmed: (codes: string[]) => void }) {
   const [pending, setPending] = useState(false);
   const [failed, setFailed] = useState(false);
   const started = useRef(false);
+  const form = useFormErrors();
 
   const start = useCallback(() => {
     setFailed(false);
@@ -46,13 +47,17 @@ function Setup({ onConfirmed }: { onConfirmed: (codes: string[]) => void }) {
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const code = String(new FormData(event.currentTarget).get("code"));
+    if (!form.validate({ code: checks.otp })) return setStatus(null);
+    const code = String(new FormData(event.currentTarget).get("code")).trim();
     setPending(true);
     setStatus(null);
     const result = await call(apiClient.POST("/auth/mfa/enrollment/confirm", { body: { code } }));
     setPending(false);
     if (result.ok) onConfirmed(result.data.recoveryCodes);
-    else setStatus({ tone: "error", text: errorMessage(result.code, "mfa") });
+    else {
+      setStatus({ tone: "error", text: errorMessage(result.code, "mfa") });
+      form.failed(result.code);
+    }
   }
 
   return (
@@ -78,14 +83,14 @@ function Setup({ onConfirmed }: { onConfirmed: (codes: string[]) => void }) {
                 </a>
               </div>
             </div>
-            {/* QR codes are out of scope for now: manual entry and the otpauth: link cover phones. */}
-            <p className="muted small">Si la app te pide escanear un QR, elegí «Ingresar clave manualmente» y pegá la clave.</p>
+            {/* Manual entry and the otpauth: link cover phones for now (no image to scan yet). */}
+            <p className="muted small">En la app elegí la opción para ingresar una clave y pegá esta.</p>
           </li>
           <li>
             <p>Escribí el código que muestra la app.</p>
-            <form method="post" action="/seguridad/activar" onSubmit={(e) => void onSubmit(e)}>
-              <OtpField />
-              <FormStatus status={status} />
+            <form method="post" action="/seguridad/activar" {...form.formProps} onSubmit={(e) => void onSubmit(e)}>
+              <OtpField {...form.field("code")} />
+              <FormStatus status={status} {...form.statusProps} />
               <SubmitButton pending={pending}>Activar</SubmitButton>
             </form>
           </li>
@@ -105,13 +110,13 @@ function RecoveryCodes({ codes }: { codes: string[] }) {
   useDocumentTitle("Códigos de recuperación");
   const { afterSignIn } = useSession();
   const [saved, setSaved] = useState(false);
-  const [status, setStatus] = useState<Status>(null);
   const [pending, setPending] = useState(false);
-  const notSaved: Status = { tone: "error", text: "Marcá la casilla cuando hayas guardado los códigos." };
+  const form = useFormErrors();
+  const savedField = form.field("saved");
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!saved) return setStatus(notSaved);
+    if (!form.validate({ saved: (v) => (v ? null : "Marcá la casilla cuando hayas guardado los códigos.") })) return;
     setPending(true);
     await afterSignIn();
   }
@@ -140,22 +145,21 @@ function RecoveryCodes({ codes }: { codes: string[] }) {
           </button>
         </div>
       </div>
-      <form method="post" action="/seguridad/activar" onSubmit={(e) => void onSubmit(e)}>
+      <form method="post" action="/seguridad/activar" {...form.formProps} onSubmit={(e) => void onSubmit(e)}>
         <div className="check">
           <input
             id="codes-saved"
+            name="saved"
             type="checkbox"
             required
             checked={saved}
-            onChange={(e) => {
-              setSaved(e.target.checked);
-              if (e.target.checked) setStatus(null);
-            }}
-            onInvalid={() => setStatus(notSaved)}
+            aria-invalid={savedField.error ? true : undefined}
+            aria-describedby={savedField.error ? "codes-saved-error" : undefined}
+            onChange={(e) => setSaved(e.target.checked)}
           />
           <label htmlFor="codes-saved">Ya los guardé en un lugar seguro</label>
         </div>
-        <FormStatus status={status} />
+        {savedField.error && <FieldError id="codes-saved-error">{savedField.error}</FieldError>}
         <SubmitButton pending={pending}>Continuar</SubmitButton>
       </form>
     </AuthLayout>
