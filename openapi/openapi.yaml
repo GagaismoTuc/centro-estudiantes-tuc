@@ -314,6 +314,53 @@ paths:
                 $ref: "#/components/schemas/Error"
         "429":
           $ref: "#/components/responses/TooManyAttempts"
+  /auth/password:
+    post:
+      operationId: postAuthPassword
+      summary: Change the password of the signed-in user
+      description: >
+        Checks the new password first (10 to 128 characters, `weak_password`), then the current one. A wrong
+        current password counts as a failed sign-in for the user's email (same limit as `/auth/login`:
+        5 per 15 minutes, then 429). A school admin or officer needs a session that completed two-factor
+        authentication. On success stores the new password, marks every pending emailed link of the user
+        used, deletes every other session of the user and rotates this one: a new cookie with the same
+        absolute expiry (Max-Age is the remaining lifetime) and the old token stops working. Errors change
+        nothing. Responses carry `Cache-Control: no-store`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordChangeRequest"
+      responses:
+        "204":
+          description: Password changed; the session cookie is rotated and every other session signed out.
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          description: >
+            School admin or officer whose session has not completed two-factor authentication
+            (`mfa_required`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: >
+            `weak_password` (new password is not 10 to 128 characters), `invalid_credentials` (wrong current
+            password) or `same_password` (the new password equals the current one).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          $ref: "#/components/responses/TooManyAttempts"
   /auth/mfa/enrollment:
     post:
       operationId: postAuthMfaEnrollment
@@ -647,6 +694,17 @@ components:
         token:
           type: string
         password:
+          type: string
+          minLength: 10
+          maxLength: 128
+    PasswordChangeRequest:
+      type: object
+      required: [currentPassword, newPassword]
+      additionalProperties: false
+      properties:
+        currentPassword:
+          type: string
+        newPassword:
           type: string
           minLength: 10
           maxLength: 128
