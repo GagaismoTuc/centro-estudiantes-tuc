@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +15,8 @@ import (
 	"time"
 
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/auth"
+	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/httpapi"
+	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/roster"
 )
 
 const invalidCodeBody = `{"error":"invalid_code"}`
@@ -440,5 +443,139 @@ func TestClaimEmailProbesAreLimited(t *testing.T) {
 	}
 	if !limited {
 		t.Fatal("60 email_in_use probes from one IP were never limited")
+	}
+}
+
+func TestRedeemSessionVanishedAfterAuthentication(t *testing.T) {
+	ctx := integration(t)
+	var armed bool
+	var calls int
+	var user string
+	var deleteErr error
+	f := newFixtureWith(t, ctx, func(d *httpapi.Deps) {
+		base := d.Now
+		d.Now = func() time.Time {
+			if armed {
+				calls++
+				if calls == 3 {
+					_, deleteErr = tdb.Super.Exec(ctx, `DELETE FROM sessions WHERE user_id = $1`, user)
+				}
+			}
+			return base()
+		}
+	})
+	user, token := f.signIn(t, ctx, "officer")
+	other := newTenant(t, ctx)
+	member := seedMember(t, ctx, other, "Student", "39111001")
+	code := seedCode(t, ctx, other, member, "active", f.clk.Now())
+	armed = true
+	rec := f.redeem(code, token)
+	if deleteErr != nil || calls < 3 {
+		t.Fatalf("session deletion: calls=%d err=%v", calls, deleteErr)
+	}
+	wantResponse(t, rec, http.StatusUnauthorized, unauthBody)
+	if got := memberAccounts(t, ctx, member); len(got) != 0 {
+		t.Fatalf("memberships = %v, want none", got)
+	}
+	wantCodeUsed(t, ctx, member, nil)
+}
+
+type synchronizedBody struct {
+	*strings.Reader
+	ready *sync.WaitGroup
+	once  sync.Once
+}
+
+func (b *synchronizedBody) Read(p []byte) (int, error) {
+	b.once.Do(func() { b.ready.Done(); b.ready.Wait() })
+	return b.Reader.Read(p)
+}
+
+func TestConcurrentRedeemsOfSameSession(t *testing.T) {
+	ctx := integration(t)
+	f := newFixture(t, ctx)
+	user, token := f.signIn(t, ctx, "officer")
+	members := []string{seedMember(t, ctx, newTenant(t, ctx), "One", "39111002"), seedMember(t, ctx, newTenant(t, ctx), "Two", "39111003")}
+	var codes [2]string
+	for i, member := range members {
+		var tenant string
+		if err := tdb.Super.QueryRow(ctx, `SELECT tenant_id::text FROM roster_members WHERE id = $1`, member).Scan(&tenant); err != nil {
+			t.Fatal(err)
+		}
+		codes[i] = seedCode(t, ctx, tenant, member, "active", f.clk.Now())
+	}
+	var recs [2]*httptest.ResponseRecorder
+	var wg sync.WaitGroup
+	var ready sync.WaitGroup
+	ready.Add(2)
+	for i := range codes {
+		wg.Go(func() {
+			body := &synchronizedBody{Reader: strings.NewReader(fmt.Sprintf(`{"code":%q}`, codes[i])), ready: &ready}
+			req := httptest.NewRequest(http.MethodPost, "/api/auth/redeem", body)
+			req.RemoteAddr = "192.0.2.90:40000"
+			req.Header.Set("Content-Type", "application/json")
+			req.AddCookie(&http.Cookie{Name: cookieName, Value: token})
+			recs[i] = httptest.NewRecorder()
+			f.h.ServeHTTP(recs[i], req)
+		})
+	}
+	wg.Wait()
+	success := 0
+	for i, rec := range recs {
+		if rec.Code == http.StatusOK {
+			success++
+			var body struct {
+				UserID string `json:"userId"`
+			}
+			if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil || body.UserID != user {
+				t.Fatalf("successful response = %s, error = %v", rec.Body, err)
+			}
+			if got := memberAccounts(t, ctx, members[i]); len(got) != 1 || !strings.HasPrefix(got[0], user+"|student|") {
+				t.Fatalf("memberships = %v", got)
+			}
+			now := f.clk.Now()
+			wantCodeUsed(t, ctx, members[i], &now)
+		} else {
+			wantResponse(t, rec, http.StatusUnauthorized, unauthBody)
+			if got := memberAccounts(t, ctx, members[i]); len(got) != 0 {
+				t.Fatalf("memberships = %v, want none", got)
+			}
+			wantCodeUsed(t, ctx, members[i], nil)
+		}
+	}
+	if success < 1 {
+		t.Fatal("no successful redeem")
+	}
+	if got := sessionCount(t, ctx, user); got != success {
+		t.Fatalf("sessions = %d, want %d", got, success)
+	}
+}
+
+func TestClaimUsesOneInstant(t *testing.T) {
+	ctx := integration(t)
+	f := newFixture(t, ctx)
+	now := f.clk.Now()
+	calls := 0
+	store := roster.NewStore(tdb.App, testKey, func() time.Time { t := now.Add(time.Duration(calls) * time.Second); calls++; return t })
+	expiredMember := seedMember(t, ctx, f.tenant, "Expired", "39111004")
+	expired := seedCode(t, ctx, f.tenant, expiredMember, "active", now)
+	if _, err := tdb.Super.Exec(ctx, `UPDATE access_codes SET expires_at = $1 WHERE roster_member_id = $2`, now, expiredMember); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Claim(ctx, expired, uniqueEmail("expired-clock"), password, ""); !errors.Is(err, roster.ErrInvalidCode) {
+		t.Fatalf("expired code error = %v", err)
+	}
+	validMember := seedMember(t, ctx, f.tenant, "Valid", "39111005")
+	valid := seedCode(t, ctx, f.tenant, validMember, "active", now)
+	calls = 0
+	got, err := store.Claim(ctx, valid, uniqueEmail("valid-clock"), password, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 {
+		t.Errorf("clock reads = %d, want 1", calls)
+	}
+	if want := now.Add(auth.SessionLifetime); !got.Expires.Equal(want) || !sessionExpiry(t, ctx, got.Token).Equal(want) {
+		t.Fatalf("session expiry = %v, want %v", got.Expires, want)
 	}
 }

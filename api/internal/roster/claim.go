@@ -33,7 +33,7 @@ type Claimed struct {
 // useCode runs fn in one transaction holding the live code row locked, with the code's tenant
 // declared, and marks the code used when fn succeeds. A concurrent claim of the same code waits for
 // the lock and then no longer matches used_at IS NULL, so it gets ErrInvalidCode.
-func (s *Store) useCode(ctx context.Context, code string, fn func(tx pgx.Tx, tenant, member string) error) error {
+func (s *Store) useCode(ctx context.Context, code string, now func() time.Time, fn func(tx pgx.Tx, tenant, member string) error) error {
 	if !ValidCode(code) || len(s.key) < MinKeyLen {
 		return ErrInvalidCode
 	}
@@ -43,7 +43,7 @@ func (s *Store) useCode(ctx context.Context, code string, fn func(tx pgx.Tx, ten
 		err := tx.QueryRow(ctx, `
 			SELECT tenant_id::text, roster_member_id::text FROM access_codes
 			WHERE code_hash = $1 AND used_at IS NULL AND revoked_at IS NULL AND expires_at > $2
-			FOR UPDATE`, hash, s.now()).Scan(&tenant, &member)
+			FOR UPDATE`, hash, now()).Scan(&tenant, &member)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrInvalidCode
 		}
@@ -65,7 +65,7 @@ func (s *Store) useCode(ctx context.Context, code string, fn func(tx pgx.Tx, ten
 			return err
 		}
 		_, err = tx.Exec(ctx, `UPDATE access_codes SET used_at = $2 WHERE code_hash = $1`,
-			hash, s.now().UTC().Truncate(time.Microsecond))
+			hash, now().UTC().Truncate(time.Microsecond))
 		return err
 	})
 }
@@ -76,7 +76,8 @@ func (s *Store) useCode(ctx context.Context, code string, fn func(tx pgx.Tx, ten
 // fails the whole claim.
 func (s *Store) Claim(ctx context.Context, code, email, password, prevToken string) (Claimed, error) {
 	var out Claimed
-	err := s.useCode(ctx, code, func(tx pgx.Tx, tenant, member string) error {
+	now := s.now()
+	err := s.useCode(ctx, code, func() time.Time { return now }, func(tx pgx.Tx, tenant, member string) error {
 		var taken bool
 		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT FROM users WHERE lower(email) = $1)`, email).Scan(&taken); err != nil {
 			return err
@@ -102,11 +103,11 @@ func (s *Store) Claim(ctx context.Context, code, email, password, prevToken stri
 		if out.TenantName, err = tenantName(ctx, tx, tenant); err != nil {
 			return err
 		}
-		if out.Token, err = auth.InsertSession(ctx, tx, out.UserID, &tenant, s.now()); err != nil {
+		if out.Token, err = auth.InsertSession(ctx, tx, out.UserID, &tenant, now); err != nil {
 			return err
 		}
-		out.Expires = s.now().Add(auth.SessionLifetime)
-		out.VerifyToken, err = auth.IssueEmailToken(ctx, tx, out.UserID, auth.PurposeVerifyEmail, s.now())
+		out.Expires = now.Add(auth.SessionLifetime)
+		out.VerifyToken, err = auth.IssueEmailToken(ctx, tx, out.UserID, auth.PurposeVerifyEmail, now)
 		return err
 	})
 	return out, mapClaimError(err)
@@ -117,7 +118,7 @@ func (s *Store) Claim(ctx context.Context, code, email, password, prevToken stri
 // transaction: on any failure nothing changes and the old session stays valid.
 func (s *Store) Redeem(ctx context.Context, sess auth.Session, token, code string) (Claimed, error) {
 	out := Claimed{UserID: sess.UserID}
-	err := s.useCode(ctx, code, func(tx pgx.Tx, tenant, member string) error {
+	err := s.useCode(ctx, code, s.now, func(tx pgx.Tx, tenant, member string) error {
 		var already bool
 		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT FROM memberships WHERE tenant_id = $1 AND user_id = $2)`,
 			tenant, sess.UserID).Scan(&already); err != nil {

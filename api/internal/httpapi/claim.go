@@ -59,6 +59,8 @@ func (s *server) spendCode(w http.ResponseWriter, r *http.Request, use func() (r
 		writeError(w, http.StatusConflict, "email_in_use")
 	case errors.Is(err, roster.ErrAlreadyMember):
 		writeError(w, http.StatusConflict, "already_member")
+	case errors.Is(err, auth.ErrNoSession):
+		writeError(w, http.StatusUnauthorized, "unauthenticated")
 	default:
 		slog.Error("use access code", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal")
