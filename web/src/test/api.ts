@@ -1,3 +1,5 @@
+import { render } from "@testing-library/react";
+import { createElement, StrictMode, type ReactNode } from "react";
 import { vi } from "vitest";
 import type { components } from "../api/schema.gen.ts";
 
@@ -70,3 +72,41 @@ export function mockApi(routes: Record<string, Reply | Reply[]>): Sent[] {
 export function sentTo(sent: Sent[], key: string): Sent[] {
   return sent.filter((s) => `${s.method} ${s.path}` === key);
 }
+
+/**
+ * Renders inside <StrictMode>, as main.tsx does: effects run mount → cleanup → mount,
+ * which is how the leave dialog closed itself in the browser.
+ */
+export function renderStrict(ui: ReactNode) {
+  return render(createElement(StrictMode, null, ui));
+}
+
+/**
+ * Gives jsdom a browser-like <dialog>: showModal()/close() toggle `open`, and close()
+ * delivers its `close` event in a later task, as browsers do. Returns the restore.
+ */
+export function emulateDialog(): () => void {
+  const proto = HTMLDialogElement.prototype as unknown as Record<string, unknown>;
+  const saved = { showModal: proto.showModal, show: proto.show, close: proto.close };
+  function open(this: HTMLDialogElement) {
+    if (!this.hasAttribute("open")) this.setAttribute("open", "");
+  }
+  proto.showModal = open;
+  proto.show = open;
+  proto.close = function close(this: HTMLDialogElement) {
+    if (!this.hasAttribute("open")) return;
+    this.removeAttribute("open");
+    setTimeout(() => this.dispatchEvent(new Event("close")));
+  };
+  return () => Object.assign(proto, saved);
+}
+
+/** Esc on an open modal dialog: a cancelable `cancel`, then close() unless prevented. */
+export function pressEscape(dialog: HTMLElement) {
+  const event = new Event("cancel", { cancelable: true });
+  dialog.dispatchEvent(event);
+  if (!event.defaultPrevented) (dialog as HTMLDialogElement).close();
+}
+
+/** Lets queued tasks (dialog close events, history traversal) run. */
+export const settle = (ms = 50) => new Promise((resolve) => setTimeout(resolve, ms));

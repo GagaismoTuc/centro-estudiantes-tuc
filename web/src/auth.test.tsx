@@ -492,6 +492,14 @@ describe("T3 copy fixes", () => {
     expect(main.textContent?.match(/nuevo/g) ?? []).toHaveLength(1);
   });
 
+  test("A11: a failed verification gives the reason before the next step", async () => {
+    mockApi({ "POST /auth/email/verify": fail(422, "invalid_token") });
+    renderAt("/verificar#token=used");
+    const reason = await screen.findByText("El enlace ya se usó o venció.", { exact: false });
+    const hint = screen.getByText("Ingresá y desde el inicio pedí un enlace nuevo.");
+    expect(reason.compareDocumentPosition(hint) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   test("A11: a new #token arriving on /verificar is processed", async () => {
     const sent = mockApi({ "POST /auth/email/verify": [fail(422, "invalid_token"), noContent()] });
     renderAt("/verificar#token=old");

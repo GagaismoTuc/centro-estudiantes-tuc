@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { errorMessage } from "../api/errors.ts";
 import { useSession } from "../auth/session.tsx";
-import { useLeaveConfirm } from "../lib/router.tsx";
+import { confirmLeave } from "../lib/router.tsx";
 import { FormStatus, type Status } from "./Form.tsx";
 
 /**
@@ -11,7 +11,6 @@ import { FormStatus, type Status } from "./Form.tsx";
 export function SignOutButton({ className, children }: { className: string; children: ReactNode }) {
   const { signOut } = useSession();
   const [status, setStatus] = useState<Status>(null);
-  const { confirmLeave, dialog } = useLeaveConfirm();
 
   async function signOutNow() {
     setStatus(null);
@@ -24,7 +23,6 @@ export function SignOutButton({ className, children }: { className: string; chil
       <button type="button" className={className} onClick={() => confirmLeave(() => void signOutNow())}>
         {children}
       </button>
-      {dialog}
       <FormStatus status={status} />
     </>
   );

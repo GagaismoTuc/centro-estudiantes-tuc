@@ -43,12 +43,13 @@ export function VerifyEmail() {
     <AuthLayout>
       <PageTitle key={state}>{title}</PageTitle>
       {state === "done" && <p className="lead">Ya podés ingresar con enlaces por mail y recuperar tu contraseña si la olvidás.</p>}
+      {/* The reason first, then what to do about it. */}
+      <FormStatus status={status} />
       {state === "failed" && (
         <p className="lead">
           {signedIn ? "Desde el inicio podés pedir un enlace nuevo." : "Ingresá y desde el inicio pedí un enlace nuevo."}
         </p>
       )}
-      <FormStatus status={status} />
       {state !== "verifying" && (
         <Link className="button button--primary button--block" to={signedIn ? "/" : "/ingresar"}>
           {signedIn ? "Ir al inicio" : "Ingresar"}

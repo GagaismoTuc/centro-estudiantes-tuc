@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { roleLabel, useMe } from "../auth/session.tsx";
-import { Link } from "../lib/router.tsx";
+import { LeaveConfirmHost, Link } from "../lib/router.tsx";
 import { Icon, type IconName } from "./Icon.tsx";
 import { BrandMark } from "./Page.tsx";
 import { SignOutButton } from "./SignOut.tsx";
@@ -220,6 +220,8 @@ export function AppShell({ page, children }: { page: string; children: ReactNode
         </main>
       </div>
       <NavDrawer open={drawerOpen} onClosed={() => setDrawerOpen(false)} />
+      {/* Outside the drawer: a leave question asked from the phone menu outlives it. */}
+      <LeaveConfirmHost />
     </div>
   );
 }

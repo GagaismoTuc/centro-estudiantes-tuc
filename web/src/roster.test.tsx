@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { App } from "./App.tsx";
 import { toCsv } from "./lib/csv.ts";
-import { fail, me, mockApi, ok, sentTo, type Reply } from "./test/api.ts";
+import { emulateDialog, fail, me, mockApi, ok, pressEscape, renderStrict, sentTo, settle, type Reply } from "./test/api.ts";
 
 const admin = me({ role: "school_admin", mfa: "satisfied" });
 const members = [
@@ -364,5 +364,26 @@ describe("issuing access codes", () => {
     fireEvent.click(within(again).getByRole("button", { name: "Salir igual" }));
     await waitFor(() => expect(window.location.pathname).toBe("/"));
     expect(leave()).toBe(false);
+  });
+});
+
+describe("A6 under StrictMode: «Generar código nuevo» confirmation", () => {
+  test("stays open until answered; Esc cancels without issuing", async () => {
+    const restoreDialog = emulateDialog();
+    try {
+      const sent = mockApi({ "GET /auth/me": ok(admin), "GET /roster": ok(members) });
+      window.history.replaceState(null, "", "/padron");
+      renderStrict(<App />);
+      await screen.findByRole("table", { name: "Alumnos del padrón" });
+      fireEvent.click(within(rowOf("Bruno Díaz")).getByRole("button", { name: "Generar código nuevo" }));
+      await settle();
+      const dialog = screen.getByRole("dialog", { name: "¿Generar un código nuevo para Bruno Díaz?" });
+      pressEscape(dialog);
+      await settle();
+      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(sentTo(sent, "POST /roster/m2/access-code")).toHaveLength(0);
+    } finally {
+      restoreDialog();
+    }
   });
 });
