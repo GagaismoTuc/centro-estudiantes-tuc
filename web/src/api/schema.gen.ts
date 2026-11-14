@@ -238,6 +238,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Change the password of the signed-in user
+         * @description Checks the new password first (10 to 128 characters, `weak_password`), then the current one. A wrong current password counts as a failed sign-in for the user's email (same limit as `/auth/login`: 5 per 15 minutes, then 429). A school admin or officer needs a session that completed two-factor authentication. On success stores the new password, marks every pending emailed link of the user used, deletes every other session of the user and rotates this one: a new cookie with the same absolute expiry (Max-Age is the remaining lifetime) and the old token stops working. Errors change nothing. Responses carry `Cache-Control: no-store`.
+         */
+        post: operations["postAuthPassword"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/mfa/enrollment": {
         parameters: {
             query?: never;
@@ -408,6 +428,10 @@ export interface components {
         PasswordResetRequest: {
             token: string;
             password: string;
+        };
+        PasswordChangeRequest: {
+            currentPassword: string;
+            newPassword: string;
         };
         RedeemRequest: {
             code: string;
@@ -896,6 +920,50 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             /** @description `weak_password` or `invalid_token`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            429: components["responses"]["TooManyAttempts"];
+        };
+    };
+    postAuthPassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordChangeRequest"];
+            };
+        };
+        responses: {
+            /** @description Password changed; the session cookie is rotated and every other session signed out. */
+            204: {
+                headers: {
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            /** @description School admin or officer whose session has not completed two-factor authentication (`mfa_required`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `weak_password` (new password is not 10 to 128 characters), `invalid_credentials` (wrong current password) or `same_password` (the new password equals the current one). */
             422: {
                 headers: {
                     [name: string]: unknown;
