@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import indexHtml from "../index.html?raw";
 import themeScript from "../public/theme.js?raw";
 import { App } from "./App.tsx";
 import { guardLeave } from "./lib/router.tsx";
@@ -145,6 +146,14 @@ describe("T6a advisories: theme", () => {
     for (const token of ["--page", "--surface", "--text", "--muted", "--primary", "--accent", "--danger", "--ok", "--shadow"]) {
       expect(declared.filter((d) => d === token), token).toHaveLength(1);
     }
+  });
+});
+
+describe("document referrer policy", () => {
+  test("web/index.html sets strict-origin referrer policy", () => {
+    const doc = new DOMParser().parseFromString(indexHtml, "text/html");
+    const meta = doc.querySelector('meta[name="referrer"]');
+    expect(meta?.getAttribute("content")).toBe("strict-origin");
   });
 });
 
