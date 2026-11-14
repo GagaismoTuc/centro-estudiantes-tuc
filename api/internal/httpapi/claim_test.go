@@ -480,10 +480,21 @@ func TestRedeemSessionVanishedAfterAuthentication(t *testing.T) {
 	wantCodeUsed(t, ctx, member, nil)
 }
 
+type synchronizedBody struct {
+	*strings.Reader
+	ready *sync.WaitGroup
+	once  sync.Once
+}
+
+func (b *synchronizedBody) Read(p []byte) (int, error) {
+	b.once.Do(func() { b.ready.Done(); b.ready.Wait() })
+	return b.Reader.Read(p)
+}
+
 func TestConcurrentRedeemsOfSameSession(t *testing.T) {
 	ctx := integration(t)
 	f := newFixture(t, ctx)
-	_, token := f.signIn(t, ctx, "officer")
+	user, token := f.signIn(t, ctx, "officer")
 	members := []string{seedMember(t, ctx, newTenant(t, ctx), "One", "39111002"), seedMember(t, ctx, newTenant(t, ctx), "Two", "39111003")}
 	var codes [2]string
 	for i, member := range members {
@@ -495,22 +506,48 @@ func TestConcurrentRedeemsOfSameSession(t *testing.T) {
 	}
 	var recs [2]*httptest.ResponseRecorder
 	var wg sync.WaitGroup
-	start := make(chan struct{})
+	var ready sync.WaitGroup
+	ready.Add(2)
 	for i := range codes {
-		wg.Go(func() { <-start; recs[i] = f.redeem(codes[i], token) })
+		wg.Go(func() {
+			body := &synchronizedBody{Reader: strings.NewReader(fmt.Sprintf(`{"code":%q}`, codes[i])), ready: &ready}
+			req := httptest.NewRequest(http.MethodPost, "/api/auth/redeem", body)
+			req.RemoteAddr = "192.0.2.90:40000"
+			req.Header.Set("Content-Type", "application/json")
+			req.AddCookie(&http.Cookie{Name: cookieName, Value: token})
+			recs[i] = httptest.NewRecorder()
+			f.h.ServeHTTP(recs[i], req)
+		})
 	}
-	close(start)
 	wg.Wait()
 	success := 0
-	for _, rec := range recs {
+	for i, rec := range recs {
 		if rec.Code == http.StatusOK {
 			success++
+			var body struct {
+				UserID string `json:"userId"`
+			}
+			if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil || body.UserID != user {
+				t.Fatalf("successful response = %s, error = %v", rec.Body, err)
+			}
+			if got := memberAccounts(t, ctx, members[i]); len(got) != 1 || !strings.HasPrefix(got[0], user+"|student|") {
+				t.Fatalf("memberships = %v", got)
+			}
+			now := f.clk.Now()
+			wantCodeUsed(t, ctx, members[i], &now)
 		} else {
 			wantResponse(t, rec, http.StatusUnauthorized, unauthBody)
+			if got := memberAccounts(t, ctx, members[i]); len(got) != 0 {
+				t.Fatalf("memberships = %v, want none", got)
+			}
+			wantCodeUsed(t, ctx, members[i], nil)
 		}
 	}
 	if success < 1 {
 		t.Fatal("no successful redeem")
+	}
+	if got := sessionCount(t, ctx, user); got != success {
+		t.Fatalf("sessions = %d, want %d", got, success)
 	}
 }
 
