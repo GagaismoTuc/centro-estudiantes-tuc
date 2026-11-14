@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { errorMessage } from "../api/errors.ts";
 import { useSession } from "../auth/session.tsx";
-import { confirmLeave } from "../lib/router.tsx";
+import { useLeaveConfirm } from "../lib/router.tsx";
 import { FormStatus, type Status } from "./Form.tsx";
 
 /**
@@ -11,9 +11,9 @@ import { FormStatus, type Status } from "./Form.tsx";
 export function SignOutButton({ className, children }: { className: string; children: ReactNode }) {
   const { signOut } = useSession();
   const [status, setStatus] = useState<Status>(null);
+  const { confirmLeave, dialog } = useLeaveConfirm();
 
-  async function onClick() {
-    if (!confirmLeave()) return;
+  async function signOutNow() {
     setStatus(null);
     const code = await signOut();
     if (code) setStatus({ tone: "error", text: `No se cerró la sesión. ${errorMessage(code)}` });
@@ -21,9 +21,10 @@ export function SignOutButton({ className, children }: { className: string; chil
 
   return (
     <>
-      <button type="button" className={className} onClick={() => void onClick()}>
+      <button type="button" className={className} onClick={() => confirmLeave(() => void signOutNow())}>
         {children}
       </button>
+      {dialog}
       <FormStatus status={status} />
     </>
   );

@@ -24,7 +24,7 @@ function VerifyEmailBanner({ email }: { email: string }) {
     setPending(false);
     setStatus(
       result.ok
-        ? { tone: "ok", text: `Te enviamos un enlace a ${email}. Vence en 48 horas.` }
+        ? { tone: "ok", text: `Te enviamos un enlace nuevo a ${email}. Vence en 48 horas.` }
         : { tone: "error", text: errorMessage(result.code) },
     );
   }
@@ -34,11 +34,15 @@ function VerifyEmailBanner({ email }: { email: string }) {
       <Icon name="mail" />
       <div className="banner__body">
         <h2 id="verify-title">Verificá tu mail</h2>
-        <p>Así podés ingresar con un enlace y recuperar tu contraseña si la olvidás.</p>
+        <p>
+          Cuando creaste la cuenta te enviamos un enlace a <bdi>{email}</bdi>. Abrilo para poder ingresar con un enlace y
+          recuperar tu contraseña si la olvidás.
+        </p>
+        <p className="muted small">¿No lo encontrás? Revisá el correo no deseado. Si pedís otro, el enlace anterior deja de servir.</p>
         <FormStatus status={status} />
       </div>
       <button type="button" className="button button--secondary" disabled={pending} onClick={() => void send()}>
-        Enviar enlace de verificación
+        Reenviar
       </button>
     </section>
   );
@@ -51,7 +55,7 @@ export function Home() {
     <>
       <header className="page-header">
         <div>
-          <PageTitle eyebrow="Inicio">Hola, {me.email}</PageTitle>
+          <PageTitle eyebrow="Inicio">¡Hola!</PageTitle>
           <p className="page-header__school">
             {me.tenantName !== null && me.role ? (
               <>

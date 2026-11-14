@@ -4,7 +4,7 @@ const GENERIC = "Algo salió mal de nuestro lado. Probá de nuevo en un rato.";
 
 const messages: Record<string, string> = {
   invalid_credentials: "El mail o la contraseña no coinciden.",
-  too_many_attempts: "Hiciste demasiados intentos. Esperá unos minutos y probá de nuevo.",
+  too_many_attempts: "Hiciste demasiados intentos. Esperá unos 15 minutos y probá de nuevo.",
   bad_request: "No pudimos procesar el pedido. Revisá los datos e intentá otra vez.",
   unauthenticated: "Tu sesión terminó. Ingresá de nuevo.",
   forbidden: "No tenés permiso para hacer esto.",
@@ -26,7 +26,7 @@ const messages: Record<string, string> = {
 };
 
 /** Where the error happened, when the same code needs different advice. */
-export type ErrorContext = "access-code" | "mfa" | "reset";
+export type ErrorContext = "access-code" | "mfa" | "mfa-recovery" | "reset" | "verify";
 
 const contextual: Record<ErrorContext, Record<string, string>> = {
   "access-code": {
@@ -35,11 +35,31 @@ const contextual: Record<ErrorContext, Record<string, string>> = {
   mfa: {
     invalid_code: "El código no es correcto o ya se usó. Probá con el próximo que muestre tu app.",
   },
+  "mfa-recovery": {
+    invalid_code: "El código de recuperación no es correcto o ya se usó. Revisá cómo lo escribiste o probá con otro de los que guardaste.",
+  },
   reset: {
     invalid_token: "El enlace para restablecer no es válido o ya venció. Pedí uno nuevo.",
+  },
+  // The API answers used, expired and unknown links alike, so one sentence covers them.
+  verify: {
+    invalid_token: "El enlace ya se usó o venció.",
   },
 };
 
 export function errorMessage(code: string, context?: ErrorContext): string {
   return (context && contextual[context][code]) ?? messages[code] ?? GENERIC;
+}
+
+/** Form fields an error code is about, so the form can mark them invalid and focus the first. */
+const fieldsByCode: Record<string, string[]> = {
+  invalid_credentials: ["email", "password"],
+  invalid_email: ["email"],
+  email_in_use: ["email"],
+  weak_password: ["password"],
+  invalid_code: ["code", "recoveryCode"],
+};
+
+export function errorFields(code: string): string[] {
+  return fieldsByCode[code] ?? [];
 }

@@ -28,4 +28,13 @@ describe("errorMessage", () => {
   test("unknown codes and server errors fall back to a generic message", () => {
     expect(errorMessage("something_unknown")).toBe("Algo salió mal de nuestro lado. Probá de nuevo en un rato.");
   });
+
+  test("too many attempts says to wait about 15 minutes (A13)", () => {
+    expect(errorMessage("too_many_attempts")).toContain("15 minutos");
+  });
+
+  test("a wrong recovery code has its own copy that does not mention the app (A7)", () => {
+    expect(errorMessage("invalid_code", "mfa-recovery")).not.toContain("app");
+    expect(errorMessage("invalid_code", "mfa-recovery")).not.toBe(errorMessage("invalid_code", "mfa"));
+  });
 });

@@ -1,7 +1,8 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import themeScript from "../public/theme.js?raw";
 import { App } from "./App.tsx";
+import { guardLeave } from "./lib/router.tsx";
 import { THEME_KEY } from "./lib/theme.ts";
 import css from "./styles.css?raw";
 import { fail, me, mockApi, noContent, ok, sentTo } from "./test/api.ts";
@@ -35,7 +36,7 @@ describe("route guard", () => {
       "POST /auth/logout": noContent(),
     });
     renderAt("/");
-    await screen.findByRole("heading", { name: "Hola, ana@escuela.edu.ar" });
+    await screen.findByRole("heading", { name: "¡Hola!" });
 
     const sidebar = screen.getByRole("complementary");
     fireEvent.click(within(sidebar).getByRole("button", { name: "Cerrar sesión" }));
@@ -56,7 +57,7 @@ describe("T6a advisories: sign-out", () => {
       await within(sidebar).findByText("No se cerró la sesión. Algo salió mal de nuestro lado. Probá de nuevo en un rato."),
     ).toBeTruthy();
     expect(window.location.pathname).toBe("/");
-    expect(screen.getByRole("heading", { name: "Hola, ana@escuela.edu.ar" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "¡Hola!" })).toBeTruthy();
     expect(sentTo(sent, "POST /auth/logout")).toHaveLength(1);
   });
 
@@ -183,28 +184,41 @@ describe("Inicio", () => {
     });
     renderAt("/");
     const main = await screen.findByRole("main");
-    await within(main).findByRole("heading", { name: "Hola, ana@escuela.edu.ar" });
+    await within(main).findByRole("heading", { name: "¡Hola!" });
     expect(byText(main, "Escuela Demo Tucumán · Autoridad escolar")).toBeTruthy();
     expect(within(main).getByRole("link", { name: /Padrón/ })).toBeTruthy();
     expect(within(main).getAllByText("Próximamente")).toHaveLength(3);
 
-    fireEvent.click(within(main).getByRole("button", { name: "Enviar enlace de verificación" }));
-    expect(await within(main).findByText("Te enviamos un enlace a ana@escuela.edu.ar. Vence en 48 horas.")).toBeTruthy();
+    const banner = within(main).getByRole("region", { name: "Verificá tu mail" });
+    expect(banner.textContent).toContain("Cuando creaste la cuenta te enviamos un enlace a ana@escuela.edu.ar.");
+    expect(banner.textContent).toContain("Si pedís otro, el enlace anterior deja de servir.");
+    fireEvent.click(within(banner).getByRole("button", { name: "Reenviar" }));
+    expect(
+      await within(main).findByText("Te enviamos un enlace nuevo a ana@escuela.edu.ar. Vence en 48 horas."),
+    ).toBeTruthy();
     expect(sentTo(sent, "POST /auth/email/verification")).toHaveLength(1);
+  });
+
+  test("the greeting never shows the email address", async () => {
+    mockApi({ "GET /auth/me": ok(me()) });
+    renderAt("/");
+    const main = await screen.findByRole("main");
+    const heading = await within(main).findByRole("heading", { level: 1 });
+    expect(heading.textContent).toBe("¡Hola!");
   });
 
   test("a verified email shows no verification banner", async () => {
     mockApi({ "GET /auth/me": ok(me({ emailVerified: true })) });
     renderAt("/");
-    await screen.findByRole("heading", { name: "Hola, ana@escuela.edu.ar" });
-    expect(screen.queryByRole("button", { name: "Enviar enlace de verificación" })).toBeNull();
+    await screen.findByRole("heading", { name: "¡Hola!" });
+    expect(screen.queryByRole("button", { name: "Reenviar" })).toBeNull();
   });
 
   test("without a school the greeting says so and no school name is shown", async () => {
     mockApi({ "GET /auth/me": ok(me({ tenantId: null, tenantName: null, role: null })) });
     renderAt("/");
     const main = await screen.findByRole("main");
-    await within(main).findByRole("heading", { name: "Hola, ana@escuela.edu.ar" });
+    await within(main).findByRole("heading", { name: "¡Hola!" });
     expect(byText(main, "Sin escuela")).toBeTruthy();
     expect(screen.queryByText(/Escuela Demo/)).toBeNull();
   });
@@ -213,5 +227,49 @@ describe("Inicio", () => {
     mockApi({ "GET /auth/me": fail(503, "unavailable") });
     renderAt("/");
     expect(await screen.findByText("Algo salió mal de nuestro lado. Probá de nuevo en un rato.")).toBeTruthy();
+  });
+});
+
+describe("T3 A6: leaving a guarded screen asks in the app, in Spanish", () => {
+  test("a nav link opens the in-app dialog; Cancelar stays and «Salir igual» leaves", async () => {
+    mockApi({ "GET /auth/me": ok(me({ role: "school_admin", mfa: "satisfied" })) });
+    const nativeConfirm = vi.spyOn(window, "confirm");
+    renderAt("/");
+    const nav = await screen.findByRole("navigation", { name: "Principal" });
+    const release = guardLeave("Los códigos generados no se van a volver a mostrar.");
+    try {
+      fireEvent.click(within(nav).getByRole("link", { name: "Padrón" }));
+      const dialog = await screen.findByRole("dialog", { name: "¿Salir de esta pantalla?" });
+      expect(dialog.textContent).toContain("Los códigos generados no se van a volver a mostrar.");
+      fireEvent.click(within(dialog).getByRole("button", { name: "Cancelar" }));
+      await waitFor(() => expect(screen.queryByRole("dialog", { name: "¿Salir de esta pantalla?" })).toBeNull());
+      expect(window.location.pathname).toBe("/");
+
+      fireEvent.click(within(nav).getByRole("link", { name: "Padrón" }));
+      const again = await screen.findByRole("dialog", { name: "¿Salir de esta pantalla?" });
+      fireEvent.click(within(again).getByRole("button", { name: "Salir igual" }));
+      await expectPath("/padron");
+      expect(nativeConfirm).not.toHaveBeenCalled();
+    } finally {
+      release();
+      nativeConfirm.mockRestore();
+    }
+  });
+
+  test("signing out asks the same way before ending the session", async () => {
+    const sent = mockApi({ "GET /auth/me": ok(me()), "POST /auth/logout": noContent() });
+    renderAt("/");
+    const sidebar = await screen.findByRole("complementary");
+    const release = guardLeave("Los códigos generados no se van a volver a mostrar.");
+    try {
+      fireEvent.click(within(sidebar).getByRole("button", { name: "Cerrar sesión" }));
+      const dialog = await screen.findByRole("dialog", { name: "¿Salir de esta pantalla?" });
+      expect(sentTo(sent, "POST /auth/logout")).toHaveLength(0);
+      fireEvent.click(within(dialog).getByRole("button", { name: "Salir igual" }));
+      await expectPath("/ingresar");
+      expect(sentTo(sent, "POST /auth/logout")).toHaveLength(1);
+    } finally {
+      release();
+    }
   });
 });
