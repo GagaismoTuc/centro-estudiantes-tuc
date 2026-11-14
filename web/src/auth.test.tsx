@@ -539,6 +539,51 @@ describe("T3 copy fixes", () => {
   });
 });
 
+/** Creates an isolated Web Storage instance representing another browser tab's sessionStorage. */
+function createTabStorage(): Storage {
+  const store = new Map<string, string>();
+  return {
+    get length() {
+      return store.size;
+    },
+    clear() {
+      store.clear();
+    },
+    getItem(key: string) {
+      return store.get(key) ?? null;
+    },
+    key(index: number) {
+      return Array.from(store.keys())[index] ?? null;
+    },
+    removeItem(key: string) {
+      store.delete(key);
+    },
+    setItem(key: string, value: string) {
+      store.set(key, String(value));
+    },
+  };
+}
+
+function storageValues(storage: Storage): Array<string | null> {
+  return Array.from({ length: storage.length }, (_, i) => storage.getItem(storage.key(i) ?? ""));
+}
+
+/** Runs `fn` with `sessionStorage` bound to an isolated tab storage while keeping `localStorage` shared. */
+async function withIsolatedTabSessionStorage<T>(tabStorage: Storage, fn: () => Promise<T>): Promise<T> {
+  const prevGlobal = Object.getOwnPropertyDescriptor(globalThis, "sessionStorage");
+  const prevWindow = Object.getOwnPropertyDescriptor(window, "sessionStorage");
+  Object.defineProperty(globalThis, "sessionStorage", { configurable: true, value: tabStorage });
+  Object.defineProperty(window, "sessionStorage", { configurable: true, value: tabStorage });
+  try {
+    return await fn();
+  } finally {
+    if (prevGlobal) Object.defineProperty(globalThis, "sessionStorage", prevGlobal);
+    else Reflect.deleteProperty(globalThis, "sessionStorage");
+    if (prevWindow) Object.defineProperty(window, "sessionStorage", prevWindow);
+    else Reflect.deleteProperty(window, "sessionStorage");
+  }
+}
+
 describe("return to requested screen (next)", () => {
   test("password sign-in returns to next", async () => {
     mockApi({
@@ -579,6 +624,7 @@ describe("return to requested screen (next)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Ingresar" }));
 
     await expectPath("/seguridad/verificar");
+    expect(window.location.search).toBe("?next=%2Fpadron");
     await screen.findByRole("heading", { level: 1, name: "Verificá que sos vos" });
     type("Código de 6 dígitos", "123456");
     fireEvent.click(screen.getByRole("button", { name: "Verificar" }));
@@ -609,6 +655,7 @@ describe("return to requested screen (next)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Ingresar" }));
 
     await expectPath("/seguridad/activar");
+    expect(window.location.search).toBe("?next=%2Fpadron");
     await screen.findByText("JBSW Y3DP EHPK 3PXP");
     type("Código de 6 dígitos", "123456");
     fireEvent.click(screen.getByRole("button", { name: "Activar" }));
@@ -657,7 +704,7 @@ describe("return to requested screen (next)", () => {
     );
     expect(sentTo(sent1, "POST /auth/link")[0]?.body).toEqual({ email: "ana@escuela.edu.ar" });
     expect(sent1.every((s) => !s.path.includes("next") && !JSON.stringify(s.body ?? "").includes("padron"))).toBe(true);
-    expect(Object.values(sessionStorage)).toContain("/padron");
+    expect(storageValues(sessionStorage)).toContain("/padron");
     first.unmount();
 
     const sent2 = mockApi({
@@ -668,21 +715,60 @@ describe("return to requested screen (next)", () => {
     renderAt("/ingresar#token=tok-same");
 
     await expectPath("/padron");
+    expect(window.location.search).toBe("");
     expect(await screen.findByRole("heading", { level: 1, name: "Padrón" })).toBeTruthy();
     expect(sentTo(sent2, "POST /auth/link/consume")[0]?.body).toEqual({ token: "tok-same" });
     expect(sessionStorage.length).toBe(0);
   });
 
-  test("opening a sign-in link without stored next in sessionStorage goes to /", async () => {
+  test("opening a sign-in link in a new tab with isolated sessionStorage goes to / even when the original tab has next stored", async () => {
+    mockApi({ "POST /auth/link": noContent(202) });
+    const originalTab = renderAt("/padron");
+    await expectPath("/ingresar");
+    expect(window.location.search).toBe("?next=%2Fpadron");
+    await screen.findByRole("heading", { level: 1, name: "Ingresá" });
+
+    type("Mail", "ana@escuela.edu.ar");
+    fireEvent.click(screen.getByRole("button", { name: "Enviarme un enlace para ingresar" }));
+    await waitFor(() =>
+      expect(liveText()).toContain(
+        "Si el mail tiene una cuenta, te enviamos un enlace para ingresar. Vence en 15 minutos.",
+      ),
+    );
+    const originalStorage = window.sessionStorage;
+    expect(storageValues(originalStorage)).toContain("/padron");
+    originalTab.unmount();
+
+    const newTabStorage = createTabStorage();
+    expect(newTabStorage).not.toBe(originalStorage);
+    expect(newTabStorage.length).toBe(0);
+
+    await withIsolatedTabSessionStorage(newTabStorage, async () => {
+      mockApi({
+        "POST /auth/link/consume": noContent(),
+        "GET /auth/me": [fail(401, "unauthenticated"), ok(me({ role: "school_admin", mfa: "satisfied" }))],
+        "GET /roster": ok([]),
+      });
+      const newTab = renderAt("/ingresar#token=tok-other");
+
+      await expectPath("/");
+      expect(window.location.search).toBe("");
+      expect(await screen.findByRole("heading", { level: 1, name: "¡Hola!" })).toBeTruthy();
+      newTab.unmount();
+    });
+
+    // The original tab's sessionStorage stays intact and still returns to /padron if opened there.
+    expect(storageValues(originalStorage)).toContain("/padron");
     mockApi({
       "POST /auth/link/consume": noContent(),
-      "GET /auth/me": [fail(401, "unauthenticated"), ok(me())],
+      "GET /auth/me": [fail(401, "unauthenticated"), ok(me({ role: "school_admin", mfa: "satisfied" }))],
+      "GET /roster": ok([]),
     });
-    expect(sessionStorage.length).toBe(0);
-    renderAt("/ingresar#token=tok-other");
-
-    await expectPath("/");
-    expect(await screen.findByRole("heading", { level: 1, name: "¡Hola!" })).toBeTruthy();
+    renderAt("/ingresar#token=tok-original");
+    await expectPath("/padron");
+    expect(window.location.search).toBe("");
+    expect(await screen.findByRole("heading", { level: 1, name: "Padrón" })).toBeTruthy();
+    expect(originalStorage.length).toBe(0);
   });
 });
 
