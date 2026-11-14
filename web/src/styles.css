@@ -427,6 +427,13 @@ input:user-invalid {
   grid-column: 2;
 }
 
+.qr {
+  display: block;
+  width: min(100%, 14rem);
+  height: auto;
+  border-radius: var(--radius);
+}
+
 .secret {
   display: grid;
   gap: 0.75rem;

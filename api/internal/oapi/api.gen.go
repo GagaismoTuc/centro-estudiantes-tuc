@@ -208,7 +208,7 @@ type MfaCodeRequest struct {
 
 // MfaEnrollment defines model for MfaEnrollment.
 type MfaEnrollment struct {
-	// OtpauthUri `otpauth://totp/Centro%20de%20Estudiantes:<email>?secret=...&issuer=Centro%20de%20Estudiantes`
+	// OtpauthUri `otpauth://totp/Centro%20de%20Estudiantes:<email>?secret=...&issuer=Centro%20de%20Estudiantes&algorithm=SHA1&digits=6&period=30`
 	OtpauthUri string `json:"otpauthUri"`
 
 	// Secret Base32 (no padding) of the 20-byte secret, for manual entry. Shown once.

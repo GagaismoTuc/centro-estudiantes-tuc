@@ -83,7 +83,8 @@ func TestNewSecretAndURI(t *testing.T) {
 	if dec, err := base32.StdEncoding.WithPadding(base32.NoPadding).DecodeString(enc); err != nil || !bytes.Equal(dec, a) {
 		t.Fatalf("EncodeSecret does not round-trip: %x %v", dec, err)
 	}
-	const want = "otpauth://totp/Centro%20de%20Estudiantes:ana@example.com?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ&issuer=Centro%20de%20Estudiantes"
+	const want = "otpauth://totp/Centro%20de%20Estudiantes:ana@example.com?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ" +
+		"&issuer=Centro%20de%20Estudiantes&algorithm=SHA1&digits=6&period=30"
 	if got := totp.URI("ana@example.com", rfcSecret); got != want {
 		t.Fatalf("URI = %s\nwant  %s", got, want)
 	}

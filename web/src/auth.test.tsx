@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { App } from "./App.tsx";
+import { encodeQr } from "./lib/qr/encode.ts";
 import { fail, me, mockApi, noContent, ok, sentTo } from "./test/api.ts";
 
 function renderAt(url: string) {
@@ -21,6 +22,16 @@ function liveText(): string {
   return Array.from(document.querySelectorAll("[aria-live]"))
     .map((el) => el.textContent ?? "")
     .join(" ");
+}
+
+/** The modules drawn by a QR SVG (one `M x y h1v1h-1z` square per dark module inside a 4-module quiet zone). */
+function qrModules(svg: Element): boolean[][] {
+  const size = Number(svg.getAttribute("viewBox")!.split(" ")[2]) - 8;
+  const modules = Array.from({ length: size }, () => new Array<boolean>(size).fill(false));
+  for (const [, x, y] of svg.querySelector("path")!.getAttribute("d")!.matchAll(/M(\d+) (\d+)h1v1h-1z/g)) {
+    modules[Number(y) - 4]![Number(x) - 4] = true;
+  }
+  return modules;
 }
 
 describe("sign-in (/ingresar)", () => {
@@ -528,14 +539,51 @@ describe("T3 copy fixes", () => {
     expect(sentTo(sent, "POST /auth/link/consume").map((s) => s.body)).toEqual([{ token: "tok-new" }]);
   });
 
-  test("A14: enrollment copy does not mention a QR", async () => {
+  test("R4: the enrollment QR is an image labelled for the authenticator app, with the secret beside it", async () => {
+    const uri =
+      "otpauth://totp/Centro%20de%20Estudiantes:ana@example.com?secret=JBSWY3DPEHPK3PXP&issuer=Centro%20de%20Estudiantes&algorithm=SHA1&digits=6&period=30";
     mockApi({
       "GET /auth/me": ok(me({ role: "school_admin", mfa: "enrollment_required" })),
-      "POST /auth/mfa/enrollment": ok({ secret: "JBSWY3DPEHPK3PXP", otpauthUri: "otpauth://totp/x?secret=JBSWY3DPEHPK3PXP" }),
+      "POST /auth/mfa/enrollment": ok({ secret: "JBSWY3DPEHPK3PXP", otpauthUri: uri }),
     });
     renderAt("/seguridad/activar");
-    await screen.findByText("JBSW Y3DP EHPK 3PXP");
-    expect(screen.getByRole("main").textContent).not.toMatch(/QR/i);
+
+    const qr = await screen.findByRole("img", { name: "Código QR para tu app de autenticación" });
+    expect(qr.tagName).toBe("svg");
+    expect(qrModules(qr)).toEqual(encodeQr(uri).modules);
+    const step = qr.closest("li")!;
+    expect(within(step).getByText("JBSW Y3DP EHPK 3PXP")).toBeTruthy();
+    expect(within(step).getByRole("button", { name: "Copiar clave" })).toBeTruthy();
+  });
+
+  test("R5: the otpauth URI is never logged or stored, and the QR disappears once enrollment is confirmed", async () => {
+    const secret = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP";
+    const uri = `otpauth://totp/Centro%20de%20Estudiantes:ana@example.com?secret=${secret}&issuer=Centro%20de%20Estudiantes&algorithm=SHA1&digits=6&period=30`;
+    const spies = (["log", "info", "warn", "error", "debug"] as const).map((method) =>
+      vi.spyOn(console, method).mockImplementation(() => {}),
+    );
+    const stored = () => Object.keys(localStorage).map((key) => `${key}=${localStorage.getItem(key)}`).join(" ");
+    try {
+      mockApi({
+        "GET /auth/me": ok(me({ role: "school_admin", mfa: "enrollment_required" })),
+        "POST /auth/mfa/enrollment": ok({ secret, otpauthUri: uri }),
+        "POST /auth/mfa/enrollment/confirm": ok({ recoveryCodes: ["AAAAA-BBBBB"] }),
+      });
+      renderAt("/seguridad/activar");
+      await screen.findByRole("img", { name: "Código QR para tu app de autenticación" });
+      expect(stored()).not.toContain(secret);
+
+      type("Código de 6 dígitos", "123456");
+      fireEvent.click(screen.getByRole("button", { name: "Activar" }));
+      await screen.findByRole("list", { name: "Códigos de recuperación" });
+
+      expect(screen.queryByRole("img", { name: "Código QR para tu app de autenticación" })).toBeNull();
+      expect(document.querySelector("svg.qr")).toBeNull();
+      expect(stored()).not.toContain(secret);
+      expect(JSON.stringify(spies.flatMap((spy) => spy.mock.calls))).not.toContain(secret);
+    } finally {
+      spies.forEach((spy) => spy.mockRestore());
+    }
   });
 });
 
