@@ -1,0 +1,23 @@
+[extend]
+useDefault = true
+
+# Public TOTP fixture used in web/src/auth.test.tsx.
+[[rules]]
+id = "public-totp-base32-example"
+description = "Public TOTP base32 example outside test files"
+regex = '''\bJBSWY3DPEHPK3PXP\b'''
+
+# RFC 6238 Appendix B SHA-1 test secret encoded in base32.
+[[rules]]
+id = "public-totp-rfc6238-example"
+description = "RFC 6238 TOTP example outside test files"
+regex = '''\bGEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ\b'''
+
+[[allowlists]]
+description = "Public TOTP vectors in test files only"
+condition = "AND"
+paths = ['''(^|/)[^/]*(?:_test\.go|\.test\.tsx?|\.fixture\.ts)$''']
+regexes = [
+  '''^JBSWY3DPEHPK3PXP$''', # TOTP fixture in web/src/auth.test.tsx
+  '''^GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ$''', # RFC 6238 Appendix B, base32
+]
