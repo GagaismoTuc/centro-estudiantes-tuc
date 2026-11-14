@@ -7,3 +7,4 @@ dist/
 !.env.example
 .orca-stack.local.json
 odd/
+__pycache__/

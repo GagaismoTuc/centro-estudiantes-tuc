@@ -64,6 +64,12 @@ class WorkflowTests(unittest.TestCase):
         workflow = WORKFLOW.read_text(encoding="utf-8")
         self.assertIn(".github/scripts/check-commits.sh", workflow)
 
+    def test_gitleaks_scans_the_pull_request_commit_range(self):
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn("gitleaks_8.30.1_linux_x64.tar.gz", workflow)
+        self.assertIn("551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb", workflow)
+        self.assertIn('gitleaks" git --redact --log-opts="$BASE_SHA..$HEAD_SHA"', workflow)
+
     def test_ci_ok_fails_when_any_needed_job_is_not_successful(self):
         root = WORKFLOW.parents[2]
         script = root / ".github/scripts/ci-ok.py"
