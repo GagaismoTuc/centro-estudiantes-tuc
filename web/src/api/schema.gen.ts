@@ -422,7 +422,7 @@ export interface components {
         MfaEnrollment: {
             /** @description Base32 (no padding) of the 20-byte secret, for manual entry. Shown once. */
             secret: string;
-            /** @description `otpauth://totp/Centro%20de%20Estudiantes:<email>?secret=...&issuer=Centro%20de%20Estudiantes` */
+            /** @description `otpauth://totp/Centro%20de%20Estudiantes:<email>?secret=...&issuer=Centro%20de%20Estudiantes&algorithm=SHA1&digits=6&period=30` */
             otpauthUri: string;
         };
         MfaCodeRequest: {
