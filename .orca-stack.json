@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "modo": "multiagente",
+  "ramaBase": "main",
+  "agentes": {
+    "usa": ["codex", "agy", "pi"],
+    "preguntarAntes": []
+  },
+  "verificacion": {
+    "suite": "cd api && go test -race -count=1 ./... && cd ../web && pnpm test",
+    "typecheck": "cd api && go vet ./... && cd ../web && pnpm typecheck"
+  },
+  "riesgo": [
+    "api/migrations/**",
+    "api/internal/auth/**",
+    "api/internal/totp/**",
+    "api/internal/db/**",
+    "api/internal/httpapi/auth.go",
+    "api/internal/httpapi/mfa.go",
+    "api/cmd/admin/**",
+    "web/src/auth/**",
+    "openapi/openapi.yaml",
+    "compose.yaml",
+    ".github/workflows/**",
+    "api/go.mod",
+    "api/go.sum",
+    "web/package.json",
+    "web/pnpm-lock.yaml"
+  ],
+  "merge": "main mergea sola cuando se cumple la condición de merge",
+  "despliegue": { "despues": false },
+  "idioma": "inglés para código, commits y PRs; la interfaz en español rioplatense",
+  "setup": "completo"
+}

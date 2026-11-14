@@ -14,7 +14,7 @@ Row-Level Security, and the same build runs as SaaS or on the customer's own ser
 | `web/` | React + Vite + TypeScript frontend with a typed client generated from the same contract |
 | `openapi/` | `openapi.yaml`, the single API contract shared by both sides |
 | `docs/` | Product specification and architecture decision records |
-| `odd/` | Feature task documents and work log |
+| `docs/history/odd/` | Feature task documents and work log from before the orca-stack setup (tickets are the spec now) |
 
 ## Prerequisites
 
