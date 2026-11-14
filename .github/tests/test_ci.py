@@ -68,7 +68,31 @@ class WorkflowTests(unittest.TestCase):
         workflow = WORKFLOW.read_text(encoding="utf-8")
         self.assertIn("gitleaks_8.30.1_linux_x64.tar.gz", workflow)
         self.assertIn("551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb", workflow)
-        self.assertIn('gitleaks" git --redact --log-opts="$BASE_SHA..$HEAD_SHA"', workflow)
+        self.assertIn('gitleaks" git --redact --log-opts="-m $BASE_SHA..$HEAD_SHA"', workflow)
+        with tempfile.TemporaryDirectory() as directory:
+            def git(*args):
+                return subprocess.check_output(["git", "-C", directory, *args], text=True, stderr=subprocess.DEVNULL).strip()
+            git("init")
+            git("config", "user.name", "Test")
+            git("config", "user.email", "test@example.invalid")
+            git("commit", "--allow-empty", "-m", "chore: base")
+            base = git("rev-parse", "HEAD")
+            git("checkout", "-b", "side")
+            pathlib.Path(directory, "side.txt").write_text("side\n", encoding="utf-8")
+            git("add", "side.txt")
+            git("commit", "-m", "test: side")
+            git("checkout", "-b", "primary", base)
+            pathlib.Path(directory, "primary.txt").write_text("primary\n", encoding="utf-8")
+            git("add", "primary.txt")
+            git("commit", "-m", "test: primary")
+            git("merge", "--no-ff", "--no-commit", "side")
+            pathlib.Path(directory, "merge.txt").write_text("merge-only-marker\n", encoding="utf-8")
+            git("add", "merge.txt")
+            git("commit", "-m", "test: merge")
+            self.assertIn("merge-only-marker", git("diff", base, "HEAD"))
+            options = re.search(r'--log-opts="([^"]+)"', workflow).group(1)
+            args = options.replace("$BASE_SHA", base).replace("$HEAD_SHA", "HEAD").split()
+            self.assertIn("merge-only-marker", git("log", "-p", "-U0", *args))
 
     def test_ci_ok_fails_when_any_needed_job_is_not_successful(self):
         root = WORKFLOW.parents[2]
