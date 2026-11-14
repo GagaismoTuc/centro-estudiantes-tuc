@@ -16,6 +16,21 @@ class WorkflowTests(unittest.TestCase):
         self.assertRegex(workflow, r"(?m)^  cancel-in-progress: \$\{\{ github\.event_name == 'pull_request' \}\}$")
         self.assertRegex(workflow, r"(?m)^  pull_request:\s*$")
 
+    def test_each_main_push_gets_its_own_group(self):
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        group = re.search(r"(?m)^  group: (.+)$", workflow).group(1)
+
+        def evaluate(context):
+            def expression(match):
+                python = re.sub(r"github\.([a-z_]+)", lambda m: repr(context[m.group(1)]), match.group(1))
+                return str(eval(python.replace("&&", " and ").replace("||", " or ")))
+            return re.sub(r"\$\{\{(.+?)\}\}", expression, group)
+
+        main = lambda run_id: {"event_name": "push", "ref": "refs/heads/main", "run_id": run_id}
+        pr = lambda run_id: {"event_name": "pull_request", "ref": "refs/pull/7/merge", "run_id": run_id}
+        self.assertNotEqual(evaluate(main(1)), evaluate(main(2)))
+        self.assertEqual(evaluate(pr(1)), evaluate(pr(2)))
+
     def test_all_jobs_use_ubuntu_24_04(self):
         workflow = WORKFLOW.read_text(encoding="utf-8")
         runners = re.findall(r"(?m)^    runs-on: (.+)$", workflow)
