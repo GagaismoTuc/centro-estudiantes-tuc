@@ -656,7 +656,7 @@ describe("return to requested screen (next)", () => {
       ),
     );
     expect(sentTo(sent1, "POST /auth/link")[0]?.body).toEqual({ email: "ana@escuela.edu.ar" });
-    expect(sent1.every((s) => !JSON.stringify(s.body ?? "").includes("padron"))).toBe(true);
+    expect(sent1.every((s) => !s.path.includes("next") && !JSON.stringify(s.body ?? "").includes("padron"))).toBe(true);
     expect(Object.values(sessionStorage)).toContain("/padron");
     first.unmount();
 

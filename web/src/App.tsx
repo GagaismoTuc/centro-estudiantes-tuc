@@ -55,20 +55,15 @@ function Routes() {
   const Public = publicRoutes[path];
   if (Public) return <Public />;
   const isMfaRoute = path === "/seguridad/activar" || path === "/seguridad/verificar";
+  const nextFromHere = isMfaRoute ? readNext(window.location.search) : safeNext(path + window.location.search);
   if (session.status === "error") return <SessionError code={session.code} />;
-  if (session.status === "anon") {
-    const next = isMfaRoute ? "/" : safeNext(path + window.location.search);
-    return <Redirect to={withNext("/ingresar", next)} />;
-  }
+  if (session.status === "anon") return <Redirect to={withNext("/ingresar", nextFromHere)} />;
 
   // Two-factor comes first: until it is done, the only place to go is its screen.
   const me = session.me;
   const home = homeFor(me);
   if (isMfaRoute || home !== "/") {
-    if (path !== home) {
-      const next = isMfaRoute ? readNext(window.location.search) : safeNext(path + window.location.search);
-      return <Redirect to={destinationFor(home, next)} />;
-    }
+    if (path !== home) return <Redirect to={destinationFor(home, nextFromHere)} />;
     return home === "/seguridad/activar" ? <MfaEnroll /> : <MfaVerify />;
   }
   if (path === "/padron" && me.role !== "school_admin") return <Redirect to="/" />;
