@@ -5,6 +5,7 @@ import { AppShell } from "./components/AppShell.tsx";
 import { AuthLayout } from "./components/AuthLayout.tsx";
 import { PageTitle, useDocumentTitle } from "./components/Page.tsx";
 import { captureFragmentToken } from "./lib/fragment.ts";
+import { destinationFor, readNext, safeNext, withNext } from "./lib/next.ts";
 import { Redirect, usePathname } from "./lib/router.tsx";
 import { Claim } from "./screens/Claim.tsx";
 import { Home } from "./screens/Home.tsx";
@@ -53,14 +54,16 @@ function Routes() {
 
   const Public = publicRoutes[path];
   if (Public) return <Public />;
+  const isMfaRoute = path === "/seguridad/activar" || path === "/seguridad/verificar";
+  const nextFromHere = isMfaRoute ? readNext(window.location.search) : safeNext(path + window.location.search);
   if (session.status === "error") return <SessionError code={session.code} />;
-  if (session.status === "anon") return <Redirect to="/ingresar" />;
+  if (session.status === "anon") return <Redirect to={withNext("/ingresar", nextFromHere)} />;
 
   // Two-factor comes first: until it is done, the only place to go is its screen.
   const me = session.me;
   const home = homeFor(me);
-  if (path === "/seguridad/activar" || path === "/seguridad/verificar" || home !== "/") {
-    if (path !== home) return <Redirect to={home} />;
+  if (isMfaRoute || home !== "/") {
+    if (path !== home) return <Redirect to={destinationFor(home, nextFromHere)} />;
     return home === "/seguridad/activar" ? <MfaEnroll /> : <MfaVerify />;
   }
   if (path === "/padron" && me.role !== "school_admin") return <Redirect to="/" />;

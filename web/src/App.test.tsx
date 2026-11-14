@@ -21,6 +21,15 @@ describe("route guard", () => {
     mockApi({});
     renderAt("/");
     await expectPath("/ingresar");
+    expect(window.location.search).toBe("");
+    expect(await screen.findByRole("heading", { level: 1, name: "Ingresá" })).toBeTruthy();
+  });
+
+  test("signed-out access to /padron redirects to /ingresar?next=%2Fpadron", async () => {
+    mockApi({});
+    renderAt("/padron");
+    await expectPath("/ingresar");
+    expect(window.location.search).toBe("?next=%2Fpadron");
     expect(await screen.findByRole("heading", { level: 1, name: "Ingresá" })).toBeTruthy();
   });
 
@@ -28,6 +37,7 @@ describe("route guard", () => {
     mockApi({ "GET /auth/me": ok(me({ role: "school_admin", mfa: "pending" })) });
     renderAt("/");
     await expectPath("/seguridad/verificar");
+    expect(window.location.search).toBe("");
   });
 
   test("signing out calls the API and returns to /ingresar", async () => {

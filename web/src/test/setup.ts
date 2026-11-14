@@ -28,6 +28,7 @@ afterEach(() => {
   cleanup();
   vi.mocked(fetch).mockReset();
   localStorage.clear();
+  sessionStorage.clear();
   document.documentElement.removeAttribute("data-theme");
   colorScheme.content = "light dark";
   window.history.replaceState(null, "", "/");

@@ -7,6 +7,7 @@ import { AuthLayout } from "../components/AuthLayout.tsx";
 import { checks, Field, FormStatus, PasswordField, SubmitButton, useFormErrors, type Status } from "../components/Form.tsx";
 import { PageTitle, useDocumentTitle } from "../components/Page.tsx";
 import { useFragmentToken } from "../lib/fragment.ts";
+import { destinationFor, readNext, saveLinkNext, takeLinkNext } from "../lib/next.ts";
 import { Link, Redirect } from "../lib/router.tsx";
 
 const LINK_SENT = "Si el mail tiene una cuenta, te enviamos un enlace para ingresar. Vence en 15 minutos.";
@@ -29,13 +30,19 @@ export function SignIn() {
     setStatus({ tone: "info", text: "Ingresando con tu enlace…" });
     setPending(true);
     void call(apiClient.POST("/auth/link/consume", { body: { token: linkToken } })).then(async (result) => {
-      if (result.ok) return afterSignIn();
+      if (result.ok) {
+        const storedNext = takeLinkNext();
+        const urlNext = readNext(window.location.search);
+        return afterSignIn(urlNext !== "/" ? urlNext : storedNext);
+      }
       setStatus({ tone: "error", text: errorMessage(result.code) });
       setPending(false);
     });
   }, [linkToken, linkApproved, afterSignIn]);
 
-  if (session.status === "user" && !linkToken) return <Redirect to={homeFor(session.me)} />;
+  if (session.status === "user" && !linkToken) {
+    return <Redirect to={destinationFor(homeFor(session.me), readNext(window.location.search))} />;
+  }
   if (session.status === "user" && !linkApproved) {
     return (
       <AuthLayout>
@@ -75,8 +82,13 @@ export function SignIn() {
     if (!form.validate({ email: checks.email })) return;
     const email = form.value("email").trim();
     const result = await call(apiClient.POST("/auth/link", { body: { email } }));
-    setStatus(result.ok ? { tone: "ok", text: LINK_SENT } : { tone: "error", text: errorMessage(result.code) });
-    if (!result.ok) form.failed(result.code);
+    if (result.ok) {
+      saveLinkNext(readNext(window.location.search));
+      setStatus({ tone: "ok", text: LINK_SENT });
+      return;
+    }
+    setStatus({ tone: "error", text: errorMessage(result.code) });
+    form.failed(result.code);
   }
 
   return (
