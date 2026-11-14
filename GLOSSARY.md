@@ -99,11 +99,11 @@ The record of which Roster members have already voted in an Election, kept apart
 _Avoid_: Attendance, voter log
 
 **Ballot box** (UI: "Urna"):
-The store of an Election's Ballots, holding nothing that links a Ballot to its voter.
+The store of an Election's Ballots; in a Secret ballot it holds nothing that links a Ballot to its voter. How it stores a Nominal vote is not decided yet.
 _Avoid_: Votes table, results
 
 **Secret ballot** (UI: "Voto secreto"):
-The Election mode in which no one, including School authorities, can learn how a Roster member voted.
+The Election mode in which how a Roster member voted is kept from School authorities and School admins, but not from an operator with root access to the server while the Election is open.
 _Avoid_: Anonymous vote, private vote
 
 **Nominal vote** (UI: "Voto nominal"):
