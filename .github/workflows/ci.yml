@@ -5,6 +5,7 @@ name: CI
 on:
   push:
     branches: ["**"]
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -12,12 +13,46 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  commit-lint:
+    name: Commit messages
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check pull request commits
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: bash .github/scripts/check-commits.sh "$BASE_SHA" "$HEAD_SHA"
+
+  gofmt:
+    name: Go formatting
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: api/go.mod
+          cache-dependency-path: api/go.sum
+      - name: Check gofmt
+        working-directory: api
+        run: |
+          unformatted=$(gofmt -l .)
+          test -z "$unformatted"
+
   api:
     name: API (Go)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     defaults:
       run:
@@ -30,6 +65,8 @@ jobs:
         with:
           go-version-file: api/go.mod
           cache-dependency-path: api/go.sum
+      - name: Workflow tests
+        run: python -m unittest discover -s ../.github/tests
       - name: Toolchain
         run: go version
       - name: Generated code is up to date
@@ -45,7 +82,7 @@ jobs:
 
   web:
     name: Web (React)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     defaults:
       run:
@@ -76,3 +113,18 @@ jobs:
         run: pnpm build
       - name: Audit production dependencies
         run: pnpm audit --prod --audit-level high
+
+  ci-ok:
+    name: CI OK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    needs: [api, web, gofmt, commit-lint]
+    if: always()
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check job results
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: python .github/scripts/ci-ok.py
