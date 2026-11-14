@@ -132,3 +132,5 @@ func TestCodeHashCannotMoveRowToOtherTenant(t *testing.T) {
 		t.Fatalf("tenant_id = %s, want unchanged %s", tenant, env.tenantA)
 	}
 }
+
+func negativeFormatting( ){}
