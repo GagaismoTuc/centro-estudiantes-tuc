@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/netip"
+	"slices"
 	"strings"
 	"time"
 
@@ -194,12 +195,12 @@ func (s *server) GetAuthMe(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) sessionMe(ctx context.Context, sess auth.Session) (oapi.Me, error) {
-	roles, tenantName, err := s.store.Membership(ctx, sess)
+	roles, tenantName, commission, err := s.store.Membership(ctx, sess)
 	if err != nil {
 		return oapi.Me{}, err
 	}
 	me := oapi.Me{UserId: sess.UserID, Email: sess.Email, EmailVerified: sess.EmailVerified,
-		Mfa: oapi.MfaState(auth.MFAStateOf(sess, roles...))}
+		Mfa: oapi.MfaState(auth.MFAStateOf(sess, mfaRoles(roles, commission)...))}
 	// A tenant without a role (membership removed after sign-in) is not reported.
 	if len(roles) != 0 {
 		// Keep the legacy single-role view privileged when a user has several roles.
@@ -216,6 +217,15 @@ func (s *server) sessionMe(ctx context.Context, sess auth.Session) (oapi.Me, err
 		me.TenantName = &tenantName
 	}
 	return me, nil
+}
+
+// mfaRoles are the roles that decide the two-factor state: the membership roles plus
+// auth.CommissionRole for a member of the current Electoral commission.
+func mfaRoles(roles []string, commission bool) []string {
+	if commission {
+		return append(slices.Clone(roles), auth.CommissionRole)
+	}
+	return roles
 }
 
 // startSession replaces the request's previous session with a new one for userID and sets its
