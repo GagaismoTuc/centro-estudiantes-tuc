@@ -8,6 +8,10 @@ import { navigate } from "../lib/router.tsx";
 export type Me = components["schemas"]["Me"];
 export type Role = components["schemas"]["Role"];
 
+export function hasRole(me: Me, role: Role): boolean {
+  return me.roles ? me.roles.includes(role) : me.role === role;
+}
+
 export type Session =
   | { status: "loading" }
   | { status: "anon" }
