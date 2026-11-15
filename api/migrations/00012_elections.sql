@@ -36,7 +36,7 @@ CREATE TABLE elections (
     created_at           timestamptz NOT NULL DEFAULT now(),
     updated_at           timestamptz NOT NULL DEFAULT now(),
     CHECK (submission_starts_at < submission_ends_at),
-    CHECK (submission_ends_at <= starts_at),
+    CHECK (submission_ends_at < starts_at),
     CHECK (starts_at < ends_at),
     UNIQUE (tenant_id, id),
     FOREIGN KEY (tenant_id, commission_id) REFERENCES electoral_commissions (tenant_id, id)

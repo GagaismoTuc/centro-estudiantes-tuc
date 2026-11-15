@@ -748,7 +748,7 @@ export interface components {
         };
     };
     responses: {
-        /** @description Nothing was written. `invalid_name`: name missing, null, blank or longer than 120 characters. `invalid_window`: `startsAt` or `endsAt` missing, null or not an RFC 3339 date-time, `endsAt` not after `startsAt`, or `startsAt` in the past. `invalid_submission_period`: `submissionStartsAt` or `submissionEndsAt` missing, null or not an RFC 3339 date-time, `submissionEndsAt` not after `submissionStartsAt`, or the period not ending by `startsAt`. `invalid_positions`: `positions` null or empty, or a name blank, longer than 120 characters or repeated (case-insensitive). `mode_not_supported`: `mode` null or other than `secret`. */
+        /** @description Nothing was written. `invalid_name`: name missing, null, blank or longer than 120 characters. `invalid_window`: `startsAt` or `endsAt` missing, null or not an RFC 3339 date-time, `endsAt` not after `startsAt`, or `startsAt` in the past. `invalid_submission_period`: `submissionStartsAt` or `submissionEndsAt` missing, null or not an RFC 3339 date-time, `submissionEndsAt` not after `submissionStartsAt`, or `submissionEndsAt` not before `startsAt`. `invalid_positions`: `positions` null or empty, or a name blank, longer than 120 characters or repeated (case-insensitive). `mode_not_supported`: `mode` null or other than `secret`. */
         InvalidElectionDraft: {
             headers: {
                 [name: string]: unknown;

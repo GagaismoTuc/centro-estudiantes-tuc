@@ -248,6 +248,7 @@ func TestElectionDraftValidation(t *testing.T) {
 		{"null end", with(draft(), "endsAt", nil), "invalid_window"},
 		{"start not a date-time", with(draft(), "startsAt", "10/03/2027 08:00"), "invalid_window"},
 		{"submission ends after start", with(draft(), "submissionEndsAt", exStart.Add(time.Minute).Format(time.RFC3339)), "invalid_submission_period"},
+		{"submission ends at the voting start", with(draft(), "submissionEndsAt", exStart.Format(time.RFC3339)), "invalid_submission_period"},
 		{"submission ends when it starts", with(draft(), "submissionEndsAt", exSubStart.Format(time.RFC3339)), "invalid_submission_period"},
 		{"missing submission start", without(draft(), "submissionStartsAt"), "invalid_submission_period"},
 		{"null submission end", with(draft(), "submissionEndsAt", nil), "invalid_submission_period"},

@@ -15,7 +15,8 @@ var (
 	ErrInvalidName = errors.New("elections: invalid name")
 	// ErrInvalidWindow means the voting window ends at or before its start, or starts in the past.
 	ErrInvalidWindow = errors.New("elections: invalid voting window")
-	// ErrInvalidSubmissionPeriod means the submission period is empty or does not end by the start.
+	// ErrInvalidSubmissionPeriod means the submission period is empty or does not end before the
+	// voting start: ending exactly at StartsAt is rejected too.
 	ErrInvalidSubmissionPeriod = errors.New("elections: invalid submission period")
 	// ErrModeNotSupported means a mode other than ModeSecret.
 	ErrModeNotSupported = errors.New("elections: mode not supported")
@@ -31,7 +32,7 @@ func checkDraft(now time.Time, d Draft) (Draft, error) {
 	if !d.EndsAt.After(d.StartsAt) || d.StartsAt.Before(now) {
 		return d, ErrInvalidWindow
 	}
-	if !d.SubmissionEndsAt.After(d.SubmissionStartsAt) || d.SubmissionEndsAt.After(d.StartsAt) {
+	if !d.SubmissionEndsAt.After(d.SubmissionStartsAt) || !d.SubmissionEndsAt.Before(d.StartsAt) {
 		return d, ErrInvalidSubmissionPeriod
 	}
 	if len(d.Positions) == 0 {
