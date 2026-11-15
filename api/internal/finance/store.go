@@ -74,6 +74,13 @@ func (s *Store) withMember(ctx context.Context, sess auth.Session, officer bool,
 			if err := auth.RequireMFA(sess); err != nil {
 				return err
 			}
+			var hasRosterName bool
+			if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM memberships m JOIN roster_members r ON r.tenant_id=m.tenant_id AND r.id=m.roster_member_id WHERE m.tenant_id=$1 AND m.user_id=$2)`, sess.TenantID, sess.UserID).Scan(&hasRosterName); err != nil {
+				return err
+			}
+			if !hasRosterName {
+				return ErrForbidden
+			}
 		}
 		return fn(tx)
 	})
@@ -133,6 +140,9 @@ func (s *Store) Create(ctx context.Context, sess auth.Session, in NewEntry) (out
 		}
 		var name string
 		e = tx.QueryRow(ctx, `SELECT rm.full_name FROM memberships m JOIN roster_members rm ON rm.tenant_id=m.tenant_id AND rm.id=m.roster_member_id WHERE m.tenant_id=$1 AND m.user_id=$2 LIMIT 1`, sess.TenantID, sess.UserID).Scan(&name)
+		if errors.Is(e, pgx.ErrNoRows) {
+			return ErrForbidden
+		}
 		if e != nil {
 			return e
 		}

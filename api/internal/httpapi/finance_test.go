@@ -204,11 +204,12 @@ func TestFinanceRules(t *testing.T) {
 	})
 	t.Run("R9 only officers with MFA write", func(t *testing.T) {
 		body := makeBody(income, "income", "2026-11-10", "1", "Fixture")
+		_, unlinked, _, _ := f.signInMFA(t, ctx, "officer")
 		for _, c := range []struct {
 			token  string
 			status int
 			code   string
-		}{{"", 401, "unauthenticated"}, {student, 403, "forbidden"}, {admin, 403, "forbidden"}, {unverified, 403, "mfa_required"}} {
+		}{{"", 401, "unauthenticated"}, {student, 403, "forbidden"}, {admin, 403, "forbidden"}, {unverified, 403, "mfa_required"}, {unlinked, 403, "forbidden"}} {
 			before := snapshot()
 			r := f.do("POST", "/api/finance/entries", body, "198.51.100.12", c.token, nil)
 			wantResponse(t, r, c.status, fmt.Sprintf(`{"error":%q}`, c.code))
