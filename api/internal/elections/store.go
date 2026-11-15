@@ -119,9 +119,7 @@ func (s *Store) replaceCommission(ctx context.Context, tx pgx.Tx, tenant string,
 				return ErrNotFound
 			}
 		}
-		// Serializes designations per tenant, so two first designations do not race to create the
-		// commission.
-		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('electoral_commission:' || $1::text, 0))`, tenant); err != nil {
+		if err := lockCommission(ctx, tx, tenant); err != nil {
 			return err
 		}
 		rows, err := tx.Query(ctx, `
@@ -169,6 +167,14 @@ func (s *Store) replaceCommission(ctx context.Context, tx pgx.Tx, tenant string,
 		return err
 	}()
 	return out, err
+}
+
+// lockCommission takes the tenant's commission lock until tx ends. Designations take it so two first
+// designations do not race to create the commission; draft writes take it before checking that the
+// user is on the commission, so a replacement cannot commit between that check and the write.
+func lockCommission(ctx context.Context, tx pgx.Tx, tenant string) error {
+	_, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('electoral_commission:' || $1::text, 0))`, tenant)
+	return err
 }
 
 // CurrentCommission returns the tenant's current commission, or ErrNotFound.

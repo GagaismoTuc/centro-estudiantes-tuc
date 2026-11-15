@@ -135,12 +135,17 @@ func (s *Store) Status(ctx context.Context, sess auth.Session) (CommissionStatus
 
 // asCommissionMember runs fn in the session's tenant after checking, in the same transaction, that
 // the user's roster entry is on the current commission (ErrForbidden) and then that the session
-// verified the second factor (auth.ErrMFARequired).
+// verified the second factor (auth.ErrMFARequired). It holds the commission lock from before the
+// check until the transaction ends, so a concurrent Designate commits either before the check or
+// after fn's write.
 func (s *Store) asCommissionMember(ctx context.Context, sess auth.Session, fn func(pgx.Tx) error) error {
 	if sess.TenantID == "" {
 		return ErrForbidden
 	}
 	return db.WithTenant(ctx, s.pool, sess.TenantID, func(tx pgx.Tx) error {
+		if err := lockCommission(ctx, tx, sess.TenantID); err != nil {
+			return err
+		}
 		a, err := readAccess(ctx, tx, sess.TenantID, sess.UserID)
 		if err != nil {
 			return err
