@@ -588,7 +588,15 @@ describe("T3 copy fixes", () => {
     const spies = (["log", "info", "warn", "error", "debug"] as const).map((method) =>
       vi.spyOn(console, method).mockImplementation(() => {}),
     );
-    const stored = () => Object.keys(localStorage).map((key) => `${key}=${localStorage.getItem(key)}`).join(" ");
+    const stored = () =>
+      [localStorage, sessionStorage]
+        .flatMap((storage) =>
+          Array.from({ length: storage.length }, (_, i) => {
+            const key = storage.key(i) ?? "";
+            return `${key}=${storage.getItem(key)}`;
+          }),
+        )
+        .join(" ");
     try {
       mockApi({
         "GET /auth/me": ok(me({ role: "school_admin", mfa: "enrollment_required" })),
@@ -610,6 +618,30 @@ describe("T3 copy fixes", () => {
     } finally {
       spies.forEach((spy) => spy.mockRestore());
     }
+  });
+
+  test("R2: if encodeQr throws, the screen hides the QR and keeps the manual key visible, while a valid URI still renders the QR", async () => {
+    const secret = "JBSWY3DPEHPK3PXP";
+    const oversizedUri = `otpauth://totp/Centro%20de%20Estudiantes:ana@example.com?secret=${secret}&issuer=${"A".repeat(2300)}`;
+    mockApi({
+      "GET /auth/me": ok(me({ role: "school_admin", mfa: "enrollment_required" })),
+      "POST /auth/mfa/enrollment": ok({ secret, otpauthUri: oversizedUri }),
+    });
+    const broken = renderAt("/seguridad/activar");
+    expect(await screen.findByText("JBSW Y3DP EHPK 3PXP")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Copiar clave" })).toBeTruthy();
+    expect(screen.queryByRole("img", { name: "Código QR para tu app de autenticación" })).toBeNull();
+    expect(document.querySelector("svg.qr")).toBeNull();
+    broken.unmount();
+
+    const validUri = `otpauth://totp/Centro%20de%20Estudiantes:ana@example.com?secret=${secret}&issuer=Centro%20de%20Estudiantes&algorithm=SHA1&digits=6&period=30`;
+    mockApi({
+      "GET /auth/me": ok(me({ role: "school_admin", mfa: "enrollment_required" })),
+      "POST /auth/mfa/enrollment": ok({ secret, otpauthUri: validUri }),
+    });
+    renderAt("/seguridad/activar");
+    const qr = await screen.findByRole("img", { name: "Código QR para tu app de autenticación" });
+    expect(qr.tagName).toBe("svg");
   });
 });
 
