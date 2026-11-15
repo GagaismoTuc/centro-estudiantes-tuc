@@ -10,6 +10,7 @@ import { Redirect, usePathname } from "./lib/router.tsx";
 import { Claim } from "./screens/Claim.tsx";
 import { CommissionPanel } from "./screens/CommissionPanel.tsx";
 import { Election } from "./screens/Election.tsx";
+import { Calculator } from "./screens/Calculator.tsx";
 import { Home } from "./screens/Home.tsx";
 import { MfaEnroll } from "./screens/MfaEnroll.tsx";
 import { MfaVerify } from "./screens/MfaVerify.tsx";
@@ -43,6 +44,7 @@ const shellRoutes: Record<string, { page: string; Screen: () => JSX.Element }> =
   "/miembros": { page: "Miembros", Screen: Members },
   "/eleccion": { page: "Elección", Screen: Election },
   "/centro-de-estudiantes": { page: "Centro de estudiantes", Screen: CommissionPanel },
+  "/calculadora": { page: "Calculadora", Screen: Calculator },
   "/seguridad": { page: "Seguridad", Screen: Security },
 };
 

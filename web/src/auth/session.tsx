@@ -36,9 +36,20 @@ export const roleLabel: Record<Role, string> = {
   student: "Alumno",
 };
 
+const roleOrder: Record<Role, number> = {
+  student: 0,
+  officer: 1,
+  school_admin: 2,
+};
+
+/** Orders roles as Alumno, Integrante de la comisión directiva, Administrador de la escuela. */
+export function sortRoles(roles: readonly Role[]): Role[] {
+  return [...roles].sort((a, b) => roleOrder[a] - roleOrder[b]);
+}
+
 export function roleLabels(me: Me): string {
   const roles = me.roles ?? (me.role ? [me.role] : []);
-  return roles.map((role) => roleLabel[role]).join(", ") || "Sin escuela";
+  return sortRoles(roles).map((role) => roleLabel[role]).join(", ") || "Sin escuela";
 }
 
 /** Where a user belongs right now, given the two-factor state of the session. */
