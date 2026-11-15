@@ -6,6 +6,10 @@ export type ParseCentsOutcome =
   | { ok: true; cents: number }
   | { ok: false; reason: "empty" | "negative" | "invalid" };
 
+type ParseHundredthsOutcome =
+  | { ok: true; hundredths: number }
+  | { ok: false; reason: "empty" | "negative" | "invalid" };
+
 export type PricePerPersonErrors = {
   totalCost?: string;
   peopleCount?: string;
@@ -47,10 +51,10 @@ export type RaffleOutcome =
 
 /**
  * Parses a decimal string (supporting Argentine `,` decimals and `.` thousand separators)
- * into a scaled integer with `decimals` fractional digits without floating-point arithmetic.
+ * into integer hundredths without floating-point arithmetic.
  */
-function parseDecimalScaled(raw: string, prefixPattern: RegExp, suffixPattern: RegExp): ParseCentsOutcome {
-  const trimmed = raw.trim().replace(prefixPattern, "").replace(suffixPattern, "").trim();
+function parseDecimalHundredths(raw: string): ParseHundredthsOutcome {
+  const trimmed = raw.trim();
   if (!trimmed) return { ok: false, reason: "empty" };
 
   const isNegative = trimmed.startsWith("-");
@@ -98,15 +102,17 @@ function parseDecimalScaled(raw: string, prefixPattern: RegExp, suffixPattern: R
   const whole = BigInt(wholeStr ?? "0");
   const fracTwo = BigInt(fracStr.slice(0, 2).padEnd(2, "0"));
   const roundUp = Number(fracStr[2] ?? "0") >= 5 ? 1n : 0n;
-  const scaled = whole * PESO_CENTS + fracTwo + roundUp;
-  if (scaled > BigInt(Number.MAX_SAFE_INTEGER)) return { ok: false, reason: "invalid" };
+  const hundredths = whole * PESO_CENTS + fracTwo + roundUp;
+  if (hundredths > BigInt(Number.MAX_SAFE_INTEGER)) return { ok: false, reason: "invalid" };
 
-  return { ok: true, cents: Number(scaled) };
+  return { ok: true, hundredths: Number(hundredths) };
 }
 
 /** Parses a monetary peso string into integer centavos. */
 export function parsePesosToCents(raw: string): ParseCentsOutcome {
-  return parseDecimalScaled(raw, /^\$\s*/, /^$/);
+  const withoutCurrency = raw.trim().replace(/^\$\s*/, "");
+  const parsed = parseDecimalHundredths(withoutCurrency);
+  return parsed.ok ? { ok: true, cents: parsed.hundredths } : parsed;
 }
 
 function parsePositiveInteger(raw: string): number | null {
@@ -117,9 +123,11 @@ function parsePositiveInteger(raw: string): number | null {
   return value;
 }
 
+// shortcut: JS safe integer centavos (up to ~$90 trillion ARS); return BigInt if multi-trillion amounts are ever needed.
 /** Multiplies integer centavos by an integer quantity without floating-point error. */
 export function multiplyCents(cents: number, quantity: number): number {
-  return Number(BigInt(Math.trunc(cents)) * BigInt(Math.trunc(quantity)));
+  const product = BigInt(Math.trunc(cents)) * BigInt(Math.trunc(quantity));
+  return Number(product);
 }
 
 /** Rounds non-negative integer centavos up to the nearest multiple of $100 (10,000 cents). */
@@ -156,14 +164,14 @@ export function calculatePricePerPerson(input: {
   if (people === null) errors.peopleCount = "Ingresá cuántas personas van";
 
   let marginBps = 0n;
-  const rawMargin = (input.marginPercent ?? "").trim();
+  const rawMargin = (input.marginPercent ?? "").trim().replace(/\s*%$/, "");
   if (rawMargin !== "") {
-    const parsedMargin = parseDecimalScaled(rawMargin, /^$/, /\s*%$/);
+    const parsedMargin = parseDecimalHundredths(rawMargin);
     if (!parsedMargin.ok) {
       errors.marginPercent =
         parsedMargin.reason === "negative" ? "El margen no puede ser negativo" : "Ingresá un margen válido";
     } else {
-      marginBps = BigInt(parsedMargin.cents);
+      marginBps = BigInt(parsedMargin.hundredths);
     }
   }
 

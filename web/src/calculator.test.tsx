@@ -13,11 +13,11 @@ function renderAt(url: string) {
 }
 
 describe("R4 — No guarda nada", () => {
-  test("calculating price per person and raffle fires no POST, PATCH, or DELETE requests", async () => {
+  test("calculating price per person and raffle fires no POST, PATCH, or DELETE requests and resets on reload", async () => {
     const sent = mockApi({
       "GET /auth/me": ok(me({ role: "officer", mfa: "satisfied" })),
     });
-    renderAt("/calculadora");
+    const firstRender = renderAt("/calculadora");
 
     const personSection = await screen.findByRole("region", { name: "Precio por persona" });
     fireEvent.change(within(personSection).getByLabelText("Costo total ($)"), { target: { value: "180000" } });
@@ -34,6 +34,13 @@ describe("R4 — No guarda nada", () => {
     expect(within(personSection).getByText("$ 4.400")).toBeTruthy();
     expect(within(raffleSection).getByText("$ 240.000")).toBeTruthy();
     expect(sent.filter((request) => ["POST", "PATCH", "DELETE"].includes(request.method))).toHaveLength(0);
+
+    // Simulating a page reload clears in-memory calculator inputs and results.
+    firstRender.unmount();
+    renderAt("/calculadora");
+    const reloadedPerson = await screen.findByRole("region", { name: "Precio por persona" });
+    expect((within(reloadedPerson).getByLabelText("Costo total ($)") as HTMLInputElement).value).toBe("");
+    expect(within(reloadedPerson).queryByText("$ 4.400")).toBeNull();
   });
 });
 
@@ -66,7 +73,7 @@ describe("R5 — Solo Officers", () => {
 });
 
 describe("R6 — Pantalla accesible y en vivo", () => {
-  test("updates formatted results live in aria-live regions and exposes accessible error states", async () => {
+  test("updates formatted results live in aria-live regions and moves focus to first invalid field on submit", async () => {
     mockApi({ "GET /auth/me": ok(me({ role: "officer", mfa: "satisfied" })) });
     renderAt("/calculadora");
 
@@ -74,8 +81,14 @@ describe("R6 — Pantalla accesible y en vivo", () => {
     const personLive = personSection.querySelector('[aria-live="polite"]');
     expect(personLive).not.toBeNull();
 
+    const costInput = within(personSection).getByLabelText("Costo total ($)");
     const peopleInput = within(personSection).getByLabelText("Cantidad de personas");
-    fireEvent.change(within(personSection).getByLabelText("Costo total ($)"), { target: { value: "100000" } });
+    fireEvent.submit(personSection.querySelector("form")!);
+    expect(costInput.getAttribute("aria-invalid")).toBe("true");
+    expect(document.activeElement).toBe(costInput);
+    expect(personLive?.textContent).toContain("Ingresá el costo total");
+
+    fireEvent.change(costInput, { target: { value: "100000" } });
     fireEvent.change(peopleInput, { target: { value: "0" } });
     expect(peopleInput.getAttribute("aria-invalid")).toBe("true");
     expect(document.getElementById(peopleInput.getAttribute("aria-describedby") ?? "")?.textContent).toContain(
@@ -104,7 +117,13 @@ describe("R6 — Pantalla accesible y en vivo", () => {
 });
 
 describe("PRESERVE — App, AppShell, and Icon", () => {
-  test("App preserves MFA and signed-out route guards on /calculadora", async () => {
+  test("App preserves signed-out and MFA route guards on /calculadora", async () => {
+    mockApi({});
+    const signedOut = renderAt("/calculadora");
+    await waitFor(() => expect(window.location.pathname).toBe("/ingresar"));
+    expect(window.location.search).toBe("?next=%2Fcalculadora");
+    signedOut.unmount();
+
     mockApi({ "GET /auth/me": ok(me({ role: "officer", mfa: "pending" })) });
     renderAt("/calculadora");
     await waitFor(() => expect(window.location.pathname).toBe("/seguridad/verificar"));

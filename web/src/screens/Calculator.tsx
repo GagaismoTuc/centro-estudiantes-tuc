@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { hasRole, useMe } from "../auth/session.tsx";
 import { Field } from "../components/Form.tsx";
 import { Icon } from "../components/Icon.tsx";
@@ -6,85 +6,132 @@ import { PageTitle, useDocumentTitle } from "../components/Page.tsx";
 import { calculatePricePerPerson, calculateRaffle } from "../lib/calculator.ts";
 import { Link } from "../lib/router.tsx";
 
-function PricePerPersonCard() {
-  const [totalCost, setTotalCost] = useState("");
-  const [peopleCount, setPeopleCount] = useState("");
-  const [marginPercent, setMarginPercent] = useState("");
-  const [interacted, setInteracted] = useState(false);
+type CalculatorPanelProps = {
+  title: string;
+  description: string;
+  fieldOrder: readonly string[];
+  errors: Record<string, string | undefined>;
+  hasResult: boolean;
+  tone?: "ok" | undefined;
+  interacted: boolean;
+  emptyPrompt: string;
+  onReset: () => void;
+  onSubmitInvalid: () => void;
+  children: ReactNode;
+  resultContent: ReactNode;
+};
 
-  const outcome = calculatePricePerPerson({ totalCost, peopleCount, marginPercent });
-  const errors = interacted && !outcome.ok ? outcome.errors : {};
+function CalculatorPanel({
+  title,
+  description,
+  fieldOrder,
+  errors,
+  hasResult,
+  tone,
+  interacted,
+  emptyPrompt,
+  onReset,
+  onSubmitInvalid,
+  children,
+  resultContent,
+}: CalculatorPanelProps) {
+  const titleId = useId();
+  const formRef = useRef<HTMLFormElement>(null);
 
-  function reset() {
-    setTotalCost("");
-    setPeopleCount("");
-    setMarginPercent("");
-    setInteracted(false);
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (hasResult) return;
+    onSubmitInvalid();
+    const form = formRef.current;
+    if (!form) return;
+    for (const name of fieldOrder) {
+      if (errors[name]) {
+        const input = form.elements.namedItem(name);
+        if (input instanceof HTMLInputElement) {
+          input.focus();
+          return;
+        }
+      }
+    }
+    const firstInput = form.querySelector<HTMLInputElement>("input");
+    firstInput?.focus();
   }
 
+  const activeError = fieldOrder.map((name) => errors[name]).find(Boolean);
+
   return (
-    <section className="panel calc-panel" aria-labelledby="calc-person-title">
+    <section className="panel calc-panel" aria-labelledby={titleId}>
       <div className="calc-panel__header">
-        <h2 id="calc-person-title">Precio por persona</h2>
-        <p className="muted small">
-          Dividí el costo total entre las personas y sumá un margen opcional. Se redondea hacia arriba a múltiplos de $ 100.
-        </p>
+        <h2 id={titleId}>{title}</h2>
+        <p className="muted small">{description}</p>
       </div>
 
-      <form noValidate aria-labelledby="calc-person-title" onSubmit={(event) => event.preventDefault()}>
-        <Field
-          label="Costo total ($)"
-          name="personTotalCost"
-          type="text"
-          inputMode="decimal"
-          autoComplete="off"
-          enterKeyHint="next"
-          hint="Ej.: 180000 o 180.000"
-          value={totalCost}
-          error={errors.totalCost}
-          onChange={(event) => {
-            setInteracted(true);
-            setTotalCost(event.target.value);
-          }}
-        />
-        <Field
-          label="Cantidad de personas"
-          name="peopleCount"
-          type="text"
-          inputMode="numeric"
-          autoComplete="off"
-          enterKeyHint="next"
-          value={peopleCount}
-          error={errors.peopleCount}
-          onChange={(event) => {
-            setInteracted(true);
-            setPeopleCount(event.target.value);
-          }}
-        />
-        <Field
-          label="Margen opcional (%)"
-          name="marginPercent"
-          type="text"
-          inputMode="decimal"
-          autoComplete="off"
-          enterKeyHint="done"
-          hint="Dejalo vacío si no querés sumar margen."
-          value={marginPercent}
-          error={errors.marginPercent}
-          onChange={(event) => {
-            setInteracted(true);
-            setMarginPercent(event.target.value);
-          }}
-        />
+      <form ref={formRef} noValidate aria-labelledby={titleId} onSubmit={handleSubmit}>
+        {children}
         <div className="calc-actions">
-          <button type="button" className="button button--secondary button--small" onClick={reset}>
+          <button type="button" className="button button--secondary button--small" onClick={onReset}>
             Limpiar
           </button>
         </div>
       </form>
 
-      <div className="calc-result" data-tone={outcome.ok ? "ok" : undefined} aria-live="polite" aria-atomic="true">
-        {outcome.ok ? (
+      <div className="calc-result" data-tone={tone} aria-live="polite" aria-atomic="true">
+        {hasResult ? (
+          resultContent
+        ) : (
+          <p className="muted small">{interacted ? (activeError ?? "Revisá los datos para ver el resultado.") : emptyPrompt}</p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function PricePerPersonCard() {
+  const [totalCost, setTotalCost] = useState("");
+  const [peopleCount, setPeopleCount] = useState("");
+  const [marginPercent, setMarginPercent] = useState("");
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const [submitted, setSubmitted] = useState(false);
+
+  const outcome = calculatePricePerPerson({ totalCost, peopleCount, marginPercent });
+  const rawErrors = outcome.ok ? {} : outcome.errors;
+  const interacted = submitted || Object.values(touched).some(Boolean);
+  const visibleErrors: Record<string, string | undefined> = {
+    personTotalCost: submitted || touched.personTotalCost ? rawErrors.totalCost : undefined,
+    peopleCount: submitted || touched.peopleCount ? rawErrors.peopleCount : undefined,
+    marginPercent: submitted || touched.marginPercent ? rawErrors.marginPercent : undefined,
+  };
+
+  function mark(name: string) {
+    setTouched((prev) => (prev[name] ? prev : { ...prev, [name]: true }));
+  }
+
+  function reset() {
+    setTotalCost("");
+    setPeopleCount("");
+    setMarginPercent("");
+    setTouched({});
+    setSubmitted(false);
+  }
+
+  return (
+    <CalculatorPanel
+      title="Precio por persona"
+      description="Dividí el costo total entre las personas y sumá un margen opcional. Se redondea hacia arriba a múltiplos de $ 100."
+      fieldOrder={["personTotalCost", "peopleCount", "marginPercent"]}
+      errors={{
+        personTotalCost: rawErrors.totalCost,
+        peopleCount: rawErrors.peopleCount,
+        marginPercent: rawErrors.marginPercent,
+      }}
+      hasResult={outcome.ok}
+      tone={outcome.ok ? "ok" : undefined}
+      interacted={interacted}
+      emptyPrompt="Completá los datos para calcular el precio por persona."
+      onReset={reset}
+      onSubmitInvalid={() => setSubmitted(true)}
+      resultContent={
+        outcome.ok && (
           <>
             <p className="calc-result__label">Precio por persona</p>
             <p className="calc-result__value">{outcome.result.formattedPricePerPerson}</p>
@@ -93,13 +140,57 @@ function PricePerPersonCard() {
               <li>Total con margen: {outcome.result.formattedTotalWithMargin}</li>
             </ul>
           </>
-        ) : (
-          <p className="muted small">
-            {interacted ? "Revisá los datos para ver el resultado." : "Completá los datos para calcular el precio por persona."}
-          </p>
-        )}
-      </div>
-    </section>
+        )
+      }
+    >
+      <Field
+        label="Costo total ($)"
+        name="personTotalCost"
+        type="text"
+        inputMode="decimal"
+        autoComplete="off"
+        enterKeyHint="next"
+        hint="Ej.: 180000 o 180.000"
+        value={totalCost}
+        error={visibleErrors.personTotalCost}
+        onBlur={() => mark("personTotalCost")}
+        onChange={(event) => {
+          mark("personTotalCost");
+          setTotalCost(event.target.value);
+        }}
+      />
+      <Field
+        label="Cantidad de personas"
+        name="peopleCount"
+        type="text"
+        inputMode="numeric"
+        autoComplete="off"
+        enterKeyHint="next"
+        value={peopleCount}
+        error={visibleErrors.peopleCount}
+        onBlur={() => mark("peopleCount")}
+        onChange={(event) => {
+          mark("peopleCount");
+          setPeopleCount(event.target.value);
+        }}
+      />
+      <Field
+        label="Margen opcional (%)"
+        name="marginPercent"
+        type="text"
+        inputMode="decimal"
+        autoComplete="off"
+        enterKeyHint="done"
+        hint="Dejalo vacío si no querés sumar margen."
+        value={marginPercent}
+        error={visibleErrors.marginPercent}
+        onBlur={() => mark("marginPercent")}
+        onChange={(event) => {
+          mark("marginPercent");
+          setMarginPercent(event.target.value);
+        }}
+      />
+    </CalculatorPanel>
   );
 }
 
@@ -107,85 +198,48 @@ function RaffleCard() {
   const [totalCost, setTotalCost] = useState("");
   const [unitPrice, setUnitPrice] = useState("");
   const [availableUnits, setAvailableUnits] = useState("");
-  const [interacted, setInteracted] = useState(false);
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const [submitted, setSubmitted] = useState(false);
 
   const outcome = calculateRaffle({ totalCost, unitPrice, availableUnits });
-  const errors = interacted && !outcome.ok ? outcome.errors : {};
+  const rawErrors = outcome.ok ? {} : outcome.errors;
+  const interacted = submitted || Object.values(touched).some(Boolean);
+  const visibleErrors: Record<string, string | undefined> = {
+    raffleTotalCost: submitted || touched.raffleTotalCost ? rawErrors.totalCost : undefined,
+    unitPrice: submitted || touched.unitPrice ? rawErrors.unitPrice : undefined,
+    availableUnits: submitted || touched.availableUnits ? rawErrors.availableUnits : undefined,
+  };
+
+  function mark(name: string) {
+    setTouched((prev) => (prev[name] ? prev : { ...prev, [name]: true }));
+  }
 
   function reset() {
     setTotalCost("");
     setUnitPrice("");
     setAvailableUnits("");
-    setInteracted(false);
+    setTouched({});
+    setSubmitted(false);
   }
 
   return (
-    <section className="panel calc-panel" aria-labelledby="calc-raffle-title">
-      <div className="calc-panel__header">
-        <h2 id="calc-raffle-title">Rifa o venta</h2>
-        <p className="muted small">
-          Calculá cuántas unidades tenés que vender para no perder y cuánto ganás si vendés todo.
-        </p>
-      </div>
-
-      <form noValidate aria-labelledby="calc-raffle-title" onSubmit={(event) => event.preventDefault()}>
-        <Field
-          label="Costo total de premios o mercadería ($)"
-          name="raffleTotalCost"
-          type="text"
-          inputMode="decimal"
-          autoComplete="off"
-          enterKeyHint="next"
-          hint="Ej.: 60000"
-          value={totalCost}
-          error={errors.totalCost}
-          onChange={(event) => {
-            setInteracted(true);
-            setTotalCost(event.target.value);
-          }}
-        />
-        <Field
-          label="Precio por unidad ($)"
-          name="unitPrice"
-          type="text"
-          inputMode="decimal"
-          autoComplete="off"
-          enterKeyHint="next"
-          value={unitPrice}
-          error={errors.unitPrice}
-          onChange={(event) => {
-            setInteracted(true);
-            setUnitPrice(event.target.value);
-          }}
-        />
-        <Field
-          label="Unidades disponibles"
-          name="availableUnits"
-          type="text"
-          inputMode="numeric"
-          autoComplete="off"
-          enterKeyHint="done"
-          value={availableUnits}
-          error={errors.availableUnits}
-          onChange={(event) => {
-            setInteracted(true);
-            setAvailableUnits(event.target.value);
-          }}
-        />
-        <div className="calc-actions">
-          <button type="button" className="button button--secondary button--small" onClick={reset}>
-            Limpiar
-          </button>
-        </div>
-      </form>
-
-      <div
-        className="calc-result"
-        data-tone={outcome.ok && outcome.result.coversCost ? "ok" : undefined}
-        aria-live="polite"
-        aria-atomic="true"
-      >
-        {outcome.ok ? (
+    <CalculatorPanel
+      title="Rifa o venta"
+      description="Calculá cuántas unidades tenés que vender para no perder y cuánto ganás si vendés todo."
+      fieldOrder={["raffleTotalCost", "unitPrice", "availableUnits"]}
+      errors={{
+        raffleTotalCost: rawErrors.totalCost,
+        unitPrice: rawErrors.unitPrice,
+        availableUnits: rawErrors.availableUnits,
+      }}
+      hasResult={outcome.ok}
+      tone={outcome.ok && outcome.result.coversCost ? "ok" : undefined}
+      interacted={interacted}
+      emptyPrompt="Completá los datos para calcular la rifa o venta."
+      onReset={reset}
+      onSubmitInvalid={() => setSubmitted(true)}
+      resultContent={
+        outcome.ok && (
           <>
             <p className="calc-result__label">Para no perder</p>
             <p className="calc-result__value">
@@ -210,13 +264,56 @@ function RaffleCard() {
               </>
             )}
           </>
-        ) : (
-          <p className="muted small">
-            {interacted ? "Revisá los datos para ver el resultado." : "Completá los datos para calcular la rifa o venta."}
-          </p>
-        )}
-      </div>
-    </section>
+        )
+      }
+    >
+      <Field
+        label="Costo total de premios o mercadería ($)"
+        name="raffleTotalCost"
+        type="text"
+        inputMode="decimal"
+        autoComplete="off"
+        enterKeyHint="next"
+        hint="Ej.: 60000"
+        value={totalCost}
+        error={visibleErrors.raffleTotalCost}
+        onBlur={() => mark("raffleTotalCost")}
+        onChange={(event) => {
+          mark("raffleTotalCost");
+          setTotalCost(event.target.value);
+        }}
+      />
+      <Field
+        label="Precio por unidad ($)"
+        name="unitPrice"
+        type="text"
+        inputMode="decimal"
+        autoComplete="off"
+        enterKeyHint="next"
+        value={unitPrice}
+        error={visibleErrors.unitPrice}
+        onBlur={() => mark("unitPrice")}
+        onChange={(event) => {
+          mark("unitPrice");
+          setUnitPrice(event.target.value);
+        }}
+      />
+      <Field
+        label="Unidades disponibles"
+        name="availableUnits"
+        type="text"
+        inputMode="numeric"
+        autoComplete="off"
+        enterKeyHint="done"
+        value={availableUnits}
+        error={visibleErrors.availableUnits}
+        onBlur={() => mark("availableUnits")}
+        onChange={(event) => {
+          mark("availableUnits");
+          setAvailableUnits(event.target.value);
+        }}
+      />
+    </CalculatorPanel>
   );
 }
 
