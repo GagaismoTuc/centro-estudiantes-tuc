@@ -256,10 +256,11 @@ func TestChangePasswordConcurrentChangeLoserIsUnauthenticated(t *testing.T) {
 	// Both changes verify the current password, then wait on the same UPDATE of the user's row.
 	user := f.seedUser(t, ctx, uniqueEmail("change-race"), "student")
 	tok := f.loginOK(t, userEmail(t, ctx, user))
+	var wg sync.WaitGroup
+	t.Cleanup(wg.Wait)
 	row := lockTx(t, ctx, `SELECT 1 FROM users WHERE id = $1 FOR UPDATE`, user)
 	nexts := [2]string{changedPassword, other}
 	var recs [2]*httptest.ResponseRecorder
-	var wg sync.WaitGroup
 	for i := range nexts {
 		wg.Go(func() { recs[i] = f.changePassword(tok, password, nexts[i]) })
 	}
@@ -273,13 +274,20 @@ func TestChangePasswordConcurrentChangeLoserIsUnauthenticated(t *testing.T) {
 	email := uniqueEmail("change-race-late")
 	user = f.seedUser(t, ctx, email, "student")
 	tok = f.loginOK(t, email)
-	row = lockTx(t, ctx, `SELECT 1 FROM users WHERE id = $1 FOR UPDATE`, user)
 	done := make(chan struct{})
+	started := false
+	t.Cleanup(func() {
+		if started {
+			<-done
+		}
+	})
+	row = lockTx(t, ctx, `SELECT 1 FROM users WHERE id = $1 FOR UPDATE`, user)
+	started = true
 	go func() { recs[0] = f.changePassword(tok, password, nexts[0]); close(done) }()
 	waitForLockedQueries(t, ctx, "UPDATE users SET password_hash%", 1)
 	table := lockTx(t, ctx, `LOCK TABLE memberships IN ACCESS EXCLUSIVE MODE`)
 	wg.Go(func() { recs[1] = f.changePassword(tok, password, nexts[1]) })
-	waitForLockedQueries(t, ctx, "%FROM memberships m JOIN organizations o%", 1)
+	waitForLockedQueries(t, ctx, "%FROM memberships m JOIN organizations o ON%", 1)
 	release(t, ctx, row)
 	<-done
 	release(t, ctx, table)
@@ -313,9 +321,17 @@ func release(t *testing.T, ctx context.Context, tx pgx.Tx) {
 	}
 }
 
+// lockWaitTimeout bounds waitForLockedQueries so a mismatched SQL pattern fails quickly
+// instead of hanging until the 60s integration context deadline.
+const lockWaitTimeout = 5 * time.Second
+
 // waitForLockedQueries waits until n queries of this database matching the LIKE pattern wait on a lock.
 func waitForLockedQueries(t *testing.T, ctx context.Context, pattern string, n int) {
 	t.Helper()
+	deadline := time.NewTimer(lockWaitTimeout)
+	defer deadline.Stop()
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
 	for {
 		var waiting int
 		if err := tdb.Super.QueryRow(ctx, `SELECT count(*) FROM pg_stat_activity
@@ -328,7 +344,9 @@ func waitForLockedQueries(t *testing.T, ctx context.Context, pattern string, n i
 		select {
 		case <-ctx.Done():
 			t.Fatalf("%d of %d queries like %q waiting: %v", waiting, n, pattern, ctx.Err())
-		case <-time.After(10 * time.Millisecond):
+		case <-deadline.C:
+			t.Fatalf("%d of %d queries like %q waiting after %s", waiting, n, pattern, lockWaitTimeout)
+		case <-ticker.C:
 		}
 	}
 }

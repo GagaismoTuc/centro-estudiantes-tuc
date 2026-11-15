@@ -308,9 +308,9 @@ func (s *Store) DeleteSession(ctx context.Context, token string) error {
 	return DeleteSessionIn(ctx, s.pool, token)
 }
 
-// Membership returns the session user's role in the session's tenant and that organization's name,
-// read in one query; both are "" without a tenant or when the membership is gone. commission reports
-// that the user's roster entry is on the tenant's current Electoral commission (see CommissionRole).
+// Membership returns the session user's roles slice in the session's tenant and that tenant's name,
+// read in one query; without a tenant or when the membership is removed after sign-in, it returns nil, "", false, nil.
+// commission reports that the user's roster entry is on the tenant's current Electoral commission (see CommissionRole).
 func (s *Store) Membership(ctx context.Context, sess Session) (roles []string, tenantName string, commission bool, err error) {
 	if sess.TenantID == "" {
 		return nil, "", false, nil
