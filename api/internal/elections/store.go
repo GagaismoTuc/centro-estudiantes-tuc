@@ -92,12 +92,24 @@ func (s *Store) stamp() time.Time { return s.now().UTC().Truncate(time.Microseco
 // none. Repeated ids count once. Errors: ErrEmptyCommission, ErrNotFound (an id outside the tenant),
 // ErrNoAccount, ErrElectionFrozen (an election of this commission already opened). On error nothing
 // is written.
+// It does no authorization: Designate is the entry point for requests.
 func (s *Store) ReplaceCommission(ctx context.Context, tenant string, rosterMemberIDs []string) (Commission, error) {
+	var out Commission
+	err := db.WithTenant(ctx, s.pool, tenant, func(tx pgx.Tx) error {
+		var err error
+		out, err = s.replaceCommission(ctx, tx, tenant, rosterMemberIDs)
+		return err
+	})
+	return out, err
+}
+
+// replaceCommission is ReplaceCommission inside tx, already scoped to tenant.
+func (s *Store) replaceCommission(ctx context.Context, tx pgx.Tx, tenant string, rosterMemberIDs []string) (Commission, error) {
 	ids := slices.Clone(rosterMemberIDs)
 	slices.Sort(ids)
 	ids = slices.Compact(ids)
 	var out Commission
-	err := db.WithTenant(ctx, s.pool, tenant, func(tx pgx.Tx) error {
+	err := func() error {
 		if len(ids) == 0 {
 			return ErrEmptyCommission
 		}
@@ -154,7 +166,7 @@ func (s *Store) ReplaceCommission(ctx context.Context, tenant string, rosterMemb
 		}
 		out, err = currentCommission(ctx, tx, tenant)
 		return err
-	})
+	}()
 	return out, err
 }
 

@@ -26,6 +26,16 @@ const messages: Record<string, string> = {
   unsupported_media_type: "El archivo tiene que ser CSV.",
   invalid_rows: "El archivo tiene filas con errores. No se cargó nada.",
   too_many_rows: "El archivo tiene más de 5000 filas. Dividilo en partes.",
+  election_frozen: "La elección ya abrió: no se puede cambiar el Centro de estudiantes.",
+  empty_commission: "Elegí al menos un integrante para el Centro de estudiantes.",
+  no_account: "Ese alumno todavía no tiene cuenta. Pedile que la active antes de sumarlo al Centro de estudiantes.",
+  election_in_progress: "Ya hay una elección en curso en la escuela. Terminala antes de crear otra.",
+  election_not_draft: "La elección ya no es un borrador: no se puede editar.",
+  invalid_name: "Escribí un nombre para la elección de hasta 120 caracteres.",
+  invalid_window: "Revisá las fechas de votación: el inicio tiene que ser futuro y el fin, posterior al inicio.",
+  invalid_submission_period: "Revisá la presentación de listas: tiene que terminar antes de que empiece la votación.",
+  invalid_positions: "Revisá los cargos: tiene que haber al menos uno, sin nombres vacíos ni repetidos.",
+  mode_not_supported: "Por ahora solo se puede votar con voto secreto.",
   network: "No pudimos conectarnos. Revisá tu conexión e intentá de nuevo.",
 };
 

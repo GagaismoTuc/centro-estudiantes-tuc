@@ -321,7 +321,7 @@ paths:
       description: >
         Checks the new password first (10 to 128 characters, `weak_password`), then the current one. A wrong
         current password counts as a failed sign-in for the user's email (same limit as `/auth/login`:
-        5 per 15 minutes, then 429). A school admin or officer needs a session that completed two-factor
+        5 per 15 minutes, then 429). A school admin, officer or Electoral commission member needs a session that completed two-factor
         authentication. On success stores the new password, marks every pending emailed link of the user
         used, deletes every other session of the user and rotates this one: a new cookie with the same
         absolute expiry (Max-Age is the remaining lifetime) and the old token stops working. Errors change
@@ -345,7 +345,7 @@ paths:
           $ref: "#/components/responses/Unauthenticated"
         "403":
           description: >
-            School admin or officer whose session has not completed two-factor authentication
+            School admin, officer or Electoral commission member whose session has not completed two-factor authentication
             (`mfa_required`).
           content:
             application/json:
@@ -692,8 +692,296 @@ paths:
           $ref: "#/components/responses/Unauthenticated"
         "403":
           $ref: "#/components/responses/Forbidden"
+  /electoral-commission:
+    get:
+      operationId: getElectoralCommission
+      summary: Read the active school's current Electoral commission
+      description: >
+        Any member of the active school (student, officer or school admin); no second factor needed.
+        `commission` is null until one is designated. `isMember` says whether the caller's roster entry sits
+        on it; `canDesignate` whether the caller may designate or replace it now by role (any officer when
+        the school has officers, otherwise the school admin), regardless of the second factor and of
+        `election_frozen`. Responses carry `Cache-Control: no-store`.
+      responses:
+        "200":
+          description: The commission (or null) and the caller's relation to it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ElectoralCommissionStatus"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          description: The account has no membership in the active school (`forbidden`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForbiddenError"
+    put:
+      operationId: putElectoralCommission
+      summary: Designate or replace the members of the current Electoral commission
+      description: >
+        Any officer when the school has officers (an officer position or the officer role); otherwise the
+        school admin. Checked on every request, so it applies to replacing too. The role is checked first
+        (`forbidden`), then the second factor (`mfa_required`); both before the body is read. Each id is a
+        roster member of the active school with an account; a repeated id is stored once. The whole list
+        replaces the current members; the commission is created when the school has none. Every error writes
+        nothing. Responses carry `Cache-Control: no-store`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommissionDesignation"
+      responses:
+        "200":
+          description: The commission as stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ElectoralCommission"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          description: >
+            `forbidden` (a student without an officer position, a school admin while the school has officers,
+            or no membership) or `mfa_required` (allowed role, session without a verified second factor).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForbiddenError"
+        "404":
+          description: An id is not a roster member of the active school (`not_found`); never says whether it exists elsewhere.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotFoundError"
+        "409":
+          description: An election of this commission already opened (`election_frozen`).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [election_frozen]
+        "422":
+          description: >
+            `empty_commission` (the list is empty, null or missing) or `no_account` (a roster member without an
+            account).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [empty_commission, no_account]
+  /electoral-commission/candidates:
+    get:
+      operationId: getElectoralCommissionCandidates
+      summary: List the roster members who can sit on the Electoral commission
+      description: >
+        Roster members of the active school with an account, ordered by name. Same permission and order of
+        checks as `PUT /electoral-commission` (`forbidden`, then `mfa_required`). Responses carry
+        `Cache-Control: no-store`.
+      responses:
+        "200":
+          description: Candidates.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CommissionMember"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          description: "`forbidden` or `mfa_required`, as in `PUT /electoral-commission`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForbiddenError"
+  /elections:
+    post:
+      operationId: postElection
+      summary: Create the draft of an election
+      description: >
+        Members of the current Electoral commission only, with a verified second factor (`forbidden` first, then
+        `mfa_required`, both before the body is read): students, officers (the Presidente included) and school
+        admins who are not on it get `forbidden`. The election belongs to the current commission. Every error
+        writes nothing; the validation codes are listed in the 422 response. Responses carry
+        `Cache-Control: no-store`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ElectionDraftRequest"
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Election"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          description: "`forbidden` (not on the current Electoral commission) or `mfa_required`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForbiddenError"
+        "409":
+          description: >
+            The school already has an election neither published nor annulled (`election_in_progress`). Of two
+            simultaneous requests exactly one gets 201.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [election_in_progress]
+        "422":
+          $ref: "#/components/responses/InvalidElectionDraft"
+  /elections/current:
+    get:
+      operationId: getCurrentElection
+      summary: Read the active school's election in progress (neither published nor annulled)
+      description: "Any member of the active school. Responses carry `Cache-Control: no-store`."
+      responses:
+        "200":
+          description: The election.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Election"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          description: The account has no membership in the active school (`forbidden`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForbiddenError"
+        "404":
+          description: No election in progress (`not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotFoundError"
+  /elections/{electionId}:
+    parameters:
+      - name: electionId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getElection
+      summary: Read an election of the active school
+      description: "Any member of the active school. Responses carry `Cache-Control: no-store`."
+      responses:
+        "200":
+          description: The election.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Election"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          description: The account has no membership in the active school (`forbidden`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForbiddenError"
+        "404":
+          description: No such election in the active school (`not_found`), whether or not it exists in another.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotFoundError"
+    put:
+      operationId: putElection
+      summary: Edit the draft of an election
+      description: >
+        Same permission and order of checks as `POST /elections`. Replaces name, mode, dates and positions
+        while the election is a draft (state `draft`). Every error writes nothing. Responses carry
+        `Cache-Control: no-store`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ElectionDraftRequest"
+      responses:
+        "200":
+          description: The election as stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Election"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          description: "`forbidden` (not on the current Electoral commission) or `mfa_required`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForbiddenError"
+        "404":
+          description: No such election in the active school (`not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotFoundError"
+        "409":
+          description: The election is no longer a draft (`election_not_draft`).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [election_not_draft]
+        "422":
+          $ref: "#/components/responses/InvalidElectionDraft"
 components:
   responses:
+    InvalidElectionDraft:
+      description: >
+        Nothing was written. `invalid_name`: name missing, null, blank or longer than 120 characters.
+        `invalid_window`: `startsAt` or `endsAt` missing, null or not an RFC 3339 date-time, `endsAt` not after
+        `startsAt`, or `startsAt` in the past. `invalid_submission_period`: `submissionStartsAt` or
+        `submissionEndsAt` missing, null or not an RFC 3339 date-time, `submissionEndsAt` not after
+        `submissionStartsAt`, or the period not ending by `startsAt`. `invalid_positions`: `positions` null or
+        empty, or a name blank, longer than 120 characters or repeated (case-insensitive).
+        `mode_not_supported`: `mode` null or other than `secret`.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [error]
+            properties:
+              error:
+                type: string
+                enum: [invalid_name, invalid_window, invalid_submission_period, invalid_positions, mode_not_supported]
     BadRequest:
       description: Body is not JSON, has unknown fields or trailing data, or exceeds 4 KiB (`bad_request`).
       content:
@@ -734,6 +1022,147 @@ components:
           schema:
             $ref: "#/components/schemas/Error"
   schemas:
+    ForbiddenError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          enum: [forbidden, mfa_required]
+    NotFoundError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          enum: [not_found]
+    CommissionMember:
+      type: object
+      required: [rosterMemberId, fullName]
+      properties:
+        rosterMemberId:
+          type: string
+        fullName:
+          type: string
+    ElectoralCommission:
+      type: object
+      description: The Electoral commission (UI "Centro de estudiantes").
+      required: [id, createdAt, members]
+      properties:
+        id:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        members:
+          type: array
+          description: Ordered by name.
+          items:
+            $ref: "#/components/schemas/CommissionMember"
+    ElectoralCommissionStatus:
+      type: object
+      required: [commission, isMember, canDesignate]
+      properties:
+        commission:
+          allOf:
+            - $ref: "#/components/schemas/ElectoralCommission"
+          nullable: true
+          description: The current commission; null when none was designated.
+        isMember:
+          type: boolean
+          description: The caller's roster entry is on the current commission.
+        canDesignate:
+          type: boolean
+          description: The caller's role allows designating or replacing the commission now.
+    CommissionDesignation:
+      type: object
+      additionalProperties: false
+      properties:
+        rosterMemberIds:
+          type: array
+          description: Roster member ids; at least one (`empty_commission` otherwise), repeats count once.
+          items:
+            type: string
+    ElectionMode:
+      type: string
+      enum: [secret]
+      description: Only "Voto secreto"; any other value is 422 `mode_not_supported`.
+    ElectionState:
+      type: string
+      enum: [draft, submission, scheduled, open, closed]
+      description: >
+        Computed from the server clock against the dates; every window includes its start and excludes its end.
+        `draft` before `submissionStartsAt`, `submission` until `submissionEndsAt`, `scheduled` until `startsAt`,
+        `open` until `endsAt`, `closed` from `endsAt` on.
+    ElectionDraftRequest:
+      type: object
+      additionalProperties: false
+      required: [name, submissionStartsAt, submissionEndsAt, startsAt, endsAt]
+      description: >
+        Date-times are RFC 3339 with offset (Argentina is -03:00). `submissionEndsAt` is exclusive: a period
+        "1 to 5 March" ends at 2027-03-06T00:00:00-03:00. Validation codes are listed in the 422 response.
+      properties:
+        name:
+          type: string
+          maxLength: 120
+        mode:
+          allOf:
+            - $ref: "#/components/schemas/ElectionMode"
+          description: Defaults to `secret` when absent.
+        submissionStartsAt:
+          type: string
+          format: date-time
+        submissionEndsAt:
+          type: string
+          format: date-time
+        startsAt:
+          type: string
+          format: date-time
+        endsAt:
+          type: string
+          format: date-time
+        positions:
+          type: array
+          description: >
+            Positions in order. When absent the election gets "Presidente", "Vicepresidente", "Secretario",
+            "Tesorero".
+          items:
+            type: string
+            maxLength: 120
+    Election:
+      type: object
+      required: [id, name, mode, submissionStartsAt, submissionEndsAt, startsAt, endsAt, positions, state, commission]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        mode:
+          $ref: "#/components/schemas/ElectionMode"
+        submissionStartsAt:
+          type: string
+          format: date-time
+        submissionEndsAt:
+          type: string
+          format: date-time
+        startsAt:
+          type: string
+          format: date-time
+        endsAt:
+          type: string
+          format: date-time
+        positions:
+          type: array
+          description: In order.
+          items:
+            type: string
+        state:
+          $ref: "#/components/schemas/ElectionState"
+        commission:
+          type: array
+          description: Members of the election's Electoral commission, ordered by name.
+          items:
+            $ref: "#/components/schemas/CommissionMember"
     Health:
       type: object
       required: [status]
@@ -822,10 +1251,11 @@ components:
       type: string
       enum: [not_required, enrollment_required, pending, satisfied]
       description: >
-        Two-factor state of the session, computed from the role in the active tenant. `not_required`:
-        student or no membership. `enrollment_required`: school admin or officer without a confirmed TOTP.
-        `pending`: confirmed TOTP but this session has not verified it. `satisfied`: this session verified a
-        code. Endpoints for school admins and officers answer 403 `mfa_required` unless `satisfied`.
+        Two-factor state of the session, computed from the role in the active tenant. School admins, officers
+        and members of the current Electoral commission are privileged. `not_required`: not privileged or no
+        membership. `enrollment_required`: privileged without a confirmed TOTP. `pending`: confirmed TOTP but
+        this session has not verified it. `satisfied`: this session verified a code. Endpoints for privileged
+        users answer 403 `mfa_required` unless `satisfied`.
     MfaEnrollment:
       type: object
       required: [secret, otpauthUri]

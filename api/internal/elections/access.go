@@ -1,0 +1,134 @@
+package elections
+
+import (
+	"context"
+	"errors"
+
+	"github.com/jackc/pgx/v5"
+
+	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/auth"
+	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/db"
+)
+
+// ErrForbidden means the session user may not run the operation in the session's tenant.
+var ErrForbidden = errors.New("elections: forbidden")
+
+// access is what the session user is in one tenant, read in the operation's own transaction.
+type access struct {
+	member       bool // has a membership in the tenant
+	designator   bool // may designate the commission: an officer, or the school admin when there are no officers
+	onCommission bool // their roster entry is on the current commission
+}
+
+func readAccess(ctx context.Context, tx pgx.Tx, tenant, user string) (access, error) {
+	var a access
+	var officer, admin, officersExist bool
+	err := tx.QueryRow(ctx, `
+		SELECT EXISTS (SELECT FROM memberships WHERE tenant_id = $1 AND user_id = $2),
+		       EXISTS (SELECT FROM memberships m WHERE m.tenant_id = $1 AND m.user_id = $2 AND (m.role = 'officer'
+		               OR EXISTS (SELECT FROM officer_positions p WHERE p.tenant_id = m.tenant_id AND p.roster_member_id = m.roster_member_id))),
+		       EXISTS (SELECT FROM memberships WHERE tenant_id = $1 AND user_id = $2 AND role = 'school_admin'),
+		       EXISTS (SELECT FROM officer_positions WHERE tenant_id = $1)
+		       OR EXISTS (SELECT FROM memberships WHERE tenant_id = $1 AND role = 'officer'),
+		       EXISTS (SELECT FROM electoral_commission_members cm
+		               JOIN electoral_commissions c ON c.tenant_id = cm.tenant_id AND c.id = cm.commission_id AND c.ended_at IS NULL
+		               JOIN memberships ms ON ms.tenant_id = cm.tenant_id AND ms.roster_member_id = cm.roster_member_id
+		               WHERE cm.tenant_id = $1 AND ms.user_id = $2)`, tenant, user).
+		Scan(&a.member, &officer, &admin, &officersExist, &a.onCommission)
+	a.designator = officer || (admin && !officersExist)
+	return a, err
+}
+
+// asDesignator runs fn in the session's tenant after checking, in the same transaction, that the
+// user may designate the commission (ErrForbidden) and then that the session verified the second
+// factor (auth.ErrMFARequired).
+func (s *Store) asDesignator(ctx context.Context, sess auth.Session, fn func(pgx.Tx) error) error {
+	if sess.TenantID == "" {
+		return ErrForbidden
+	}
+	return db.WithTenant(ctx, s.pool, sess.TenantID, func(tx pgx.Tx) error {
+		a, err := readAccess(ctx, tx, sess.TenantID, sess.UserID)
+		if err != nil {
+			return err
+		}
+		if !a.designator {
+			return ErrForbidden
+		}
+		if err := auth.RequireMFA(sess); err != nil {
+			return err
+		}
+		return fn(tx)
+	})
+}
+
+// AuthorizeDesignation returns nil when sess may designate the commission now, ErrForbidden or
+// auth.ErrMFARequired otherwise. Callers use it to refuse a request before reading its body;
+// Designate checks again in its own transaction.
+func (s *Store) AuthorizeDesignation(ctx context.Context, sess auth.Session) error {
+	return s.asDesignator(ctx, sess, func(pgx.Tx) error { return nil })
+}
+
+// Designate replaces the members of the session tenant's current commission (see ReplaceCommission),
+// checking the permission in the same transaction as the write.
+func (s *Store) Designate(ctx context.Context, sess auth.Session, rosterMemberIDs []string) (Commission, error) {
+	var out Commission
+	err := s.asDesignator(ctx, sess, func(tx pgx.Tx) error {
+		var err error
+		out, err = s.replaceCommission(ctx, tx, sess.TenantID, rosterMemberIDs)
+		return err
+	})
+	return out, err
+}
+
+// Candidates lists the roster members of the session's tenant with an account, by name: those a
+// designator may put on the commission.
+func (s *Store) Candidates(ctx context.Context, sess auth.Session) ([]CommissionMember, error) {
+	out := []CommissionMember{}
+	err := s.asDesignator(ctx, sess, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, `
+			SELECT m.id::text, m.full_name FROM roster_members m
+			WHERE m.tenant_id = $1 AND EXISTS (SELECT FROM memberships ms WHERE ms.tenant_id = m.tenant_id AND ms.roster_member_id = m.id)
+			ORDER BY m.full_name, m.id`, sess.TenantID)
+		if err != nil {
+			return err
+		}
+		out, err = pgx.CollectRows(rows, pgx.RowToStructByPos[CommissionMember])
+		return err
+	})
+	return out, err
+}
+
+// CommissionStatus is the current commission (nil when none) and the caller's relation to it.
+type CommissionStatus struct {
+	Commission             *Commission
+	IsMember, CanDesignate bool
+}
+
+// Status returns the session tenant's commission for any member of the tenant (ErrForbidden
+// otherwise); it needs no second factor.
+func (s *Store) Status(ctx context.Context, sess auth.Session) (CommissionStatus, error) {
+	var out CommissionStatus
+	if sess.TenantID == "" {
+		return out, ErrForbidden
+	}
+	err := db.WithTenant(ctx, s.pool, sess.TenantID, func(tx pgx.Tx) error {
+		a, err := readAccess(ctx, tx, sess.TenantID, sess.UserID)
+		if err != nil {
+			return err
+		}
+		if !a.member {
+			return ErrForbidden
+		}
+		out.IsMember, out.CanDesignate = a.onCommission, a.designator
+		c, err := currentCommission(ctx, tx, sess.TenantID)
+		if errors.Is(err, ErrNotFound) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		out.Commission = &c
+		return nil
+	})
+	return out, err
+}

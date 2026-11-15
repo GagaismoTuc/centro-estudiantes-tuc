@@ -42,8 +42,14 @@ var (
 	ErrNoAccount = errors.New("auth: no account with that email")
 )
 
+// CommissionRole stands for a seat on the current Electoral commission when computing the two-factor
+// state. It is not a membership role and is never reported as one.
+const CommissionRole = "electoral_commission"
+
 // Privileged reports whether role must use two-factor authentication.
-func Privileged(role string) bool { return role == "school_admin" || role == "officer" }
+func Privileged(role string) bool {
+	return role == "school_admin" || role == "officer" || role == CommissionRole
+}
 
 // MFAStateOf returns the state of sess for role, the user's role in the session's active tenant.
 func MFAStateOf(sess Session, roles ...string) MFAState {
