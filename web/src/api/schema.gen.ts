@@ -415,6 +415,162 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/contacts/headings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List contact headings of the active school
+         * @description Officers, school admins and veedors with a two-factor session. Active headings come first (alphabetical, with "otros" last), followed by archived headings.
+         */
+        get: operations["getContactHeadings"];
+        put?: never;
+        /**
+         * Create a contact heading
+         * @description Officers with a two-factor session only.
+         */
+        post: operations["postContactHeading"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/contacts/headings/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete an unused contact heading
+         * @description Officers with a two-factor session only. "otros" and headings with contacts cannot be deleted.
+         */
+        delete: operations["deleteContactHeading"];
+        options?: never;
+        head?: never;
+        /**
+         * Rename a contact heading
+         * @description Officers with a two-factor session only. "otros" cannot be renamed.
+         */
+        patch: operations["patchContactHeading"];
+        trace?: never;
+    };
+    "/contacts/headings/{id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Archive a contact heading
+         * @description Officers with a two-factor session only. "otros" cannot be archived.
+         */
+        post: operations["postContactHeadingArchive"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/contacts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List contacts of the active school
+         * @description Officers, school admins and veedors with a two-factor session.
+         */
+        get: operations["getContacts"];
+        put?: never;
+        /**
+         * Create a contact
+         * @description Officers with a two-factor session only.
+         */
+        post: operations["postContact"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/contacts/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete a contact
+         * @description Officers with a two-factor session only.
+         */
+        delete: operations["deleteContact"];
+        options?: never;
+        head?: never;
+        /**
+         * Update a contact
+         * @description Officers with a two-factor session only.
+         */
+        patch: operations["patchContact"];
+        trace?: never;
+    };
+    "/contacts/{id}/reference-prices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add a dated reference price to a contact
+         * @description Officers with a two-factor session only.
+         */
+        post: operations["postContactReferencePrice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/contacts/{id}/reference-prices/{priceId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete a reference price from a contact
+         * @description Officers with a two-factor session only.
+         */
+        delete: operations["deleteContactReferencePrice"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/roster/access-codes": {
         parameters: {
             query?: never;
@@ -560,6 +716,64 @@ export interface components {
             /** Format: date-time */
             expiresAt: string;
         };
+        ContactHeading: {
+            id: string;
+            name: string;
+            archived: boolean;
+            reserved: boolean;
+        };
+        HeadingNameRequest: {
+            name: string;
+        };
+        ReferencePrice: {
+            id: string;
+            description: string;
+            /** Format: int64 */
+            amountCents: number;
+            /** @example 2026-09-01 */
+            date: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        Contact: {
+            id: string;
+            headingId: string;
+            headingName: string;
+            headingArchived: boolean;
+            name: string;
+            phone: string;
+            email: string;
+            zone: string;
+            notes: string;
+            referencePrices: components["schemas"]["ReferencePrice"][];
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        CreateContactRequest: {
+            name: string;
+            headingId: string;
+            phone?: string;
+            email?: string;
+            zone?: string;
+            notes?: string;
+        };
+        UpdateContactRequest: {
+            name?: string;
+            headingId?: string;
+            phone?: string;
+            email?: string;
+            zone?: string;
+            notes?: string;
+        };
+        CreateReferencePriceRequest: {
+            description: string;
+            /** Format: int64 */
+            amountCents: number;
+            /** @example 2026-09-01 */
+            date: string;
+        };
     };
     responses: {
         /** @description Body is not JSON, has unknown fields or trailing data, or exceeds 4 KiB (`bad_request`). */
@@ -609,6 +823,15 @@ export interface components {
         };
         /** @description The user is not a school admin of the active tenant (`forbidden`), or is one but the session has not completed two-factor authentication (`mfa_required`; see `mfa` in `/auth/me`). Nothing is read or written. */
         Forbidden: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description The user lacks the required role in the active tenant (`forbidden`), or has a privileged role without a verified two-factor session (`mfa_required`). Nothing is read or written. */
+        DirectoryForbidden: {
             headers: {
                 [name: string]: unknown;
             };
@@ -1346,6 +1569,438 @@ export interface operations {
             };
             /** @description The member already has an account (`member_has_account`). */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getContactHeadings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Headings of the active school. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContactHeading"][];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["DirectoryForbidden"];
+        };
+    };
+    postContactHeading: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HeadingNameRequest"];
+            };
+        };
+        responses: {
+            /** @description Heading created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContactHeading"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["DirectoryForbidden"];
+            /** @description Another heading already uses that name regardless of case (`heading_exists`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Empty heading name (`name_required`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    deleteContactHeading: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Heading deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["DirectoryForbidden"];
+            /** @description Heading not found in the active school (`not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Heading is referenced (`heading_in_use`) or is reserved "otros" (`reserved_heading`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    patchContactHeading: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HeadingNameRequest"];
+            };
+        };
+        responses: {
+            /** @description Heading renamed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContactHeading"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["DirectoryForbidden"];
+            /** @description Heading not found in the active school (`not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Duplicate name (`heading_exists`) or reserved "otros" heading (`reserved_heading`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Empty heading name (`name_required`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    postContactHeadingArchive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Heading archived. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContactHeading"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["DirectoryForbidden"];
+            /** @description Heading not found in the active school (`not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Reserved "otros" heading cannot be archived (`reserved_heading`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getContacts: {
+        parameters: {
+            query?: {
+                headingId?: string;
+                q?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Contacts ordered by name, each with its reference prices. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Contact"][];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["DirectoryForbidden"];
+        };
+    };
+    postContact: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateContactRequest"];
+            };
+        };
+        responses: {
+            /** @description Contact created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Contact"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["DirectoryForbidden"];
+            /** @description Heading not found in the active school (`not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation failed: `name_required`, `invalid_email`, or `invalid_heading` (missing or archived heading). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    deleteContact: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Contact deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["DirectoryForbidden"];
+            /** @description Contact not found in the active school (`not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    patchContact: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateContactRequest"];
+            };
+        };
+        responses: {
+            /** @description Contact updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Contact"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["DirectoryForbidden"];
+            /** @description Contact or heading not found in the active school (`not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation failed (`name_required`, `invalid_email`, or `invalid_heading`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    postContactReferencePrice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateReferencePriceRequest"];
+            };
+        };
+        responses: {
+            /** @description Reference price added. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferencePrice"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["DirectoryForbidden"];
+            /** @description Contact not found in the active school (`not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation failed: `description_required`, `invalid_amount`, `future_date`, or `invalid_date`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    deleteContactReferencePrice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                priceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Reference price deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["DirectoryForbidden"];
+            /** @description Contact or reference price not found in the active school (`not_found`). */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

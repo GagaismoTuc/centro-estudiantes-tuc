@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/auth"
+	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/contacts"
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/mail"
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/oapi"
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/roster"
@@ -47,6 +48,7 @@ type server struct {
 	// claimLimiter counts invalid access codes per client IP (claim and redeem).
 	claimLimiter *auth.Limiter
 	roster       *roster.Store
+	contacts     *contacts.Store
 	// mailLimiter counts emailed-link requests per client IP and per email.
 	mailLimiter *auth.Limiter
 	// tokenLimiter counts invalid emailed tokens per client IP.
@@ -92,8 +94,9 @@ func NewRouter(d Deps) http.Handler {
 		now:     d.Now,
 		trusted: d.TrustedProxies,
 		store:   auth.NewStore(d.Pool, d.Now),
-		limiter: auth.NewLimiter(loginMaxFailures, loginWindow, d.Now).WithMax("ip:", perIPMax),
-		roster:  roster.NewStore(d.Pool, d.AccessCodeKey, d.Now),
+		limiter:  auth.NewLimiter(loginMaxFailures, loginWindow, d.Now).WithMax("ip:", perIPMax),
+		roster:   roster.NewStore(d.Pool, d.AccessCodeKey, d.Now),
+		contacts: contacts.NewStore(d.Pool, d.Now),
 
 		claimLimiter: auth.NewLimiter(perIPMax, claimWindow, d.Now),
 		mailLimiter:  auth.NewLimiter(mailMaxRequests, mailWindow, d.Now).WithMax("ip:", perIPMax),

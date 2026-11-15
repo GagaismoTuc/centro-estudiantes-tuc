@@ -670,6 +670,376 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /contacts/headings:
+    get:
+      operationId: getContactHeadings
+      summary: List contact headings of the active school
+      description: >
+        Officers, school admins and veedors with a two-factor session. Active headings come first
+        (alphabetical, with "otros" last), followed by archived headings.
+      responses:
+        "200":
+          description: Headings of the active school.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ContactHeading"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/DirectoryForbidden"
+    post:
+      operationId: postContactHeading
+      summary: Create a contact heading
+      description: Officers with a two-factor session only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HeadingNameRequest"
+      responses:
+        "201":
+          description: Heading created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContactHeading"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/DirectoryForbidden"
+        "409":
+          description: Another heading already uses that name regardless of case (`heading_exists`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Empty heading name (`name_required`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /contacts/headings/{id}:
+    patch:
+      operationId: patchContactHeading
+      summary: Rename a contact heading
+      description: Officers with a two-factor session only. "otros" cannot be renamed.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HeadingNameRequest"
+      responses:
+        "200":
+          description: Heading renamed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContactHeading"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/DirectoryForbidden"
+        "404":
+          description: Heading not found in the active school (`not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Duplicate name (`heading_exists`) or reserved "otros" heading (`reserved_heading`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Empty heading name (`name_required`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      operationId: deleteContactHeading
+      summary: Delete an unused contact heading
+      description: Officers with a two-factor session only. "otros" and headings with contacts cannot be deleted.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Heading deleted.
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/DirectoryForbidden"
+        "404":
+          description: Heading not found in the active school (`not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Heading is referenced (`heading_in_use`) or is reserved "otros" (`reserved_heading`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /contacts/headings/{id}/archive:
+    post:
+      operationId: postContactHeadingArchive
+      summary: Archive a contact heading
+      description: Officers with a two-factor session only. "otros" cannot be archived.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Heading archived.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContactHeading"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/DirectoryForbidden"
+        "404":
+          description: Heading not found in the active school (`not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Reserved "otros" heading cannot be archived (`reserved_heading`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /contacts:
+    get:
+      operationId: getContacts
+      summary: List contacts of the active school
+      description: Officers, school admins and veedors with a two-factor session.
+      parameters:
+        - name: headingId
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Contacts ordered by name, each with its reference prices.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Contact"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/DirectoryForbidden"
+    post:
+      operationId: postContact
+      summary: Create a contact
+      description: Officers with a two-factor session only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateContactRequest"
+      responses:
+        "201":
+          description: Contact created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Contact"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/DirectoryForbidden"
+        "404":
+          description: Heading not found in the active school (`not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: >
+            Validation failed: `name_required`, `invalid_email`, or `invalid_heading` (missing or
+            archived heading).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /contacts/{id}:
+    patch:
+      operationId: patchContact
+      summary: Update a contact
+      description: Officers with a two-factor session only.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateContactRequest"
+      responses:
+        "200":
+          description: Contact updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Contact"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/DirectoryForbidden"
+        "404":
+          description: Contact or heading not found in the active school (`not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Validation failed (`name_required`, `invalid_email`, or `invalid_heading`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      operationId: deleteContact
+      summary: Delete a contact
+      description: Officers with a two-factor session only.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Contact deleted.
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/DirectoryForbidden"
+        "404":
+          description: Contact not found in the active school (`not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /contacts/{id}/reference-prices:
+    post:
+      operationId: postContactReferencePrice
+      summary: Add a dated reference price to a contact
+      description: Officers with a two-factor session only.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateReferencePriceRequest"
+      responses:
+        "201":
+          description: Reference price added.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReferencePrice"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/DirectoryForbidden"
+        "404":
+          description: Contact not found in the active school (`not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: >
+            Validation failed: `description_required`, `invalid_amount`, `future_date`, or
+            `invalid_date`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /contacts/{id}/reference-prices/{priceId}:
+    delete:
+      operationId: deleteContactReferencePrice
+      summary: Delete a reference price from a contact
+      description: Officers with a two-factor session only.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: priceId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Reference price deleted.
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/DirectoryForbidden"
+        "404":
+          description: Contact or reference price not found in the active school (`not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /roster/access-codes:
     post:
       operationId: postRosterAccessCodes
@@ -729,6 +1099,14 @@ components:
         The user is not a school admin of the active tenant (`forbidden`), or is one but the session has not
         completed two-factor authentication (`mfa_required`; see `mfa` in `/auth/me`). Nothing is read or
         written.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    DirectoryForbidden:
+      description: >
+        The user lacks the required role in the active tenant (`forbidden`), or has a privileged role
+        without a verified two-factor session (`mfa_required`). Nothing is read or written.
       content:
         application/json:
           schema:
@@ -1003,3 +1381,117 @@ components:
         expiresAt:
           type: string
           format: date-time
+    ContactHeading:
+      type: object
+      required: [id, name, archived, reserved]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        archived:
+          type: boolean
+        reserved:
+          type: boolean
+    HeadingNameRequest:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+    ReferencePrice:
+      type: object
+      required: [id, description, amountCents, date, createdAt]
+      properties:
+        id:
+          type: string
+        description:
+          type: string
+        amountCents:
+          type: integer
+          format: int64
+        date:
+          type: string
+          example: "2026-09-01"
+        createdAt:
+          type: string
+          format: date-time
+    Contact:
+      type: object
+      required: [id, headingId, headingName, headingArchived, name, phone, email, zone, notes, referencePrices, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+        headingId:
+          type: string
+        headingName:
+          type: string
+        headingArchived:
+          type: boolean
+        name:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+        zone:
+          type: string
+        notes:
+          type: string
+        referencePrices:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReferencePrice"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    CreateContactRequest:
+      type: object
+      required: [name, headingId]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+        headingId:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+        zone:
+          type: string
+        notes:
+          type: string
+    UpdateContactRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+        headingId:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+        zone:
+          type: string
+        notes:
+          type: string
+    CreateReferencePriceRequest:
+      type: object
+      required: [description, amountCents, date]
+      additionalProperties: false
+      properties:
+        description:
+          type: string
+        amountCents:
+          type: integer
+          format: int64
+        date:
+          type: string
+          example: "2026-09-01"

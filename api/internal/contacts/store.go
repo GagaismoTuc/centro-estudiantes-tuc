@@ -717,7 +717,7 @@ func isUniqueViolation(err error) bool {
 
 func isForeignKeyViolation(err error) bool {
 	var pgErr *pgconn.PgError
-	return errors.As(err, &pgErr) && pgErr.Code == "23503"
+	return errors.As(err, &pgErr) && (pgErr.Code == "23503" || pgErr.Code == "23001")
 }
 
 func escapeLike(s string) string {

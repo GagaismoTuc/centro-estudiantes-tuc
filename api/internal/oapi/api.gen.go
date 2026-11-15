@@ -6,6 +6,7 @@
 package oapi
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -194,6 +195,49 @@ type ClaimRequest struct {
 	Password string `json:"password"`
 }
 
+// Contact defines model for Contact.
+type Contact struct {
+	CreatedAt       time.Time        `json:"createdAt"`
+	Email           string           `json:"email"`
+	HeadingArchived bool             `json:"headingArchived"`
+	HeadingId       string           `json:"headingId"`
+	HeadingName     string           `json:"headingName"`
+	Id              string           `json:"id"`
+	Name            string           `json:"name"`
+	Notes           string           `json:"notes"`
+	Phone           string           `json:"phone"`
+	ReferencePrices []ReferencePrice `json:"referencePrices"`
+	UpdatedAt       time.Time        `json:"updatedAt"`
+	Zone            string           `json:"zone"`
+}
+
+// ContactHeading defines model for ContactHeading.
+type ContactHeading struct {
+	Archived bool   `json:"archived"`
+	Id       string `json:"id"`
+	Name     string `json:"name"`
+	Reserved bool   `json:"reserved"`
+}
+
+// CreateContactRequest defines model for CreateContactRequest.
+type CreateContactRequest struct {
+	Email     *string `json:"email,omitempty"`
+	HeadingId string  `json:"headingId"`
+	Name      string  `json:"name"`
+	Notes     *string `json:"notes,omitempty"`
+	Phone     *string `json:"phone,omitempty"`
+	Zone      *string `json:"zone,omitempty"`
+}
+
+// CreateReferencePriceRequest defines model for CreateReferencePriceRequest.
+type CreateReferencePriceRequest struct {
+	AmountCents int64 `json:"amountCents"`
+
+	// Date Example: 2026-09-01
+	Date        string `json:"date"`
+	Description string `json:"description"`
+}
+
 // EmailRequest defines model for EmailRequest.
 type EmailRequest struct {
 	Email string `json:"email"`
@@ -202,6 +246,11 @@ type EmailRequest struct {
 // Error defines model for Error.
 type Error struct {
 	Error string `json:"error"`
+}
+
+// HeadingNameRequest defines model for HeadingNameRequest.
+type HeadingNameRequest struct {
+	Name string `json:"name"`
 }
 
 // Health defines model for Health.
@@ -312,6 +361,17 @@ type RedeemRequest struct {
 	Code string `json:"code"`
 }
 
+// ReferencePrice defines model for ReferencePrice.
+type ReferencePrice struct {
+	AmountCents int64     `json:"amountCents"`
+	CreatedAt   time.Time `json:"createdAt"`
+
+	// Date Example: 2026-09-01
+	Date        string `json:"date"`
+	Description string `json:"description"`
+	Id          string `json:"id"`
+}
+
 // Role defines model for Role.
 type Role string
 
@@ -359,8 +419,21 @@ type TokenRequest struct {
 	Token string `json:"token"`
 }
 
+// UpdateContactRequest defines model for UpdateContactRequest.
+type UpdateContactRequest struct {
+	Email     *string `json:"email,omitempty"`
+	HeadingId *string `json:"headingId,omitempty"`
+	Name      *string `json:"name,omitempty"`
+	Notes     *string `json:"notes,omitempty"`
+	Phone     *string `json:"phone,omitempty"`
+	Zone      *string `json:"zone,omitempty"`
+}
+
 // BadRequest defines model for BadRequest.
 type BadRequest = Error
+
+// DirectoryForbidden defines model for DirectoryForbidden.
+type DirectoryForbidden = Error
 
 // Forbidden defines model for Forbidden.
 type Forbidden = Error
@@ -376,6 +449,12 @@ type TooManyAttempts = Error
 
 // Unauthenticated defines model for Unauthenticated.
 type Unauthenticated = Error
+
+// GetContactsParams defines parameters for GetContacts.
+type GetContactsParams struct {
+	HeadingId *string `form:"headingId,omitempty" json:"headingId,omitempty"`
+	Q         *string `form:"q,omitempty" json:"q,omitempty"`
+}
 
 // DeleteMemberOfficer404JSONResponseBodyError defines parameters for DeleteMemberOfficer.
 type DeleteMemberOfficer404JSONResponseBodyError string
@@ -427,6 +506,21 @@ type PostAuthPasswordResetRequestJSONRequestBody = EmailRequest
 // PostAuthRedeemJSONRequestBody defines body for PostAuthRedeem for application/json ContentType.
 type PostAuthRedeemJSONRequestBody = RedeemRequest
 
+// PostContactJSONRequestBody defines body for PostContact for application/json ContentType.
+type PostContactJSONRequestBody = CreateContactRequest
+
+// PostContactHeadingJSONRequestBody defines body for PostContactHeading for application/json ContentType.
+type PostContactHeadingJSONRequestBody = HeadingNameRequest
+
+// PatchContactHeadingJSONRequestBody defines body for PatchContactHeading for application/json ContentType.
+type PatchContactHeadingJSONRequestBody = HeadingNameRequest
+
+// PatchContactJSONRequestBody defines body for PatchContact for application/json ContentType.
+type PatchContactJSONRequestBody = UpdateContactRequest
+
+// PostContactReferencePriceJSONRequestBody defines body for PostContactReferencePrice for application/json ContentType.
+type PostContactReferencePriceJSONRequestBody = CreateReferencePriceRequest
+
 // PostMemberOfficerJSONRequestBody defines body for PostMemberOfficer for application/json ContentType.
 type PostMemberOfficerJSONRequestBody PostMemberOfficerJSONBody
 
@@ -477,6 +571,39 @@ type ServerInterface interface {
 	// PostAuthRedeem Add a school to the signed-in account with an access code
 	// (POST /auth/redeem)
 	PostAuthRedeem(w http.ResponseWriter, r *http.Request)
+	// GetContacts List contacts of the active school
+	// (GET /contacts)
+	GetContacts(w http.ResponseWriter, r *http.Request, params GetContactsParams)
+	// PostContact Create a contact
+	// (POST /contacts)
+	PostContact(w http.ResponseWriter, r *http.Request)
+	// GetContactHeadings List contact headings of the active school
+	// (GET /contacts/headings)
+	GetContactHeadings(w http.ResponseWriter, r *http.Request)
+	// PostContactHeading Create a contact heading
+	// (POST /contacts/headings)
+	PostContactHeading(w http.ResponseWriter, r *http.Request)
+	// DeleteContactHeading Delete an unused contact heading
+	// (DELETE /contacts/headings/{id})
+	DeleteContactHeading(w http.ResponseWriter, r *http.Request, id string)
+	// PatchContactHeading Rename a contact heading
+	// (PATCH /contacts/headings/{id})
+	PatchContactHeading(w http.ResponseWriter, r *http.Request, id string)
+	// PostContactHeadingArchive Archive a contact heading
+	// (POST /contacts/headings/{id}/archive)
+	PostContactHeadingArchive(w http.ResponseWriter, r *http.Request, id string)
+	// DeleteContact Delete a contact
+	// (DELETE /contacts/{id})
+	DeleteContact(w http.ResponseWriter, r *http.Request, id string)
+	// PatchContact Update a contact
+	// (PATCH /contacts/{id})
+	PatchContact(w http.ResponseWriter, r *http.Request, id string)
+	// PostContactReferencePrice Add a dated reference price to a contact
+	// (POST /contacts/{id}/reference-prices)
+	PostContactReferencePrice(w http.ResponseWriter, r *http.Request, id string)
+	// DeleteContactReferencePrice Delete a reference price from a contact
+	// (DELETE /contacts/{id}/reference-prices/{priceId})
+	DeleteContactReferencePrice(w http.ResponseWriter, r *http.Request, id string, priceId string)
 	// GetHealth Liveness check
 	// (GET /health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
@@ -713,6 +840,285 @@ func (siw *ServerInterfaceWrapper) PostAuthRedeem(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostAuthRedeem(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetContacts operation middleware
+func (siw *ServerInterfaceWrapper) GetContacts(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetContactsParams
+
+	// ------------- Optional query parameter "headingId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "headingId", r.URL.Query(), &params.HeadingId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "headingId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "headingId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetContacts(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostContact operation middleware
+func (siw *ServerInterfaceWrapper) PostContact(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostContact(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetContactHeadings operation middleware
+func (siw *ServerInterfaceWrapper) GetContactHeadings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetContactHeadings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostContactHeading operation middleware
+func (siw *ServerInterfaceWrapper) PostContactHeading(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostContactHeading(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteContactHeading operation middleware
+func (siw *ServerInterfaceWrapper) DeleteContactHeading(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteContactHeading(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PatchContactHeading operation middleware
+func (siw *ServerInterfaceWrapper) PatchContactHeading(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PatchContactHeading(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostContactHeadingArchive operation middleware
+func (siw *ServerInterfaceWrapper) PostContactHeadingArchive(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostContactHeadingArchive(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteContact operation middleware
+func (siw *ServerInterfaceWrapper) DeleteContact(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteContact(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PatchContact operation middleware
+func (siw *ServerInterfaceWrapper) PatchContact(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PatchContact(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostContactReferencePrice operation middleware
+func (siw *ServerInterfaceWrapper) PostContactReferencePrice(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostContactReferencePrice(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteContactReferencePrice operation middleware
+func (siw *ServerInterfaceWrapper) DeleteContactReferencePrice(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "priceId" -------------
+	var priceId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "priceId", r.PathValue("priceId"), &priceId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "priceId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteContactReferencePrice(w, r, id, priceId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1012,6 +1418,17 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/roster", wrapper.GetRoster)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/roster/import", wrapper.PostRosterImport)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/roster/{memberId}/access-code", wrapper.PostRosterMemberAccessCode)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/contacts/headings", wrapper.GetContactHeadings)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/contacts/headings", wrapper.PostContactHeading)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/contacts/headings/{id}", wrapper.DeleteContactHeading)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/contacts/headings/{id}", wrapper.PatchContactHeading)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/contacts/headings/{id}/archive", wrapper.PostContactHeadingArchive)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/contacts", wrapper.GetContacts)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/contacts", wrapper.PostContact)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/contacts/{id}", wrapper.DeleteContact)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/contacts/{id}", wrapper.PatchContact)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/contacts/{id}/reference-prices", wrapper.PostContactReferencePrice)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/contacts/{id}/reference-prices/{priceId}", wrapper.DeleteContactReferencePrice)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/roster/access-codes", wrapper.PostRosterAccessCodes)
 
 	return m
