@@ -351,6 +351,9 @@ func (s *Store) Bootstrap(ctx context.Context, orgName, email, password string) 
 		if _, err := tx.Exec(ctx, `INSERT INTO organizations (id, kind, name) VALUES ($1, 'school', $2)`, orgID, orgName); err != nil {
 			return err
 		}
+		if _, err := tx.Exec(ctx, `SELECT seed_finance_categories($1)`, orgID); err != nil {
+			return err
+		}
 		var userID string
 		if err := tx.QueryRow(ctx, `INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id::text`,
 			NormalizeEmail(email), hash).Scan(&userID); err != nil {

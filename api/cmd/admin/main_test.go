@@ -113,6 +113,47 @@ func TestBootstrapCreatesSchoolAdminAndRefusesExistingEmail(t *testing.T) {
 	}
 }
 
+func TestBootstrapSeedsFinanceCategoriesAtomically(t *testing.T) {
+	ctx := integration(t)
+	code, _, stderr := runCLI(adminPassword+"\n", "bootstrap", "--org-name", "Finance School", "--email", "finance-admin@example.com")
+	if code != 0 {
+		t.Fatalf("bootstrap exit=%d stderr=%q", code, stderr)
+	}
+	rows, err := tdb.Super.Query(ctx, `SELECT c.direction, c.name FROM finance_categories c JOIN organizations o ON o.id=c.tenant_id WHERE o.name='Finance School'`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	want := map[string]bool{"income:Cuotas": true, "income:Eventos": true, "income:Ventas": true, "income:Donaciones y sponsors": true, "income:Otros ingresos": true, "expense:Eventos": true, "expense:Materiales e impresiones": true, "expense:Alquileres": true, "expense:Viajes": true, "expense:Otros gastos": true}
+	got := map[string]bool{}
+	for rows.Next() {
+		var direction, name string
+		if err := rows.Scan(&direction, &name); err != nil {
+			t.Fatal(err)
+		}
+		got[direction+":"+name] = true
+	}
+	if rows.Err() != nil {
+		t.Fatal(rows.Err())
+	}
+	if len(got) != len(want) {
+		t.Fatalf("categories: got %v", got)
+	}
+	for key := range want {
+		if !got[key] {
+			t.Errorf("missing %s", key)
+		}
+	}
+	code, _, _ = runCLI(adminPassword+"\n", "bootstrap", "--org-name", "Rolled Back School", "--email", "finance-admin@example.com")
+	if code != 1 {
+		t.Fatalf("duplicate exit=%d", code)
+	}
+	var count int
+	if err := tdb.Super.QueryRow(ctx, `SELECT count(*) FROM organizations WHERE name='Rolled Back School'`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("rollback count=%d err=%v", count, err)
+	}
+}
+
 func TestBootstrapUsageErrorsCreateNothing(t *testing.T) {
 	ctx := integration(t)
 	orgs, users, members := counts(t, ctx)
