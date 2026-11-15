@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -176,6 +177,31 @@ func TestReplaceCommissionStoresEachMemberOnceWithName(t *testing.T) {
 	}
 	if n := superCount(t, ctx, "electoral_commission_members", s.tenant); n != 2 {
 		t.Fatalf("stored members = %d, want 2", n)
+	}
+}
+
+// S2: an id is a UUID, so the same student sent in upper and lower case is one member, as
+// PostgreSQL reads it, and is stored once.
+func TestReplaceCommissionCountsAnIdOnceRegardlessOfCase(t *testing.T) {
+	ctx := integration(t)
+	s := newSchool(t, ctx)
+	st := newStore(today())
+	got, err := st.ReplaceCommission(ctx, s.tenant, []string{s.ana, strings.ToUpper(s.ana)})
+	if err != nil {
+		t.Fatalf("ReplaceCommission: %v", err)
+	}
+	if ids := memberIDs(got); !slices.Equal(ids, []string{s.ana}) {
+		t.Fatalf("members = %v, want ana once", ids)
+	}
+	cur, err := st.CurrentCommission(ctx, s.tenant)
+	if err != nil {
+		t.Fatalf("CurrentCommission: %v", err)
+	}
+	if ids := memberIDs(cur); !slices.Equal(ids, []string{s.ana}) {
+		t.Fatalf("current members = %v, want ana once", ids)
+	}
+	if n := superCount(t, ctx, "electoral_commission_members", s.tenant); n != 1 {
+		t.Fatalf("stored members = %d, want 1", n)
 	}
 }
 

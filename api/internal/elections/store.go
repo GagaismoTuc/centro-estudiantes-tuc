@@ -7,6 +7,7 @@ import (
 	"errors"
 	"regexp"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -95,7 +96,7 @@ func stored(t time.Time) time.Time { return t.UTC().Truncate(time.Microsecond) }
 // ReplaceCommission sets the members of the tenant's current commission, creating it when there is
 // none. Repeated ids count once. Errors: ErrEmptyCommission, ErrNotFound (an id outside the tenant),
 // ErrNoAccount, ErrElectionFrozen (an election of this commission already opened). On error nothing
-// is written.
+// is written. Ids are compared in lower case, as PostgreSQL reads a UUID.
 // It does no authorization: Designate is the entry point for requests.
 func (s *Store) ReplaceCommission(ctx context.Context, tenant string, rosterMemberIDs []string) (Commission, error) {
 	var out Commission
@@ -109,7 +110,12 @@ func (s *Store) ReplaceCommission(ctx context.Context, tenant string, rosterMemb
 
 // replaceCommission is ReplaceCommission inside tx, already scoped to tenant.
 func (s *Store) replaceCommission(ctx context.Context, tx pgx.Tx, tenant string, rosterMemberIDs []string) (Commission, error) {
-	ids := slices.Clone(rosterMemberIDs)
+	// A UUID is case-insensitive in PostgreSQL, so ids are compared in lower case: the same member
+	// sent in two cases counts once.
+	ids := make([]string, len(rosterMemberIDs))
+	for i, id := range rosterMemberIDs {
+		ids[i] = strings.ToLower(id)
+	}
 	slices.Sort(ids)
 	ids = slices.Compact(ids)
 	var out Commission
