@@ -132,3 +132,99 @@ func (s *Store) Status(ctx context.Context, sess auth.Session) (CommissionStatus
 	})
 	return out, err
 }
+
+// asCommissionMember runs fn in the session's tenant after checking, in the same transaction, that
+// the user's roster entry is on the current commission (ErrForbidden) and then that the session
+// verified the second factor (auth.ErrMFARequired).
+func (s *Store) asCommissionMember(ctx context.Context, sess auth.Session, fn func(pgx.Tx) error) error {
+	if sess.TenantID == "" {
+		return ErrForbidden
+	}
+	return db.WithTenant(ctx, s.pool, sess.TenantID, func(tx pgx.Tx) error {
+		a, err := readAccess(ctx, tx, sess.TenantID, sess.UserID)
+		if err != nil {
+			return err
+		}
+		if !a.onCommission {
+			return ErrForbidden
+		}
+		if err := auth.RequireMFA(sess); err != nil {
+			return err
+		}
+		return fn(tx)
+	})
+}
+
+// AuthorizeDraft returns nil when sess may create or edit the draft now, ErrForbidden or
+// auth.ErrMFARequired otherwise. Callers use it to refuse a request before reading its body; Create
+// and Edit check again in their own transaction.
+func (s *Store) AuthorizeDraft(ctx context.Context, sess auth.Session) error {
+	return s.asCommissionMember(ctx, sess, func(pgx.Tx) error { return nil })
+}
+
+// Create is CreateElection for a member of the current commission, checked in the same transaction.
+func (s *Store) Create(ctx context.Context, sess auth.Session, d Draft) (Election, error) {
+	var out Election
+	err := s.asCommissionMember(ctx, sess, func(tx pgx.Tx) error {
+		var err error
+		out, err = s.createElection(ctx, tx, sess.TenantID, d)
+		return err
+	})
+	return out, err
+}
+
+// Edit is UpdateDraft for a member of the current commission, checked in the same transaction.
+func (s *Store) Edit(ctx context.Context, sess auth.Session, id string, d Draft) (Election, error) {
+	var out Election
+	err := s.asCommissionMember(ctx, sess, func(tx pgx.Tx) error {
+		var err error
+		out, err = s.updateDraft(ctx, tx, sess.TenantID, id, d)
+		return err
+	})
+	return out, err
+}
+
+// asMember runs fn in the session's tenant when the user has a membership there (ErrForbidden
+// otherwise); no second factor is needed.
+func (s *Store) asMember(ctx context.Context, sess auth.Session, fn func(pgx.Tx) error) error {
+	if sess.TenantID == "" {
+		return ErrForbidden
+	}
+	return db.WithTenant(ctx, s.pool, sess.TenantID, func(tx pgx.Tx) error {
+		a, err := readAccess(ctx, tx, sess.TenantID, sess.UserID)
+		if err != nil {
+			return err
+		}
+		if !a.member {
+			return ErrForbidden
+		}
+		return fn(tx)
+	})
+}
+
+// View returns the election id of the session's tenant to any member of it: ErrForbidden, or
+// ErrNotFound for an id that is not a UUID or not an election of the tenant.
+func (s *Store) View(ctx context.Context, sess auth.Session, id string) (Election, error) {
+	var out Election
+	err := s.asMember(ctx, sess, func(tx pgx.Tx) error {
+		if !uuidPattern.MatchString(id) {
+			return ErrNotFound
+		}
+		var err error
+		out, err = getElection(ctx, tx, `e.id = $2`, sess.TenantID, id)
+		return err
+	})
+	return out, err
+}
+
+// ViewCurrent returns the tenant's election in progress to any member of it: ErrForbidden, or
+// ErrNotFound when there is none.
+func (s *Store) ViewCurrent(ctx context.Context, sess auth.Session) (Election, error) {
+	var out Election
+	err := s.asMember(ctx, sess, func(tx pgx.Tx) error {
+		var err error
+		out, err = getElection(ctx, tx, `e.published_at IS NULL AND e.annulled_at IS NULL`, sess.TenantID)
+		return err
+	})
+	return out, err
+}

@@ -55,8 +55,7 @@ type Commission struct {
 	Members   []CommissionMember
 }
 
-// Draft is the editable part of an election. Field validation (name, dates, positions) is the
-// caller's; the database CHECKs are the last line.
+// Draft is the editable part of an election; checkDraft validates it before any write.
 type Draft struct {
 	Name, Mode                                             string
 	SubmissionStartsAt, SubmissionEndsAt, StartsAt, EndsAt time.Time
@@ -70,6 +69,8 @@ type Election struct {
 	PublishedAt, AnnulledAt                                *time.Time
 	CreatedAt, UpdatedAt                                   time.Time
 	Positions                                              []string
+	// Commission lists the members of the election's commission, ordered by name.
+	Commission []CommissionMember
 }
 
 // Store runs election operations inside db.WithTenant.
@@ -218,79 +219,92 @@ func (s *Store) IsCommissionMember(ctx context.Context, tenant, userID string) (
 	return ok, err
 }
 
-// CreateElection stores d as an election of the tenant's current commission. Errors: ErrNoCommission,
-// ErrElectionInProgress (decided by the database, so of two concurrent calls exactly one wins),
-// ErrInvalidPositions.
+// CreateElection stores d as an election of the tenant's current commission, after checkDraft.
+// Errors: those of checkDraft, ErrNoCommission and ErrElectionInProgress (decided by the database, so
+// of two concurrent calls exactly one wins). It does no authorization: Create is the entry point for
+// requests.
 func (s *Store) CreateElection(ctx context.Context, tenant string, d Draft) (Election, error) {
 	var out Election
 	err := db.WithTenant(ctx, s.pool, tenant, func(tx pgx.Tx) error {
-		if len(d.Positions) == 0 {
-			return ErrInvalidPositions
-		}
-		var commission string
-		err := tx.QueryRow(ctx, `SELECT id::text FROM electoral_commissions WHERE tenant_id = $1 AND ended_at IS NULL`, tenant).Scan(&commission)
-		if errors.Is(err, pgx.ErrNoRows) {
-			return ErrNoCommission
-		}
-		if err != nil {
-			return err
-		}
-		now := s.stamp()
-		var id string
-		err = tx.QueryRow(ctx, `
-			INSERT INTO elections (tenant_id, commission_id, name, mode, submission_starts_at, submission_ends_at, starts_at, ends_at, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9) RETURNING id::text`,
-			tenant, commission, d.Name, d.Mode, d.SubmissionStartsAt, d.SubmissionEndsAt, d.StartsAt, d.EndsAt, now).Scan(&id)
-		if pgErr := (*pgconn.PgError)(nil); errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "elections_one_in_progress" {
-			return ErrElectionInProgress
-		}
-		if err != nil {
-			return err
-		}
-		if err := insertPositions(ctx, tx, tenant, id, d.Positions); err != nil {
-			return err
-		}
-		out, err = getElection(ctx, tx, `e.id = $2`, tenant, id)
+		var err error
+		out, err = s.createElection(ctx, tx, tenant, d)
 		return err
 	})
 	return out, err
 }
 
-// UpdateDraft replaces the name, mode, dates and positions of a draft election. Errors: ErrNotFound,
-// ErrNotDraft (published, annulled or past StatusDraft at the store's clock), ErrInvalidPositions.
+func (s *Store) createElection(ctx context.Context, tx pgx.Tx, tenant string, d Draft) (Election, error) {
+	d, err := checkDraft(s.now(), d)
+	if err != nil {
+		return Election{}, err
+	}
+	var commission string
+	err = tx.QueryRow(ctx, `SELECT id::text FROM electoral_commissions WHERE tenant_id = $1 AND ended_at IS NULL`, tenant).Scan(&commission)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Election{}, ErrNoCommission
+	}
+	if err != nil {
+		return Election{}, err
+	}
+	now := s.stamp()
+	var id string
+	err = tx.QueryRow(ctx, `
+		INSERT INTO elections (tenant_id, commission_id, name, mode, submission_starts_at, submission_ends_at, starts_at, ends_at, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9) RETURNING id::text`,
+		tenant, commission, d.Name, d.Mode, d.SubmissionStartsAt, d.SubmissionEndsAt, d.StartsAt, d.EndsAt, now).Scan(&id)
+	if pgErr := (*pgconn.PgError)(nil); errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "elections_one_in_progress" {
+		return Election{}, ErrElectionInProgress
+	}
+	if err != nil {
+		return Election{}, err
+	}
+	if err := insertPositions(ctx, tx, tenant, id, d.Positions); err != nil {
+		return Election{}, err
+	}
+	return getElection(ctx, tx, `e.id = $2`, tenant, id)
+}
+
+// UpdateDraft replaces the name, mode, dates and positions of a draft election, after checkDraft.
+// Errors: ErrNotFound, ErrNotDraft (published, annulled or past StatusDraft at the store's clock)
+// and those of checkDraft. It does no authorization: Edit is the entry point for requests.
 func (s *Store) UpdateDraft(ctx context.Context, tenant, id string, d Draft) (Election, error) {
 	var out Election
 	err := db.WithTenant(ctx, s.pool, tenant, func(tx pgx.Tx) error {
-		if !uuidPattern.MatchString(id) {
-			return ErrNotFound
-		}
-		if len(d.Positions) == 0 {
-			return ErrInvalidPositions
-		}
-		cur, err := getElection(ctx, tx, `e.id = $2 FOR UPDATE OF e`, tenant, id)
-		if err != nil {
-			return err
-		}
-		if cur.PublishedAt != nil || cur.AnnulledAt != nil || State(s.now(), cur) != StatusDraft {
-			return ErrNotDraft
-		}
-		if _, err := tx.Exec(ctx, `
-			UPDATE elections SET name = $3, mode = $4, submission_starts_at = $5, submission_ends_at = $6,
-			       starts_at = $7, ends_at = $8, updated_at = $9
-			WHERE tenant_id = $1 AND id = $2`,
-			tenant, id, d.Name, d.Mode, d.SubmissionStartsAt, d.SubmissionEndsAt, d.StartsAt, d.EndsAt, s.stamp()); err != nil {
-			return err
-		}
-		if _, err := tx.Exec(ctx, `DELETE FROM election_positions WHERE tenant_id = $1 AND election_id = $2`, tenant, id); err != nil {
-			return err
-		}
-		if err := insertPositions(ctx, tx, tenant, id, d.Positions); err != nil {
-			return err
-		}
-		out, err = getElection(ctx, tx, `e.id = $2`, tenant, id)
+		var err error
+		out, err = s.updateDraft(ctx, tx, tenant, id, d)
 		return err
 	})
 	return out, err
+}
+
+func (s *Store) updateDraft(ctx context.Context, tx pgx.Tx, tenant, id string, d Draft) (Election, error) {
+	if !uuidPattern.MatchString(id) {
+		return Election{}, ErrNotFound
+	}
+	cur, err := getElection(ctx, tx, `e.id = $2 FOR UPDATE OF e`, tenant, id)
+	if err != nil {
+		return Election{}, err
+	}
+	if cur.PublishedAt != nil || cur.AnnulledAt != nil || State(s.now(), cur) != StatusDraft {
+		return Election{}, ErrNotDraft
+	}
+	if d, err = checkDraft(s.now(), d); err != nil {
+		return Election{}, err
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE elections SET name = $3, mode = $4, submission_starts_at = $5, submission_ends_at = $6,
+		       starts_at = $7, ends_at = $8, updated_at = $9
+		WHERE tenant_id = $1 AND id = $2`,
+		tenant, id, d.Name, d.Mode, d.SubmissionStartsAt, d.SubmissionEndsAt, d.StartsAt, d.EndsAt, s.stamp()); err != nil {
+		return Election{}, err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM election_positions WHERE tenant_id = $1 AND election_id = $2`, tenant, id); err != nil {
+		return Election{}, err
+	}
+	if err := insertPositions(ctx, tx, tenant, id, d.Positions); err != nil {
+		return Election{}, err
+	}
+	return getElection(ctx, tx, `e.id = $2`, tenant, id)
 }
 
 func insertPositions(ctx context.Context, tx pgx.Tx, tenant, election string, names []string) error {
@@ -344,5 +358,16 @@ func getElection(ctx context.Context, tx pgx.Tx, where string, args ...any) (Ele
 	if errors.Is(err, pgx.ErrNoRows) {
 		return e, ErrNotFound
 	}
+	if err != nil {
+		return e, err
+	}
+	rows, err := tx.Query(ctx, `
+		SELECT m.id::text, m.full_name FROM electoral_commission_members cm
+		JOIN roster_members m ON m.tenant_id = cm.tenant_id AND m.id = cm.roster_member_id
+		WHERE cm.tenant_id = $1 AND cm.commission_id = $2 ORDER BY m.full_name, m.id`, args[0], e.CommissionID)
+	if err != nil {
+		return e, err
+	}
+	e.Commission, err = pgx.CollectRows(rows, pgx.RowToStructByPos[CommissionMember])
 	return e, err
 }
