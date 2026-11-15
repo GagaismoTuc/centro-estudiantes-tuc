@@ -4,7 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"io/fs"
+	"strings"
 	"testing"
+	"testing/fstest"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -18,6 +21,12 @@ import (
 
 // TestFinanceMigration exercises an upgrade of an existing school, then the app role.
 func TestFinanceMigration(t *testing.T) {
+	if _, err := migrations.FS.ReadFile("00014_finance.sql"); err != nil {
+		t.Fatalf("finance migration 00014 is missing: %v", err)
+	}
+	if _, err := migrations.FS.ReadFile("00011_finance.sql"); err == nil {
+		t.Fatal("old finance migration 00011 still exists")
+	}
 	ctx := context.Background()
 	ctr, err := postgres.Run(ctx, "postgres:18-alpine", postgres.WithDatabase("finance"), postgres.WithUsername("postgres"), postgres.WithPassword("postgres"), postgres.BasicWaitStrategies())
 	if err != nil {
@@ -33,12 +42,37 @@ func TestFinanceMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer conn.Close()
-	p, err := goose.NewProvider(goose.DialectPostgres, conn, migrations.FS)
+	files := fstest.MapFS{}
+	dir, err := fs.ReadDir(migrations.FS, ".")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = p.UpTo(ctx, 10); err != nil {
+	for _, entry := range dir {
+		data, err := migrations.FS.ReadFile(entry.Name())
+		if err != nil {
+			t.Fatal(err)
+		}
+		files[entry.Name()] = &fstest.MapFile{Data: data}
+	}
+	for _, version := range []string{"00012", "00013"} {
+		found := false
+		for name := range files {
+			found = found || strings.HasPrefix(name, version+"_")
+		}
+		if !found {
+			files[version+"_placeholder.sql"] = &fstest.MapFile{Data: []byte("-- +goose Up\nSELECT 1;\n-- +goose Down\nSELECT 1;\n")}
+		}
+	}
+	p, err := goose.NewProvider(goose.DialectPostgres, conn, files)
+	if err != nil {
 		t.Fatal(err)
+	}
+	if _, err = p.UpTo(ctx, 13); err != nil {
+		t.Fatal(err)
+	}
+	var version int
+	if err = conn.QueryRowContext(ctx, `SELECT max(version_id) FROM goose_db_version WHERE is_applied`).Scan(&version); err != nil || version != 13 {
+		t.Fatalf("before finance migration: version=%d err=%v", version, err)
 	}
 	var a, b string
 	if err = conn.QueryRowContext(ctx, `INSERT INTO organizations (kind,name) VALUES ('school','School A') RETURNING id::text`).Scan(&a); err != nil {
@@ -49,6 +83,9 @@ func TestFinanceMigration(t *testing.T) {
 	}
 	if _, err = p.Up(ctx); err != nil {
 		t.Fatal(err)
+	}
+	if err = conn.QueryRowContext(ctx, `SELECT max(version_id) FROM goose_db_version WHERE is_applied`).Scan(&version); err != nil || version != 14 {
+		t.Fatalf("after finance migration: version=%d err=%v", version, err)
 	}
 	var userID, categoryB string
 	if err = conn.QueryRowContext(ctx, `INSERT INTO users(email,password_hash) VALUES ('fixture@example.invalid','fixture') RETURNING id::text`).Scan(&userID); err != nil {
