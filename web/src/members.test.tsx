@@ -19,11 +19,30 @@ test("members lists roles and unclaimed officers and assigns a position", async 
   render(<App />);
   expect(await screen.findByText("Administrador de la escuela")).toBeTruthy();
   expect(screen.getByText("Integrante de la comisi\u00f3n directiva \u2014 Tesorero")).toBeTruthy();
+  expect(screen.getByText("Alumno")).toBeTruthy();
   expect(screen.getByText("sin cuenta")).toBeTruthy();
   fireEvent.change(screen.getByLabelText("Alumno del padr\u00f3n"), { target: { value: "m2" } });
   fireEvent.click(screen.getByRole("button", { name: "Asignar cargo" }));
   await waitFor(() => expect(sentTo(sent, "POST /members/m2/officer")).toHaveLength(1));
   expect(window.location.href).not.toContain("Beto");
+});
+
+test("position errors identify and focus the position field", async () => {
+  mockApi({
+    "GET /auth/me": ok(me({ role: "school_admin", mfa: "satisfied" })),
+    "GET /members": ok([]),
+    "GET /roster": ok([{ id: "m2", fullName: "Beto Ficticio", documentNumber: "30111223", hasActiveCode: false, hasAccount: false }]),
+    "POST /members/m2/officer": fail(409, "position_taken"),
+  });
+  window.history.replaceState(null, "", "/miembros");
+  render(<App />);
+  await screen.findByRole("option", { name: "Beto Ficticio" });
+  fireEvent.change(screen.getByLabelText("Alumno del padr\u00f3n"), { target: { value: "m2" } });
+  fireEvent.click(screen.getByRole("button", { name: "Asignar cargo" }));
+  const field = screen.getByLabelText("Cargo");
+  await waitFor(() => expect(field.getAttribute("aria-invalid")).toBe("true"));
+  expect(document.activeElement).toBe(field);
+  expect(document.getElementById(field.getAttribute("aria-describedby") ?? "")?.textContent).toContain("Ese cargo ya est\u00e1 ocupado.");
 });
 
 test("members redirects to second factor after mfa_required", async () => {

@@ -124,6 +124,69 @@ func (e RowErrorCode) Valid() bool {
 	}
 }
 
+// Defines values for DeleteMemberOfficer404JSONResponseBodyError.
+const (
+	DeleteMemberOfficer404JSONResponseBodyErrorNotFound DeleteMemberOfficer404JSONResponseBodyError = "not_found"
+)
+
+// Valid indicates whether the value is a known member of the DeleteMemberOfficer404JSONResponseBodyError enum.
+func (e DeleteMemberOfficer404JSONResponseBodyError) Valid() bool {
+	switch e {
+	case DeleteMemberOfficer404JSONResponseBodyErrorNotFound:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostMemberOfficer404JSONResponseBodyError.
+const (
+	PostMemberOfficer404JSONResponseBodyErrorNotFound PostMemberOfficer404JSONResponseBodyError = "not_found"
+)
+
+// Valid indicates whether the value is a known member of the PostMemberOfficer404JSONResponseBodyError enum.
+func (e PostMemberOfficer404JSONResponseBodyError) Valid() bool {
+	switch e {
+	case PostMemberOfficer404JSONResponseBodyErrorNotFound:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostMemberOfficer409JSONResponseBodyError.
+const (
+	AlreadyOfficer PostMemberOfficer409JSONResponseBodyError = "already_officer"
+	PositionTaken  PostMemberOfficer409JSONResponseBodyError = "position_taken"
+)
+
+// Valid indicates whether the value is a known member of the PostMemberOfficer409JSONResponseBodyError enum.
+func (e PostMemberOfficer409JSONResponseBodyError) Valid() bool {
+	switch e {
+	case AlreadyOfficer:
+		return true
+	case PositionTaken:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostMemberOfficer422JSONResponseBodyError.
+const (
+	InvalidPosition PostMemberOfficer422JSONResponseBodyError = "invalid_position"
+)
+
+// Valid indicates whether the value is a known member of the PostMemberOfficer422JSONResponseBodyError enum.
+func (e PostMemberOfficer422JSONResponseBodyError) Valid() bool {
+	switch e {
+	case InvalidPosition:
+		return true
+	default:
+		return false
+	}
+}
+
 // ClaimRequest defines model for ClaimRequest.
 type ClaimRequest struct {
 	Code     string `json:"code"`
@@ -308,10 +371,22 @@ type TooManyAttempts = Error
 // Unauthenticated defines model for Unauthenticated.
 type Unauthenticated = Error
 
+// DeleteMemberOfficer404JSONResponseBodyError defines parameters for DeleteMemberOfficer.
+type DeleteMemberOfficer404JSONResponseBodyError string
+
 // PostMemberOfficerJSONBody defines parameters for PostMemberOfficer.
 type PostMemberOfficerJSONBody struct {
 	Position string `json:"position"`
 }
+
+// PostMemberOfficer404JSONResponseBodyError defines parameters for PostMemberOfficer.
+type PostMemberOfficer404JSONResponseBodyError string
+
+// PostMemberOfficer409JSONResponseBodyError defines parameters for PostMemberOfficer.
+type PostMemberOfficer409JSONResponseBodyError string
+
+// PostMemberOfficer422JSONResponseBodyError defines parameters for PostMemberOfficer.
+type PostMemberOfficer422JSONResponseBodyError string
 
 // PostAuthClaimJSONRequestBody defines body for PostAuthClaim for application/json ContentType.
 type PostAuthClaimJSONRequestBody = ClaimRequest

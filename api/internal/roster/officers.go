@@ -62,7 +62,9 @@ func (s *Store) AssignOfficer(ctx context.Context, sess auth.Session, member, po
 			return err
 		}
 		var exists bool
-		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT FROM officer_positions WHERE tenant_id=$1 AND roster_member_id=$2)`, sess.TenantID, member).Scan(&exists); err != nil {
+		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT FROM officer_positions WHERE tenant_id=$1 AND roster_member_id=$2)
+			OR EXISTS (SELECT FROM memberships linked JOIN memberships officer ON officer.tenant_id=linked.tenant_id AND officer.user_id=linked.user_id AND officer.role='officer'
+			WHERE linked.tenant_id=$1 AND linked.roster_member_id=$2)`, sess.TenantID, member).Scan(&exists); err != nil {
 			return err
 		}
 		if exists {

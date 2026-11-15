@@ -464,10 +464,37 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           description: Roster member not found.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [not_found]
         "409":
           description: already_officer or position_taken.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [already_officer, position_taken]
         "422":
           description: invalid_position.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [invalid_position]
     delete:
       operationId: deleteMemberOfficer
       summary: Remove an officer position
@@ -480,6 +507,15 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           description: Officer not found.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [not_found]
   /roster:
     get:
       operationId: getRoster

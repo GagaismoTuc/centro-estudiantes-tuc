@@ -1102,21 +1102,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "not_found";
+                    };
+                };
             };
             /** @description already_officer or position_taken. */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "already_officer" | "position_taken";
+                    };
+                };
             };
             /** @description invalid_position. */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "invalid_position";
+                    };
+                };
             };
         };
     };
@@ -1145,7 +1160,12 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "not_found";
+                    };
+                };
             };
         };
     };

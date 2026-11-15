@@ -2,11 +2,17 @@ package httpapi_test
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
+	"net/http/httptest"
 	"slices"
 	"sync"
 	"testing"
 )
+
+type readProbe struct{ read bool }
+
+func (p *readProbe) Read([]byte) (int, error) { p.read = true; return 0, io.EOF }
 
 func TestOfficerPositionValidationAndUniqueness(t *testing.T) {
 	ctx := integration(t)
@@ -36,6 +42,25 @@ func TestOfficerPositionValidationAndUniqueness(t *testing.T) {
 		wantResponse(t, f.do(http.MethodPost, pathB, string(body), "198.51.100.12", token, h), http.StatusCreated, "")
 		wantResponse(t, f.do(http.MethodDelete, pathB, "", "198.51.100.12", token, nil), http.StatusNoContent, "")
 	}
+	wantResponse(t, f.do(http.MethodDelete, pathA, "", "198.51.100.12", token, nil), http.StatusNoContent, "")
+	wantResponse(t, f.do(http.MethodPost, pathB, `{"position":"Presidente"}`, "198.51.100.12", token, h), http.StatusCreated, "")
+}
+
+func TestExistingOfficerCannotBeAssignedAgain(t *testing.T) {
+	ctx := integration(t)
+	f := newFixture(t, ctx)
+	_, admin, _, _ := f.signInMFA(t, ctx, "school_admin")
+	user, _ := f.signIn(t, ctx, "officer")
+	member := seedMember(t, ctx, f.tenant, "Ana Ficticia", "30111222")
+	if _, err := tdb.Super.Exec(ctx, `UPDATE memberships SET roster_member_id=$1 WHERE tenant_id=$2 AND user_id=$3`, member, f.tenant, user); err != nil {
+		t.Fatal(err)
+	}
+	rec := f.do(http.MethodPost, "/api/members/"+member+"/officer", `{"position":"Tesorero"}`, "198.51.100.12", admin, nil)
+	wantResponse(t, rec, http.StatusConflict, `{"error":"already_officer"}`)
+	var count int
+	if err := tdb.Super.QueryRow(ctx, `SELECT count(*) FROM officer_positions WHERE tenant_id=$1`, f.tenant).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("positions = %d, %v", count, err)
+	}
 }
 
 func TestOfficerAssignmentAuthorizationAndIsolation(t *testing.T) {
@@ -47,7 +72,12 @@ func TestOfficerAssignmentAuthorizationAndIsolation(t *testing.T) {
 	_, officer := f.signIn(t, ctx, "officer")
 	_, outsider := f.signIn(t, ctx, "")
 	mine := seedMember(t, ctx, f.tenant, "Ana Ficticia", "30111222")
-	foreign := seedMember(t, ctx, newTenant(t, ctx), "Beto Ficticio", "30111223")
+	other := newTenant(t, ctx)
+	foreign := seedMember(t, ctx, other, "Beto Ficticio", "30111223")
+	var foreignMembership string
+	if err := tdb.Super.QueryRow(ctx, `WITH u AS (INSERT INTO users (email, password_hash) VALUES ($1,'x') RETURNING id) INSERT INTO memberships (tenant_id,user_id,role) SELECT $2,id,'student' FROM u RETURNING id::text`, uniqueEmail("foreign"), other).Scan(&foreignMembership); err != nil {
+		t.Fatal(err)
+	}
 	path := "/api/members/" + mine + "/officer"
 	for _, tc := range []struct {
 		token  string
@@ -65,10 +95,29 @@ func TestOfficerAssignmentAuthorizationAndIsolation(t *testing.T) {
 	}
 	wantResponse(t, f.do(http.MethodPost, "/api/members/"+foreign+"/officer", `{"position":"Presidente"}`, "198.51.100.12", admin, nil), http.StatusNotFound, `{"error":"not_found"}`)
 	wantResponse(t, f.do(http.MethodDelete, "/api/members/"+foreign+"/officer", "", "198.51.100.12", admin, nil), http.StatusNotFound, `{"error":"not_found"}`)
+	for _, id := range []string{foreignMembership, "00000000-0000-4000-8000-000000000000"} {
+		wantResponse(t, f.do(http.MethodPost, "/api/members/"+id+"/officer", `{"position":"Presidente"}`, "198.51.100.12", admin, nil), http.StatusNotFound, `{"error":"not_found"}`)
+	}
+	probe := &readProbe{}
+	req := httptest.NewRequest(http.MethodPost, path, probe)
+	req.AddCookie(&http.Cookie{Name: cookieName, Value: unverified})
+	rec := httptest.NewRecorder()
+	f.h.ServeHTTP(rec, req)
+	wantResponse(t, rec, http.StatusForbidden, `{"error":"mfa_required"}`)
+	if probe.read {
+		t.Fatal("request body read before MFA check")
+	}
 	var count int
 	if err := tdb.Super.QueryRow(ctx, `SELECT count(*) FROM officer_positions WHERE tenant_id=$1`, f.tenant).Scan(&count); err != nil || count != 0 {
 		t.Fatalf("positions = %d: %v", count, err)
 	}
+	studentID, assigned := f.signIn(t, ctx, "student")
+	if _, err := tdb.Super.Exec(ctx, `UPDATE memberships SET roster_member_id=$1 WHERE user_id=$2`, mine, studentID); err != nil {
+		t.Fatal(err)
+	}
+	wantResponse(t, f.do(http.MethodPost, path, `{"position":"Presidente"}`, "198.51.100.12", admin, nil), http.StatusCreated, "")
+	wantResponse(t, f.do(http.MethodPost, path, `{"position":"Tesorero"}`, "198.51.100.12", assigned, nil), http.StatusForbidden, `{"error":"forbidden"}`)
+	wantResponse(t, f.do(http.MethodGet, "/api/roster", "", "198.51.100.12", assigned, nil), http.StatusForbidden, `{"error":"forbidden"}`)
 }
 
 func TestConcurrentOfficerPositionAssignment(t *testing.T) {
@@ -77,20 +126,23 @@ func TestConcurrentOfficerPositionAssignment(t *testing.T) {
 	_, admin, _, _ := f.signInMFA(t, ctx, "school_admin")
 	a := seedMember(t, ctx, f.tenant, "Ana Ficticia", "30111222")
 	b := seedMember(t, ctx, f.tenant, "Beto Ficticio", "30111223")
-	results := make(chan int, 2)
+	results := make(chan *httptest.ResponseRecorder, 2)
 	var wg sync.WaitGroup
 	for _, member := range []string{a, b} {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			results <- f.do(http.MethodPost, "/api/members/"+member+"/officer", `{"position":"Presidente"}`, "198.51.100.12", admin, nil).Code
+			results <- f.do(http.MethodPost, "/api/members/"+member+"/officer", `{"position":"Presidente"}`, "198.51.100.12", admin, nil)
 		}()
 	}
 	wg.Wait()
 	close(results)
 	var statuses []int
 	for result := range results {
-		statuses = append(statuses, result)
+		statuses = append(statuses, result.Code)
+		if result.Code == http.StatusConflict {
+			wantResponse(t, result, http.StatusConflict, `{"error":"position_taken"}`)
+		}
 	}
 	slices.Sort(statuses)
 	if !slices.Equal(statuses, []int{http.StatusCreated, http.StatusConflict}) {

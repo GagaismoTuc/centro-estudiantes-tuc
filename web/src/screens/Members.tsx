@@ -25,8 +25,14 @@ export function Members() {
   const [position, setPosition] = useState("Presidente");
   const [status, setStatus] = useState<Status>(null);
   const [busy, setBusy] = useState(false);
+  const [fieldError, setFieldError] = useState<{ field: "member" | "position"; text: string } | null>(null);
   const statusRef = useRef<HTMLDivElement>(null);
+  const memberRef = useRef<HTMLSelectElement>(null);
+  const positionRef = useRef<HTMLSelectElement>(null);
   useEffect(() => { if (status?.tone === "error") statusRef.current?.focus(); }, [status]);
+  useEffect(() => {
+    if (fieldError) (fieldError.field === "position" ? positionRef : memberRef).current?.focus();
+  }, [fieldError]);
   const failed = useCallback((code: string) => {
     if (code === "mfa_required" || code === "unauthenticated") void refresh();
     setStatus({ tone: "error", text: errorMessage(code) });
@@ -40,10 +46,12 @@ export function Members() {
 
   async function assign() {
     if (!member) return;
-    setBusy(true); setStatus(null);
+    setBusy(true); setStatus(null); setFieldError(null);
     const result = await call(apiClient.POST("/members/{memberId}/officer", { params: { path: { memberId: member } }, body: { position } }));
     if (result.ok) { setStatus({ tone: "ok", text: "Se asign\u00f3 el cargo." }); await load(); }
-    else failed(result.code);
+    else if (result.code === "position_taken" || result.code === "invalid_position" || result.code === "already_officer") {
+      setFieldError({ field: result.code === "already_officer" ? "member" : "position", text: errorMessage(result.code) });
+    } else failed(result.code);
     setBusy(false);
   }
   async function remove(id: string) {
@@ -59,12 +67,12 @@ export function Members() {
     <section className="panel"><h2>Asignar cargo</h2>
       <form noValidate onSubmit={(e) => { e.preventDefault(); void assign(); }}>
         <div className="field"><label htmlFor="member">{"Alumno del padr\u00f3n"}</label>
-          <select id="member" value={member} onChange={(e) => setMember(e.target.value)}>
+          <select id="member" ref={memberRef} value={member} aria-invalid={fieldError?.field === "member" || undefined} aria-describedby={fieldError?.field === "member" ? "member-error" : undefined} onChange={(e) => { setMember(e.target.value); setFieldError(null); }}>
             <option value="">{"Eleg\u00ed un alumno"}</option>
             {roster.map((m) => <option key={m.id} value={m.id}>{m.fullName}</option>)}
-          </select></div>
+          </select>{fieldError?.field === "member" && <p id="member-error" role="alert">{fieldError.text}</p>}</div>
         <div className="field"><label htmlFor="position">Cargo</label>
-          <select id="position" value={position} onChange={(e) => setPosition(e.target.value)}>{positions.map((p) => <option key={p}>{p}</option>)}</select></div>
+          <select id="position" ref={positionRef} value={position} aria-invalid={fieldError?.field === "position" || undefined} aria-describedby={fieldError?.field === "position" ? "position-error" : undefined} onChange={(e) => { setPosition(e.target.value); setFieldError(null); }}>{positions.map((p) => <option key={p}>{p}</option>)}</select>{fieldError?.field === "position" && <p id="position-error" role="alert">{fieldError.text}</p>}</div>
         <button className="button button--primary" disabled={busy || !member}>Asignar cargo</button>
       </form>
     </section>
