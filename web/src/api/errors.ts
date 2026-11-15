@@ -76,6 +76,11 @@ const fieldsByCode: Record<string, string[]> = {
   weak_password: ["password", "newPassword"],
   same_password: ["newPassword"],
   invalid_code: ["code", "recoveryCode"],
+  invalid_name: ["name"],
+  invalid_window: ["startsAt", "endsAt"],
+  invalid_submission_period: ["submissionStartsAt", "submissionEndsAt"],
+  invalid_positions: ["position"],
+  mode_not_supported: ["mode"],
 };
 
 export function errorFields(code: string): string[] {

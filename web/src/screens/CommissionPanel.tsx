@@ -1,0 +1,227 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import { call } from "../api/call.ts";
+import { apiClient } from "../api/client.ts";
+import { errorMessage } from "../api/errors.ts";
+import { useSession } from "../auth/session.tsx";
+import { Field, FormStatus, useFormErrors, type Check, type Status } from "../components/Form.tsx";
+import { PageTitle, useDocumentTitle } from "../components/Page.tsx";
+import { Link } from "../lib/router.tsx";
+import {
+  DEFAULT_POSITIONS,
+  fromLocalInput,
+  loadCommissionStatus,
+  toLocalInput,
+  type CommissionStatus,
+  type Election,
+} from "./electionShared.ts";
+
+/** The "Centro de estudiantes" section: members of the Electoral commission create and edit the draft. */
+export function CommissionPanel() {
+  useDocumentTitle("Centro de estudiantes");
+  const { refresh } = useSession();
+  const [commission, setCommission] = useState<CommissionStatus | null>(null);
+  // undefined while loading, null when there is no election in progress.
+  const [election, setElection] = useState<Election | null | undefined>(undefined);
+  const [status, setStatus] = useState<Status>(null);
+
+  const load = useCallback(async () => {
+    const [c, e] = await Promise.all([loadCommissionStatus(), call(apiClient.GET("/elections/current"))]);
+    const failed = !c.ok ? c.code : !e.ok && e.code !== "not_found" ? e.code : null;
+    if (failed) {
+      if (failed === "mfa_required" || failed === "unauthenticated") void refresh();
+      setStatus({ tone: "error", text: errorMessage(failed) });
+      return;
+    }
+    if (c.ok) setCommission(c.data);
+    setElection(e.ok ? e.data : null);
+  }, [refresh]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  return (
+    <>
+      <header className="page-header">
+        <PageTitle eyebrow="Elección">Centro de estudiantes</PageTitle>
+      </header>
+      <FormStatus status={status} />
+      {commission && !commission.isMember && (
+        <section className="panel">
+          <p>Esta sección es para quienes integran el Centro de estudiantes.</p>
+        </section>
+      )}
+      {commission?.isMember && election !== undefined && (election === null || election.state === "draft") && (
+        <DraftForm election={election} onSaved={setElection} />
+      )}
+      {commission?.isMember && election && election.state !== "draft" && (
+        <section className="panel">
+          <p>{errorMessage("election_not_draft")}</p>
+          <p>
+            <Link to="/eleccion">Ver la elección</Link>
+          </p>
+        </section>
+      )}
+    </>
+  );
+}
+
+type Position = { key: number; name: string };
+type Dates = { submissionStartsAt: string; submissionEndsAt: string; startsAt: string; endsAt: string };
+
+const dateFields: { name: keyof Dates; label: string }[] = [
+  { name: "submissionStartsAt", label: "Inicio de la presentación de listas" },
+  { name: "submissionEndsAt", label: "Fin de la presentación de listas" },
+  { name: "startsAt", label: "Inicio de la votación" },
+  { name: "endsAt", label: "Fin de la votación" },
+];
+
+const pickDate: Check = (v) => (v ? null : "Elegí la fecha y la hora.");
+const checks: Record<string, Check> = {
+  name: (v) => (v.trim() ? null : "Escribí el nombre de la elección."),
+  submissionStartsAt: pickDate,
+  submissionEndsAt: pickDate,
+  startsAt: pickDate,
+  endsAt: pickDate,
+};
+
+let nextKey = 0;
+const toPositions = (names: string[]): Position[] => names.map((name) => ({ key: nextKey++, name }));
+
+function DraftForm({ election, onSaved }: { election: Election | null; onSaved: (election: Election) => void }) {
+  const { refresh } = useSession();
+  const form = useFormErrors();
+  const [name, setName] = useState(election?.name ?? "");
+  const [dates, setDates] = useState<Dates>(() => ({
+    submissionStartsAt: election ? toLocalInput(election.submissionStartsAt) : "",
+    submissionEndsAt: election ? toLocalInput(election.submissionEndsAt) : "",
+    startsAt: election ? toLocalInput(election.startsAt) : "",
+    endsAt: election ? toLocalInput(election.endsAt) : "",
+  }));
+  const [positions, setPositions] = useState<Position[]>(() => toPositions(election?.positions ?? DEFAULT_POSITIONS));
+  const [added, setAdded] = useState<number | null>(null);
+  const [status, setStatus] = useState<Status>(null);
+  const [busy, setBusy] = useState(false);
+  const addRef = useRef<HTMLButtonElement>(null);
+
+  function rename(key: number, value: string) {
+    setPositions((list) => list.map((p) => (p.key === key ? { ...p, name: value } : p)));
+  }
+  function remove(key: number) {
+    setPositions((list) => list.filter((p) => p.key !== key));
+    // The removed row took its button with it: keep focus inside the list.
+    addRef.current?.focus();
+  }
+  function add() {
+    const [position] = toPositions([""]);
+    setPositions((list) => [...list, position!]);
+    setAdded(position!.key);
+  }
+
+  async function submit() {
+    setStatus(null);
+    if (!form.validate(checks)) return;
+    setBusy(true);
+    const body = {
+      name,
+      mode: "secret" as const,
+      submissionStartsAt: fromLocalInput(dates.submissionStartsAt),
+      submissionEndsAt: fromLocalInput(dates.submissionEndsAt),
+      startsAt: fromLocalInput(dates.startsAt),
+      endsAt: fromLocalInput(dates.endsAt),
+      positions: positions.map((p) => p.name.trim()),
+    };
+    const result = election
+      ? await call(apiClient.PUT("/elections/{electionId}", { params: { path: { electionId: election.id } }, body }))
+      : await call(apiClient.POST("/elections", { body }));
+    setBusy(false);
+    if (result.ok) {
+      setStatus({ tone: "ok", text: election ? "Se guardaron los cambios." : "Se creó la elección." });
+      onSaved(result.data);
+      return;
+    }
+    if (result.code === "mfa_required" || result.code === "unauthenticated") void refresh();
+    setStatus({ tone: "error", text: errorMessage(result.code) });
+    form.failed(result.code);
+  }
+
+  return (
+    <section className="panel" aria-labelledby="draft-title">
+      <h2 id="draft-title">{election ? "Editá la elección" : "Creá la elección"}</h2>
+      <p className="muted small">Las fechas y horas son de Argentina. Podés editar la elección mientras sea un borrador.</p>
+      <form
+        {...form.formProps}
+        onSubmit={(event) => {
+          event.preventDefault();
+          void submit();
+        }}
+      >
+        <FormStatus status={status} {...form.statusProps} />
+        <Field
+          label="Nombre de la elección"
+          {...form.field("name")}
+          value={name}
+          maxLength={120}
+          autoComplete="off"
+          onChange={(event) => setName(event.target.value)}
+        />
+        <div className="field-grid">
+          {dateFields.map((d) => (
+            <Field
+              key={d.name}
+              label={d.label}
+              type="datetime-local"
+              {...form.field(d.name)}
+              value={dates[d.name]}
+              onChange={(event) => setDates((current) => ({ ...current, [d.name]: event.target.value }))}
+            />
+          ))}
+        </div>
+        <fieldset className="choices">
+          <legend>Modo de votación</legend>
+          <div className="check">
+            <input id="mode-secret" name="mode" type="radio" value="secret" checked readOnly />
+            <label htmlFor="mode-secret">Voto secreto</label>
+          </div>
+          <p className="field__hint">Por ahora es el único modo.</p>
+        </fieldset>
+        <fieldset className="choices">
+          <legend>Cargos</legend>
+          <ol className="positions">
+            {positions.map((p, i) => (
+              <li key={p.key} className="positions__row">
+                <Field
+                  label={`Cargo ${i + 1}`}
+                  {...form.field("position")}
+                  value={p.name}
+                  autoComplete="off"
+                  autoFocus={p.key === added}
+                  onChange={(event) => rename(p.key, event.target.value)}
+                />
+                <button
+                  type="button"
+                  className="button button--secondary"
+                  aria-label={`Quitar el cargo ${p.name.trim() || i + 1}`}
+                  disabled={positions.length === 1}
+                  onClick={() => remove(p.key)}
+                >
+                  Quitar
+                </button>
+              </li>
+            ))}
+          </ol>
+          <div>
+            <button ref={addRef} type="button" className="button button--secondary" onClick={add}>
+              Agregar cargo
+            </button>
+          </div>
+        </fieldset>
+        <div>
+          <button type="submit" className="button button--primary" disabled={busy} aria-busy={busy || undefined}>
+            {election ? "Guardar cambios" : "Crear elección"}
+          </button>
+        </div>
+      </form>
+    </section>
+  );
+}

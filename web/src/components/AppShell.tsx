@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { hasRole, roleLabels, useMe } from "../auth/session.tsx";
 import { LeaveConfirmHost, Link } from "../lib/router.tsx";
+import { loadCommissionStatus, resetCommissionStatus, useCommissionStatus } from "../screens/electionShared.ts";
 import { Icon, type IconName } from "./Icon.tsx";
 import { BrandMark } from "./Page.tsx";
 import { SignOutButton } from "./SignOut.tsx";
@@ -8,12 +9,12 @@ import { ThemeSwitch } from "./ThemeSwitch.tsx";
 
 const upcoming: { label: string; icon: IconName }[] = [
   { label: "Finanzas", icon: "wallet" },
-  { label: "Elecciones", icon: "ballot" },
   { label: "Notas", icon: "note" },
 ];
 
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const me = useMe();
+  const commission = useCommissionStatus();
   return (
     <div className="sidebar__inner">
       <div className="sidebar__brand">
@@ -49,6 +50,22 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
             </li>
           )}
           {hasRole(me, "school_admin") && <li><Link to="/miembros" className="nav__item" onClick={onNavigate}><Icon name="users" />Miembros</Link></li>}
+          {me.role !== null && (
+            <li>
+              <Link to="/eleccion" className="nav__item" onClick={onNavigate}>
+                <Icon name="ballot" />
+                Elección
+              </Link>
+            </li>
+          )}
+          {commission?.isMember && (
+            <li>
+              <Link to="/centro-de-estudiantes" className="nav__item" onClick={onNavigate}>
+                <Icon name="shield" />
+                Centro de estudiantes
+              </Link>
+            </li>
+          )}
           {upcoming.map((item) => (
             <li key={item.label}>
               <span className="nav__item nav__item--disabled">
@@ -181,6 +198,12 @@ function NavDrawer({ open, onClosed }: { open: boolean; onClosed: () => void }) 
 export function AppShell({ page, children }: { page: string; children: ReactNode }) {
   const me = useMe();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const inSchool = me.role !== null;
+  // The "Centro de estudiantes" menu item depends on whether this user is on the Electoral commission.
+  useEffect(() => {
+    if (inSchool) void loadCommissionStatus();
+    return resetCommissionStatus;
+  }, [inSchool, me.tenantId]);
   return (
     <div className="shell">
       <a className="skip-link" href="#contenido">
