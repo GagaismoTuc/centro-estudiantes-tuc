@@ -49,6 +49,14 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
             </li>
           )}
           {hasRole(me, "school_admin") && <li><Link to="/miembros" className="nav__item" onClick={onNavigate}><Icon name="users" />Miembros</Link></li>}
+          {hasRole(me, "officer") && (
+            <li>
+              <Link to="/calculadora" className="nav__item" onClick={onNavigate}>
+                <Icon name="calculator" />
+                Calculadora
+              </Link>
+            </li>
+          )}
           {upcoming.map((item) => (
             <li key={item.label}>
               <span className="nav__item nav__item--disabled">
