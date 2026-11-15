@@ -91,9 +91,9 @@ func NewRouter(d Deps) http.Handler {
 		d.Background = mail.NewQueue(4, 256).Go
 	}
 	s := &server{
-		now:     d.Now,
-		trusted: d.TrustedProxies,
-		store:   auth.NewStore(d.Pool, d.Now),
+		now:      d.Now,
+		trusted:  d.TrustedProxies,
+		store:    auth.NewStore(d.Pool, d.Now),
 		limiter:  auth.NewLimiter(loginMaxFailures, loginWindow, d.Now).WithMax("ip:", perIPMax),
 		roster:   roster.NewStore(d.Pool, d.AccessCodeKey, d.Now),
 		contacts: contacts.NewStore(d.Pool, d.Now),

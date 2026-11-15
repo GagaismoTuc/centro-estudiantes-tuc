@@ -45,6 +45,10 @@ export function ContactHeadings() {
     focusNext.current = null;
   });
 
+  useEffect(() => {
+    if (editingId) editRef.current?.focus();
+  }, [editingId]);
+
   const handleAuthError = useCallback(
     (code: string) => {
       if (code === "mfa_required" || code === "unauthenticated") void refresh();
@@ -312,7 +316,6 @@ export function ContactHeadings() {
                             setEditingId(h.id);
                             setEditName(h.name);
                             setEditError(null);
-                            focusNext.current = editRef.current;
                           }}
                         >
                           Renombrar

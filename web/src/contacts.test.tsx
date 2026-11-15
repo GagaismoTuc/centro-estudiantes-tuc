@@ -125,6 +125,7 @@ describe("Contacts and Headings screens", () => {
       createdAt: "2026-09-03T12:00:00Z",
       updatedAt: "2026-09-03T12:00:00Z",
     };
+    const editedContact = { ...sampleContacts[0]!, zone: "San Pablo" };
     const addedPrice = {
       id: "p-2",
       description: "Gazebo 6×3",
@@ -132,8 +133,8 @@ describe("Contacts and Headings screens", () => {
       date: "2026-09-05",
       createdAt: "2026-09-05T12:00:00Z",
     };
-    const withPrice = [
-      { ...sampleContacts[0]!, referencePrices: [addedPrice, ...sampleContacts[0]!.referencePrices] },
+    const withEditAndPrice = [
+      { ...editedContact, referencePrices: [addedPrice, ...editedContact.referencePrices] },
       sampleContacts[1]!,
       createdContact,
     ];
@@ -141,8 +142,9 @@ describe("Contacts and Headings screens", () => {
     const sent = mockApi({
       "GET /auth/me": ok(me({ role: "officer", roles: ["student", "officer"], mfa: "satisfied" })),
       "GET /contacts/headings": ok(sampleHeadings),
-      "GET /contacts": [ok(sampleContacts), ok([...sampleContacts, createdContact]), ok(withPrice)],
+      "GET /contacts": [ok(sampleContacts), ok([...sampleContacts, createdContact]), ok([editedContact, sampleContacts[1]!, createdContact]), ok(withEditAndPrice)],
       "POST /contacts": ok(createdContact, 201),
+      "PATCH /contacts/c-1": ok(editedContact),
       "POST /contacts/c-1/reference-prices": ok(addedPrice, 201),
       "DELETE /contacts/c-2": noContent(),
     });
@@ -171,6 +173,14 @@ describe("Contacts and Headings screens", () => {
     fireEvent.submit(createForm);
 
     expect(await screen.findByText("Iluminación Tucumán Ficticia")).toBeTruthy();
+
+    // Edit c-1 zone and save.
+    fireEvent.click(within(screen.getByTestId("contact-c-1")).getByRole("button", { name: "Editar" }));
+    const editForm = screen.getByRole("form", { name: "Editar Gazebos Ficticios SRL" });
+    fireEvent.change(within(editForm).getByLabelText("Zona o ciudad"), { target: { value: "San Pablo" } });
+    fireEvent.submit(editForm);
+    expect(await screen.findByText("San Pablo")).toBeTruthy();
+    expect(sentTo(sent, "PATCH /contacts/c-1")).toHaveLength(1);
 
     // Add reference price to c-1 ($12.500 -> 1250000 cents).
     const card1 = screen.getByTestId("contact-c-1");
@@ -234,10 +244,12 @@ describe("Contacts and Headings screens", () => {
     fireEvent.submit(screen.getByRole("form", { name: "Nuevo rubro" }));
     expect(await screen.findByText("Fotografía")).toBeTruthy();
 
-    // Rename heading.
+    // Rename heading (input receives focus immediately on entering edit mode).
     const newRow = screen.getByTestId("heading-h-new");
     fireEvent.click(within(newRow).getByRole("button", { name: "Renombrar" }));
-    fireEvent.change(within(newRow).getByLabelText("Nuevo nombre"), { target: { value: "Foto y video" } });
+    const renameInput = within(newRow).getByLabelText("Nuevo nombre");
+    await waitFor(() => expect(document.activeElement).toBe(renameInput));
+    fireEvent.change(renameInput, { target: { value: "Foto y video" } });
     fireEvent.click(within(newRow).getByRole("button", { name: "Guardar" }));
     expect(await screen.findByText("Foto y video")).toBeTruthy();
 
