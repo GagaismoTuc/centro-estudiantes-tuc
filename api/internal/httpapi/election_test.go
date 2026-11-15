@@ -243,7 +243,11 @@ func TestElectionDraftValidation(t *testing.T) {
 		{"end equal to start", with(draft(), "endsAt", exStart.Format(time.RFC3339)), "invalid_window"},
 		{"end before start", with(draft(), "endsAt", exStart.Add(-time.Minute).Format(time.RFC3339)), "invalid_window"},
 		{"start in the past", with(draft(), "submissionStartsAt", now.Add(-72*time.Hour).Format(time.RFC3339),
-			"submissionEndsAt", now.Add(-48*time.Hour).Format(time.RFC3339), "startsAt", now.Add(-time.Second).Format(time.RFC3339)), "invalid_window"},
+			"submissionEndsAt", now.Add(-48*time.Hour).Format(time.RFC3339), "startsAt", now.Add(-time.Minute).Format(time.RFC3339)), "invalid_window"},
+		{"start with seconds", with(draft(), "startsAt", "2027-03-10T08:00:30-03:00"), "invalid_window"},
+		{"end with a fraction of a second", with(draft(), "endsAt", "2027-03-10T18:00:00.5-03:00"), "invalid_window"},
+		{"submission start with seconds", with(draft(), "submissionStartsAt", "2027-03-01T00:00:30-03:00"), "invalid_submission_period"},
+		{"submission end with a fraction of a second", with(draft(), "submissionEndsAt", "2027-03-06T00:00:00.5-03:00"), "invalid_submission_period"},
 		{"missing start", without(draft(), "startsAt"), "invalid_window"},
 		{"null end", with(draft(), "endsAt", nil), "invalid_window"},
 		{"start not a date-time", with(draft(), "startsAt", "10/03/2027 08:00"), "invalid_window"},
@@ -278,6 +282,7 @@ func TestElectionDraftValidation(t *testing.T) {
 	t.Run("edits are validated the same way", func(t *testing.T) {
 		wantResponse(t, s.edit(s.member, e.ID, encode(with(draft(), "name", " "))), http.StatusUnprocessableEntity, `{"error":"invalid_name"}`)
 		wantResponse(t, s.edit(s.member, e.ID, encode(with(draft(), "endsAt", nil))), http.StatusUnprocessableEntity, `{"error":"invalid_window"}`)
+		wantResponse(t, s.edit(s.member, e.ID, encode(with(draft(), "startsAt", "2027-03-10T08:00:30-03:00"))), http.StatusUnprocessableEntity, `{"error":"invalid_window"}`)
 		if got := strings.TrimSpace(s.get(s.reader, currentPath).Body.String()); got != want {
 			t.Fatalf("after rejected edits = %s, want unchanged", got)
 		}

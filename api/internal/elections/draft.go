@@ -13,22 +13,27 @@ const MaxNameLen = 120
 var (
 	// ErrInvalidName means the name is blank or longer than MaxNameLen characters.
 	ErrInvalidName = errors.New("elections: invalid name")
-	// ErrInvalidWindow means the voting window ends at or before its start, or starts in the past.
+	// ErrInvalidWindow means the voting start or end is not a whole minute, the window ends at or
+	// before its start, or it starts in the past.
 	ErrInvalidWindow = errors.New("elections: invalid voting window")
-	// ErrInvalidSubmissionPeriod means the submission period is empty or does not end before the
-	// voting start: ending exactly at StartsAt is rejected too.
+	// ErrInvalidSubmissionPeriod means the submission start or end is not a whole minute, the period
+	// is empty, or it does not end before the voting start: ending exactly at StartsAt is rejected too.
 	ErrInvalidSubmissionPeriod = errors.New("elections: invalid submission period")
 	// ErrModeNotSupported means a mode other than ModeSecret.
 	ErrModeNotSupported = errors.New("elections: mode not supported")
 )
 
-// checkDraft validates d at now, in this order: name, voting window, submission period, positions,
-// mode. Timestamps and now are compared as PostgreSQL stores them (see stored), so the checks match
-// the table's CHECKs. It returns d with the timestamps stored, the name and the position names trimmed.
+// checkDraft validates d at now, in this order: voting window and then submission period are whole
+// minutes, name, voting window, submission period, positions, mode. Election times are whole
+// minutes, so the comparisons see exactly the values PostgreSQL stores; "starts in the past" compares
+// StartsAt with now as given. It returns d with the name and the position names trimmed.
 func checkDraft(now time.Time, d Draft) (Draft, error) {
-	now = stored(now)
-	d.SubmissionStartsAt, d.SubmissionEndsAt = stored(d.SubmissionStartsAt), stored(d.SubmissionEndsAt)
-	d.StartsAt, d.EndsAt = stored(d.StartsAt), stored(d.EndsAt)
+	if !wholeMinute(d.StartsAt) || !wholeMinute(d.EndsAt) {
+		return d, ErrInvalidWindow
+	}
+	if !wholeMinute(d.SubmissionStartsAt) || !wholeMinute(d.SubmissionEndsAt) {
+		return d, ErrInvalidSubmissionPeriod
+	}
 	d.Name = strings.TrimSpace(d.Name)
 	if d.Name == "" || utf8.RuneCountInString(d.Name) > MaxNameLen {
 		return d, ErrInvalidName
@@ -57,4 +62,10 @@ func checkDraft(now time.Time, d Draft) (Draft, error) {
 		return d, ErrModeNotSupported
 	}
 	return d, nil
+}
+
+// wholeMinute reports whether t has no seconds and no fraction of a second, in UTC.
+func wholeMinute(t time.Time) bool {
+	t = t.UTC()
+	return t.Second() == 0 && t.Nanosecond() == 0
 }

@@ -446,8 +446,9 @@ type Election struct {
 	SubmissionStartsAt time.Time     `json:"submissionStartsAt"`
 }
 
-// ElectionDraftRequest Date-times are RFC 3339 with offset (Argentina is -03:00). `submissionEndsAt` is exclusive: a period "1 to 5 March" ends at 2027-03-06T00:00:00-03:00. Date-times are stored and compared at microsecond precision: finer digits are discarded before validation. Validation codes are listed in the 422 response.
+// ElectionDraftRequest Date-times are RFC 3339 with offset (Argentina is -03:00). `submissionEndsAt` is exclusive: a period "1 to 5 March" ends at 2027-03-06T00:00:00-03:00. The four dates are whole minutes (no seconds): one with seconds or a fraction of a second is rejected with its field's code. Validation codes are listed in the 422 response.
 type ElectionDraftRequest struct {
+	// EndsAt Whole minutes (no seconds); otherwise `invalid_window`.
 	EndsAt time.Time `json:"endsAt"`
 
 	// Mode Defaults to `secret` when absent.
@@ -455,9 +456,15 @@ type ElectionDraftRequest struct {
 	Name string        `json:"name"`
 
 	// Positions Positions in order. When absent the election gets "Presidente", "Vicepresidente", "Secretario", "Tesorero".
-	Positions          *[]string `json:"positions,omitempty"`
-	StartsAt           time.Time `json:"startsAt"`
-	SubmissionEndsAt   time.Time `json:"submissionEndsAt"`
+	Positions *[]string `json:"positions,omitempty"`
+
+	// StartsAt Whole minutes (no seconds); otherwise `invalid_window`.
+	StartsAt time.Time `json:"startsAt"`
+
+	// SubmissionEndsAt Whole minutes (no seconds); otherwise `invalid_submission_period`.
+	SubmissionEndsAt time.Time `json:"submissionEndsAt"`
+
+	// SubmissionStartsAt Whole minutes (no seconds); otherwise `invalid_submission_period`.
 	SubmissionStartsAt time.Time `json:"submissionStartsAt"`
 }
 

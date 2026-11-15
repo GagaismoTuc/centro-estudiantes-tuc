@@ -967,9 +967,9 @@ components:
     InvalidElectionDraft:
       description: >
         Nothing was written. `invalid_name`: name missing, null, blank or longer than 120 characters.
-        `invalid_window`: `startsAt` or `endsAt` missing, null or not an RFC 3339 date-time, `endsAt` not after
-        `startsAt`, or `startsAt` in the past. `invalid_submission_period`: `submissionStartsAt` or
-        `submissionEndsAt` missing, null or not an RFC 3339 date-time, `submissionEndsAt` not after
+        `invalid_window`: `startsAt` or `endsAt` missing, null, not an RFC 3339 date-time or not a whole minute,
+        `endsAt` not after `startsAt`, or `startsAt` in the past. `invalid_submission_period`: `submissionStartsAt`
+        or `submissionEndsAt` missing, null, not an RFC 3339 date-time or not a whole minute, `submissionEndsAt` not after
         `submissionStartsAt`, or `submissionEndsAt` not before `startsAt`. `invalid_positions`: `positions` null or
         empty, or a name blank, longer than 120 characters or repeated (case-insensitive).
         `mode_not_supported`: `mode` null or other than `secret`.
@@ -1100,8 +1100,9 @@ components:
       required: [name, submissionStartsAt, submissionEndsAt, startsAt, endsAt]
       description: >
         Date-times are RFC 3339 with offset (Argentina is -03:00). `submissionEndsAt` is exclusive: a period
-        "1 to 5 March" ends at 2027-03-06T00:00:00-03:00. Date-times are stored and compared at microsecond
-        precision: finer digits are discarded before validation. Validation codes are listed in the 422 response.
+        "1 to 5 March" ends at 2027-03-06T00:00:00-03:00. The four dates are whole minutes (no seconds): one
+        with seconds or a fraction of a second is rejected with its field's code. Validation codes are listed in
+        the 422 response.
       properties:
         name:
           type: string
@@ -1113,15 +1114,19 @@ components:
         submissionStartsAt:
           type: string
           format: date-time
+          description: Whole minutes (no seconds); otherwise `invalid_submission_period`.
         submissionEndsAt:
           type: string
           format: date-time
+          description: Whole minutes (no seconds); otherwise `invalid_submission_period`.
         startsAt:
           type: string
           format: date-time
+          description: Whole minutes (no seconds); otherwise `invalid_window`.
         endsAt:
           type: string
           format: date-time
+          description: Whole minutes (no seconds); otherwise `invalid_window`.
         positions:
           type: array
           description: >
