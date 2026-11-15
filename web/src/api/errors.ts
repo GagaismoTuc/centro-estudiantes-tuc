@@ -26,6 +26,15 @@ const messages: Record<string, string> = {
   unsupported_media_type: "El archivo tiene que ser CSV.",
   invalid_rows: "El archivo tiene filas con errores. No se cargó nada.",
   too_many_rows: "El archivo tiene más de 5000 filas. Dividilo en partes.",
+  name_required: "Escribí un nombre.",
+  heading_exists: "Ya existe un rubro con ese nombre.",
+  heading_in_use: "Ese rubro tiene contactos asociados. Archivalo en lugar de borrarlo.",
+  reserved_heading: "El rubro «otros» es parte del sistema y no se puede editar, archivar ni borrar.",
+  invalid_heading: "Elegí un rubro activo válido.",
+  description_required: "Escribí una descripción para el precio de referencia.",
+  invalid_amount: "Ingresá un monto mayor a cero.",
+  future_date: "La fecha no puede ser futura.",
+  invalid_date: "Ingresá una fecha válida.",
   network: "No pudimos conectarnos. Revisá tu conexión e intentá de nuevo.",
 };
 
@@ -66,6 +75,13 @@ const fieldsByCode: Record<string, string[]> = {
   weak_password: ["password", "newPassword"],
   same_password: ["newPassword"],
   invalid_code: ["code", "recoveryCode"],
+  name_required: ["name"],
+  heading_exists: ["name"],
+  invalid_heading: ["headingId"],
+  description_required: ["description"],
+  invalid_amount: ["amount"],
+  future_date: ["date"],
+  invalid_date: ["date"],
 };
 
 export function errorFields(code: string): string[] {

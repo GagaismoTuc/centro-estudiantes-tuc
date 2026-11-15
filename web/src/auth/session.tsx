@@ -12,6 +12,12 @@ export function hasRole(me: Me, role: Role): boolean {
   return me.roles ? me.roles.includes(role) : me.role === role;
 }
 
+/** Reports whether the signed-in user may view the school's Contact directory (R7). */
+export function canReadContacts(me: Me): boolean {
+  const roles: readonly string[] = me.roles ?? (me.role ? [me.role] : []);
+  return roles.includes("officer") || roles.includes("school_admin") || roles.includes("veedor");
+}
+
 export type Session =
   | { status: "loading" }
   | { status: "anon" }
