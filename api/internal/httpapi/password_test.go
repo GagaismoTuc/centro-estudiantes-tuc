@@ -6,10 +6,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/auth"
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/totp"
+	"github.com/jackc/pgx/v5"
 )
 
 const changedPassword = "una clave nueva y larga"
@@ -217,4 +220,173 @@ func TestChangePasswordMultipleRolesNeedsTwoFactor(t *testing.T) {
 	wantResponse(t, rec, http.StatusForbidden, mfaRequiredBody)
 	wantNoStore(t, rec)
 	unchanged(t, ctx, f, user, hash, tok, "", 1)
+}
+
+// Issue #62 R1: two tabs change the password at the same time. The winner ends the loser's session,
+// so the loser answers 401 and keeps no sign-in attempt; it never reports a wrong current password.
+func TestChangePasswordConcurrentChangeLoserIsUnauthenticated(t *testing.T) {
+	ctx := integration(t)
+	f := newFixture(t, ctx)
+	const other = "otra clave nueva y larga"
+
+	// winnerIs fails unless exactly one of recs changed the password to its next one and the other,
+	// the loser, answered 401; it returns the winner's new password.
+	winnerIs := func(user string, recs [2]*httptest.ResponseRecorder, nexts [2]string) string {
+		t.Helper()
+		w := -1
+		for i, rec := range recs {
+			if rec.Code == http.StatusNoContent {
+				w = i
+			}
+		}
+		if w < 0 {
+			t.Fatalf("no change succeeded: %d %s, %d %s", recs[0].Code, recs[0].Body, recs[1].Code, recs[1].Body)
+		}
+		wantResponse(t, recs[1-w], http.StatusUnauthorized, unauthBody)
+		wantNoStore(t, recs[1-w])
+		if ok, err := auth.VerifyPassword(passwordHash(t, ctx, user), nexts[w]); err != nil || !ok {
+			t.Fatalf("stored password is not the winner's (ok %v, err %v)", ok, err)
+		}
+		if n := sessionCount(t, ctx, user); n != 1 {
+			t.Fatalf("sessions = %d, want 1 (the winner's)", n)
+		}
+		return nexts[w]
+	}
+
+	// Both changes verify the current password, then wait on the same UPDATE of the user's row.
+	user := f.seedUser(t, ctx, uniqueEmail("change-race"), "student")
+	tok := f.loginOK(t, userEmail(t, ctx, user))
+	row := lockTx(t, ctx, `SELECT 1 FROM users WHERE id = $1 FOR UPDATE`, user)
+	nexts := [2]string{changedPassword, other}
+	var recs [2]*httptest.ResponseRecorder
+	var wg sync.WaitGroup
+	for i := range nexts {
+		wg.Go(func() { recs[i] = f.changePassword(tok, password, nexts[i]) })
+	}
+	waitForLockedQueries(t, ctx, "UPDATE users SET password_hash%", 2)
+	release(t, ctx, row)
+	wg.Wait()
+	winnerIs(user, recs, nexts)
+
+	// The loser takes its attempt after the winner committed and cleared the email's failures: it
+	// passed the session check, then waits on its membership while the winner finishes.
+	email := uniqueEmail("change-race-late")
+	user = f.seedUser(t, ctx, email, "student")
+	tok = f.loginOK(t, email)
+	row = lockTx(t, ctx, `SELECT 1 FROM users WHERE id = $1 FOR UPDATE`, user)
+	done := make(chan struct{})
+	go func() { recs[0] = f.changePassword(tok, password, nexts[0]); close(done) }()
+	waitForLockedQueries(t, ctx, "UPDATE users SET password_hash%", 1)
+	table := lockTx(t, ctx, `LOCK TABLE memberships IN ACCESS EXCLUSIVE MODE`)
+	wg.Go(func() { recs[1] = f.changePassword(tok, password, nexts[1]) })
+	waitForLockedQueries(t, ctx, "%FROM memberships m JOIN organizations o%", 1)
+	release(t, ctx, row)
+	<-done
+	release(t, ctx, table)
+	wg.Wait()
+	next := winnerIs(user, recs, nexts)
+	// No attempt was kept: four failed sign-ins still leave the fifth, which succeeds.
+	for range 4 {
+		wantResponse(t, f.login(email, "no es la clave", "198.51.100.87"), http.StatusUnauthorized, invalidBody)
+	}
+	wantResponse(t, f.login(email, next, "198.51.100.87"), http.StatusNoContent, "")
+}
+
+// lockTx runs sql in a new transaction that keeps its locks until release; a failed test rolls it back.
+func lockTx(t *testing.T, ctx context.Context, sql string, args ...any) pgx.Tx {
+	t.Helper()
+	tx, err := tdb.Super.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = tx.Rollback(context.Background()) })
+	if _, err := tx.Exec(ctx, sql, args...); err != nil {
+		t.Fatal(err)
+	}
+	return tx
+}
+
+func release(t *testing.T, ctx context.Context, tx pgx.Tx) {
+	t.Helper()
+	if err := tx.Rollback(ctx); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// waitForLockedQueries waits until n queries of this database matching the LIKE pattern wait on a lock.
+func waitForLockedQueries(t *testing.T, ctx context.Context, pattern string, n int) {
+	t.Helper()
+	for {
+		var waiting int
+		if err := tdb.Super.QueryRow(ctx, `SELECT count(*) FROM pg_stat_activity
+			WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE $1`, pattern).Scan(&waiting); err != nil {
+			t.Fatal(err)
+		}
+		if waiting >= n {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatalf("%d of %d queries like %q waiting: %v", waiting, n, pattern, ctx.Err())
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+}
+
+// Issue #62 R2: weak_password and same_password rejections never consume the sign-in budget.
+func TestChangePasswordWeakOrSameRejectionsKeepTheSignInBudget(t *testing.T) {
+	ctx := integration(t)
+	f := newFixture(t, ctx)
+	email := uniqueEmail("change-budget")
+	user := f.seedUser(t, ctx, email, "student")
+	tok := f.loginOK(t, email)
+	hash := passwordHash(t, ctx, user)
+
+	// Four wrong current passwords: one failure short of the 5-per-15-minutes limit.
+	for range 4 {
+		wantResponse(t, f.changePassword(tok, "no es la clave", changedPassword), http.StatusUnprocessableEntity, invalidBody)
+	}
+	// More weak and same-password rejections than the budget has left.
+	for range 3 {
+		wantResponse(t, f.changePassword(tok, password, "corta"), http.StatusUnprocessableEntity, `{"error":"weak_password"}`)
+		wantResponse(t, f.changePassword(tok, "no es la clave", "corta"), http.StatusUnprocessableEntity, `{"error":"weak_password"}`)
+		wantResponse(t, f.changePassword(tok, password, password), http.StatusUnprocessableEntity, `{"error":"same_password"}`)
+		unchanged(t, ctx, f, user, hash, tok, "", 1)
+	}
+	// The fifth attempt is still there: a correct change succeeds.
+	wantResponse(t, f.changePassword(tok, password, changedPassword), http.StatusNoContent, "")
+}
+
+// Issue #62 R3: a malformed body, an unknown field or a missing field answers 400 and changes nothing.
+func TestChangePasswordRejectsMalformedBodyWithoutConsumingAttempts(t *testing.T) {
+	ctx := integration(t)
+	f := newFixture(t, ctx)
+	email := uniqueEmail("change-bad")
+	user := f.seedUser(t, ctx, email, "student")
+	tok := f.loginOK(t, email)
+	hash := passwordHash(t, ctx, user)
+
+	// Four wrong current passwords: one more kept attempt would turn the last change into a 429.
+	for range 4 {
+		wantResponse(t, f.changePassword(tok, "no es la clave", changedPassword), http.StatusUnprocessableEntity, invalidBody)
+	}
+	for _, tc := range []struct{ name, body string }{
+		{"malformed", `{"currentPassword":`},
+		{"not json", `no es json`},
+		{"unknown field", fmt.Sprintf(`{"currentPassword":%q,"newPassword":%q,"role":"school_admin"}`, password, changedPassword)},
+		{"missing current", fmt.Sprintf(`{"newPassword":%q}`, changedPassword)},
+		{"missing new", fmt.Sprintf(`{"currentPassword":%q}`, password)},
+		{"missing both", `{}`},
+		{"null", `null`},
+	} {
+		rec := f.post("/api/auth/password", tc.body, "198.51.100.80", tok)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("%s: status = %d, want 400 (body %s)", tc.name, rec.Code, rec.Body)
+		}
+		wantResponse(t, rec, http.StatusBadRequest, `{"error":"bad_request"}`)
+		wantNoStore(t, rec)
+		unchanged(t, ctx, f, user, hash, tok, "", 1)
+	}
+	// No attempt was consumed: the fifth one still changes the password.
+	wantResponse(t, f.changePassword(tok, password, changedPassword), http.StatusNoContent, "")
 }
