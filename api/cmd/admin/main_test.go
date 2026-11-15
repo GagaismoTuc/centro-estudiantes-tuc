@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"flag"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -100,6 +101,38 @@ func TestBootstrapCreatesSchoolAdminAndRefusesExistingEmail(t *testing.T) {
 	}
 	if stderr != "Password: " {
 		t.Fatalf("stderr = %q, want the password prompt only", stderr)
+	}
+
+	rows, err := tdb.Super.Query(ctx, `SELECT name FROM contact_headings WHERE tenant_id = $1 ORDER BY name`, orgID)
+	if err != nil {
+		t.Fatalf("read seeded headings: %v", err)
+	}
+	defer rows.Close()
+	var headings []string
+	for rows.Next() {
+		var h string
+		if err := rows.Scan(&h); err != nil {
+			t.Fatal(err)
+		}
+		headings = append(headings, h)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	wantHeadings := []string{
+		"artistas",
+		"cristalería",
+		"foodtrucks",
+		"gazebos",
+		"impresiones",
+		"insumos plásticos",
+		"mesas y sillas",
+		"otros",
+		"seguridad",
+		"sonido e iluminación",
+	}
+	if !slices.Equal(headings, wantHeadings) {
+		t.Fatalf("bootstrap headings = %v, want %v", headings, wantHeadings)
 	}
 
 	orgs, users, members := counts(t, ctx)
