@@ -4,12 +4,14 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -283,6 +285,23 @@ func TestLoginIsRateLimitedPerEmailAndPerIP(t *testing.T) {
 				t.Fatalf("after the window: status = %d, want 204", rec.Code)
 			}
 		})
+	}
+}
+
+func TestMeMultipleRolesRequireMFA(t *testing.T) {
+	ctx := integration(t)
+	f := newFixture(t, ctx)
+	id, token := f.signIn(t, ctx, "student")
+	if _, err := tdb.Super.Exec(ctx, `INSERT INTO memberships (tenant_id, user_id, role) VALUES ($1, $2, 'officer')`, f.tenant, id); err != nil {
+		t.Fatal(err)
+	}
+	rec := f.do(http.MethodGet, "/api/auth/me", "", "198.51.100.4", token, nil)
+	var got struct {
+		Roles []string `json:"roles"`
+		MFA   string   `json:"mfa"`
+	}
+	if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &got) != nil || !slices.Equal(got.Roles, []string{"student", "officer"}) || got.MFA != "enrollment_required" {
+		t.Fatalf("me = %d %s", rec.Code, rec.Body.String())
 	}
 }
 

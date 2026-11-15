@@ -298,6 +298,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List accounts and unclaimed officers in the active school */
+        get: operations["getMembers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/members/{memberId}/officer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                memberId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Assign an officer position to a roster member */
+        post: operations["postMemberOfficer"];
+        /** Remove an officer position */
+        delete: operations["deleteMemberOfficer"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/roster": {
         parameters: {
             query?: never;
@@ -445,8 +482,17 @@ export interface components {
             tenantName: string | null;
             /** @description Role in the active tenant; null when the user has no membership. */
             role: components["schemas"]["Role"] | null;
+            /** @description All roles in the active tenant when there is more than one. */
+            roles?: components["schemas"]["Role"][];
             emailVerified: boolean;
             mfa: components["schemas"]["MfaState"];
+        };
+        SchoolMember: {
+            email: string | null;
+            fullName: string | null;
+            rosterMemberId: string | null;
+            position: string | null;
+            roles: components["schemas"]["Role"][];
         };
         RosterMember: {
             id: string;
@@ -734,7 +780,7 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
-            /** @description The user already belongs to the code's tenant (`already_member`); the code stays usable. */
+            /** @description The user already has the student role in the code's tenant (`already_member`); the code stays usable. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -1000,6 +1046,107 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             422: components["responses"]["InvalidMfaCode"];
             429: components["responses"]["TooManyAttempts"];
+        };
+    };
+    getMembers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Members. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SchoolMember"][];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    postMemberOfficer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                memberId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    position: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Assigned. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            /** @description Roster member not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description already_officer or position_taken. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description invalid_position. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    deleteMemberOfficer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                memberId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            /** @description Officer not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     getRoster: {

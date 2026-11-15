@@ -341,6 +341,49 @@ func TestAppRolesHaveNoPrivilegeEscape(t *testing.T) {
 	}
 }
 
+func TestMultipleRolesMigrationPreservesExistingMemberships(t *testing.T) {
+	ctx := integration(t)
+	if _, err := env.super.Exec(ctx, `CREATE DATABASE roles_migration_check`); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := pgx.ParseConfig(env.superDSN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dsn := fmt.Sprintf("postgres://%s:%s@%s:%d/roles_migration_check?sslmode=disable", cfg.User, cfg.Password, cfg.Host, cfg.Port)
+	sqlDB, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sqlDB.Close()
+	p, err := goose.NewProvider(goose.DialectPostgres, sqlDB, migrations.FS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = p.UpTo(ctx, 8); err != nil {
+		t.Fatal(err)
+	}
+	_, err = sqlDB.ExecContext(ctx, `WITH org AS (INSERT INTO organizations (kind, name) VALUES ('school', 'Migration') RETURNING id),
+		usr AS (INSERT INTO users (email, password_hash) VALUES ('admin-migration@example.com', 'x'), ('student-migration@example.com', 'x'), ('officer-migration@example.com', 'x') RETURNING id, email)
+		INSERT INTO memberships (tenant_id, user_id, role) SELECT org.id, usr.id, CASE WHEN usr.email LIKE 'admin-%' THEN 'school_admin' ELSE split_part(usr.email, '-migration', 1) END FROM org, usr`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = p.Up(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var roles string
+	if err = sqlDB.QueryRowContext(ctx, `SELECT string_agg(role, ',' ORDER BY role) FROM memberships`).Scan(&roles); err != nil || roles != "officer,school_admin,student" {
+		t.Fatalf("preserved roles = %q, err = %v", roles, err)
+	}
+	if _, err = p.DownTo(ctx, 8); err != nil {
+		t.Fatalf("down: %v", err)
+	}
+	if err = sqlDB.QueryRowContext(ctx, `SELECT string_agg(role, ',' ORDER BY role) FROM memberships`).Scan(&roles); err != nil || roles != "officer,school_admin,student" {
+		t.Fatalf("roles after down = %q, err = %v", roles, err)
+	}
+}
+
 func TestMigrateIsIdempotentAndReversible(t *testing.T) {
 	ctx := integration(t)
 	if _, err := env.super.Exec(ctx, `CREATE DATABASE migrate_check`); err != nil {

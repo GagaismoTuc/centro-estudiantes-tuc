@@ -280,6 +280,17 @@ func TestRosterImportRejectsInvalidFilesAtomically(t *testing.T) {
 	}
 }
 
+func TestRosterAdminRetainsAccessWithStudentRole(t *testing.T) {
+	ctx := integration(t)
+	f := newFixture(t, ctx)
+	id, token, _, _ := f.signInMFA(t, ctx, "school_admin")
+	if _, err := tdb.Super.Exec(ctx, `INSERT INTO memberships (tenant_id, user_id, role) VALUES ($1, $2, 'student')`, f.tenant, id); err != nil {
+		t.Fatal(err)
+	}
+	rec := f.do(http.MethodGet, "/api/roster", "", "198.51.100.12", token, nil)
+	wantResponse(t, rec, http.StatusOK, `[]`)
+}
+
 func TestRosterEndpointsRequireSchoolAdmin(t *testing.T) {
 	ctx := integration(t)
 	f := newFixture(t, ctx)

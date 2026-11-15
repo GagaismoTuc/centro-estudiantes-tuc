@@ -46,9 +46,13 @@ var (
 func Privileged(role string) bool { return role == "school_admin" || role == "officer" }
 
 // MFAStateOf returns the state of sess for role, the user's role in the session's active tenant.
-func MFAStateOf(sess Session, role string) MFAState {
+func MFAStateOf(sess Session, roles ...string) MFAState {
+	privileged := false
+	for _, role := range roles {
+		privileged = privileged || Privileged(role)
+	}
 	switch {
-	case !Privileged(role):
+	case !privileged:
 		return MFANotRequired
 	case sess.MFAVerified:
 		return MFASatisfied

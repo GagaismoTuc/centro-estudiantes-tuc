@@ -111,6 +111,59 @@ func TestMembershipsAreTenantIsolated(t *testing.T) {
 	})
 }
 
+func TestMembershipAllowsDistinctRolesButRejectsDuplicates(t *testing.T) {
+	ctx := integration(t)
+	ana, _ := seedMemberships(t, ctx)
+	err := db.WithTenant(ctx, env.app, env.tenantA, func(tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, `INSERT INTO memberships (tenant_id, user_id, role) VALUES ($1, $2, 'student')`, env.tenantA, ana)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("adding a different role: %v", err)
+	}
+	err = db.WithTenant(ctx, env.app, env.tenantA, func(tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, `INSERT INTO memberships (tenant_id, user_id, role) VALUES ($1, $2, 'student')`, env.tenantA, ana)
+		return err
+	})
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) || pgErr.Code != "23505" {
+		t.Fatalf("adding a duplicate role: %v, want unique violation", err)
+	}
+}
+
+func TestOfficerPositionsFailClosedAndRejectOtherTenantRoster(t *testing.T) {
+	ctx := integration(t)
+	var memberA, memberB string
+	if err := env.super.QueryRow(ctx, `SELECT id::text FROM roster_members WHERE tenant_id=$1 LIMIT 1`, env.tenantA).Scan(&memberA); err != nil {
+		t.Fatal(err)
+	}
+	if err := env.super.QueryRow(ctx, `SELECT id::text FROM roster_members WHERE tenant_id=$1 LIMIT 1`, env.tenantB).Scan(&memberB); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := env.super.Exec(ctx, `INSERT INTO officer_positions (tenant_id, roster_member_id, position) VALUES ($1,$2,'Tesorero')`, env.tenantA, memberA); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = env.super.Exec(context.Background(), `DELETE FROM officer_positions WHERE tenant_id=$1`, env.tenantA)
+	})
+	var count int
+	if err := env.app.QueryRow(ctx, `SELECT count(*) FROM officer_positions`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("without tenant: %d, %v", count, err)
+	}
+	err := db.WithTenant(ctx, env.app, env.tenantA, func(tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, `INSERT INTO officer_positions (tenant_id, roster_member_id, position) VALUES ($1,$2,'Presidente')`, env.tenantA, memberB)
+		return err
+	})
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) || pgErr.Code != "23503" {
+		t.Fatalf("cross-tenant foreign key = %v, want 23503", err)
+	}
+	var forced bool
+	if err := env.super.QueryRow(ctx, `SELECT relrowsecurity AND relforcerowsecurity FROM pg_class WHERE oid='officer_positions'::regclass`).Scan(&forced); err != nil || !forced {
+		t.Fatalf("forced RLS = %v, %v", forced, err)
+	}
+}
+
 func TestWithUserSeesOnlyOwnMembershipsAcrossTenants(t *testing.T) {
 	ctx := integration(t)
 	ana, _ := seedMemberships(t, ctx)
