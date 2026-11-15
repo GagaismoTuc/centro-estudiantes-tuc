@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { hasRole, roleLabels, useMe } from "../auth/session.tsx";
+import { canReadContacts, hasRole, roleLabels, useMe } from "../auth/session.tsx";
 import { LeaveConfirmHost, Link } from "../lib/router.tsx";
 import { loadCommissionStatus, resetCommissionStatus, useCommissionStatus } from "../screens/electionShared.ts";
 import { Icon, type IconName } from "./Icon.tsx";
@@ -71,6 +71,14 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
               <Link to="/calculadora" className="nav__item" onClick={onNavigate}>
                 <Icon name="calculator" />
                 Calculadora
+              </Link>
+            </li>
+          )}
+          {canReadContacts(me) && (
+            <li>
+              <Link to="/contactos" className="nav__item" onClick={onNavigate}>
+                <Icon name="contacts" />
+                Contactos
               </Link>
             </li>
           )}

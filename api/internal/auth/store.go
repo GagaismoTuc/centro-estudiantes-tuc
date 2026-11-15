@@ -340,7 +340,22 @@ func (s *Store) Membership(ctx context.Context, sess Session) (roles []string, t
 	return roles, tenantName, commission, nil
 }
 
-// Bootstrap creates a school, its first user and a school_admin membership in one transaction.
+// DefaultContactHeadings are seeded for every school at creation time (R1).
+var DefaultContactHeadings = []string{
+	"artistas",
+	"foodtrucks",
+	"mesas y sillas",
+	"gazebos",
+	"cristalería",
+	"insumos plásticos",
+	"sonido e iluminación",
+	"seguridad",
+	"impresiones",
+	"otros",
+}
+
+// Bootstrap creates a school, its default contact headings, its first user and a school_admin
+// membership in one transaction.
 func (s *Store) Bootstrap(ctx context.Context, orgName, email, password string) (orgID string, err error) {
 	if err := ValidatePassword(password); err != nil {
 		return "", err
@@ -354,6 +369,12 @@ func (s *Store) Bootstrap(ctx context.Context, orgName, email, password string) 
 	}
 	err = db.WithTenant(ctx, s.pool, orgID, func(tx pgx.Tx) error {
 		if _, err := tx.Exec(ctx, `INSERT INTO organizations (id, kind, name) VALUES ($1, 'school', $2)`, orgID, orgName); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO contact_headings (tenant_id, name)
+			SELECT $1, name FROM unnest($2::text[]) AS name
+			ON CONFLICT (tenant_id, lower(name)) DO NOTHING`, orgID, DefaultContactHeadings); err != nil {
 			return err
 		}
 		var userID string

@@ -11,6 +11,8 @@ import { Claim } from "./screens/Claim.tsx";
 import { CommissionPanel } from "./screens/CommissionPanel.tsx";
 import { Election } from "./screens/Election.tsx";
 import { Calculator } from "./screens/Calculator.tsx";
+import { ContactHeadings } from "./screens/ContactHeadings.tsx";
+import { Contacts } from "./screens/Contacts.tsx";
 import { Home } from "./screens/Home.tsx";
 import { MfaEnroll } from "./screens/MfaEnroll.tsx";
 import { MfaVerify } from "./screens/MfaVerify.tsx";
@@ -45,6 +47,8 @@ const shellRoutes: Record<string, { page: string; Screen: () => JSX.Element }> =
   "/eleccion": { page: "Elección", Screen: Election },
   "/centro-de-estudiantes": { page: "Centro de estudiantes", Screen: CommissionPanel },
   "/calculadora": { page: "Calculadora", Screen: Calculator },
+  "/contactos": { page: "Contactos", Screen: Contacts },
+  "/contactos/rubros": { page: "Rubros", Screen: ContactHeadings },
   "/seguridad": { page: "Seguridad", Screen: Security },
 };
 
