@@ -2,6 +2,7 @@ package httpapi_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -239,6 +240,18 @@ func TestFinanceRules(t *testing.T) {
 			t.Fatal("student cannot see officer")
 		}
 	})
+	t.Run("R12 other tenant entry is not found", func(t *testing.T) {
+		other := newTenant(t, ctx)
+		var id string
+		if _, err := tdb.Super.Exec(ctx, `SELECT seed_finance_categories($1)`, other); err != nil {
+			t.Fatal(err)
+		}
+		if err := tdb.Super.QueryRow(ctx, `INSERT INTO finance_entries(tenant_id,category_id,direction,entry_date,amount_cents,description,recorded_by,recorded_by_name) SELECT $1,id,'income','2026-11-10',1,'Fixture',$2,'Beto Ficticio' FROM finance_categories WHERE tenant_id=$1 AND name='Ventas' RETURNING id::text`, other, user).Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		r := f.do("GET", "/api/finance/entries/"+id, "", "198.51.100.12", officer, nil)
+		wantResponse(t, r, 404, `{"error":"not_found"}`)
+	})
 	t.Run("R11 headless fund stays readable", func(t *testing.T) {
 		if _, err := tdb.Super.Exec(ctx, `DELETE FROM memberships WHERE tenant_id=$1 AND role='officer'`, f.tenant); err != nil {
 			t.Fatal(err)
@@ -258,18 +271,6 @@ func TestFinanceRules(t *testing.T) {
 		if r = f.do("GET", "/api/finance/balance", "", "198.51.100.12", student, nil); r.Code != 200 {
 			t.Fatalf("balance %d", r.Code)
 		}
-	})
-	t.Run("R12 other tenant entry is not found", func(t *testing.T) {
-		other := newTenant(t, ctx)
-		var id string
-		if _, err := tdb.Super.Exec(ctx, `SELECT seed_finance_categories($1)`, other); err != nil {
-			t.Fatal(err)
-		}
-		if err := tdb.Super.QueryRow(ctx, `INSERT INTO finance_entries(tenant_id,category_id,direction,entry_date,amount_cents,description,recorded_by,recorded_by_name) SELECT $1,id,'income','2026-11-10',1,'Fixture',$2,'Beto Ficticio' FROM finance_categories WHERE tenant_id=$1 AND name='Ventas' RETURNING id::text`, other, user).Scan(&id); err != nil {
-			t.Fatal(err)
-		}
-		r := f.do("GET", "/api/finance/entries/"+id, "", "198.51.100.12", student, nil)
-		wantResponse(t, r, 404, `{"error":"not_found"}`)
 	})
 	t.Run("R13 duplicate parallel submissions both persist", func(t *testing.T) {
 		user2, token, _, _ := f.signInMFA(t, ctx, "officer")
@@ -305,7 +306,18 @@ func TestFinancePrivacy(t *testing.T) {
 	if _, err := tdb.Super.Exec(ctx, `SELECT seed_finance_categories($1)`, f.tenant); err != nil {
 		t.Fatal(err)
 	}
-	_, token, _, _ := f.signInMFA(t, ctx, "officer")
+	user, token, _, _ := f.signInMFA(t, ctx, "officer")
+	member := seedMember(t, ctx, f.tenant, "Ana Ficticia", "30111224")
+	if _, err := tdb.Super.Exec(ctx, `UPDATE memberships SET roster_member_id=$1 WHERE tenant_id=$2 AND user_id=$3`, member, f.tenant, user); err != nil {
+		t.Fatal(err)
+	}
+	_, err := tdb.Super.Exec(ctx, `CREATE FUNCTION finance_privacy_probe() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION '% % %', NEW.description, NEW.amount_cents, NEW.recorded_by_name; END $$; CREATE TRIGGER finance_privacy_probe BEFORE INSERT ON finance_entries FOR EACH ROW EXECUTE FUNCTION finance_privacy_probe()`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = tdb.Super.Exec(context.Background(), `DROP TRIGGER IF EXISTS finance_privacy_probe ON finance_entries; DROP FUNCTION IF EXISTS finance_privacy_probe()`)
+	})
 	var id string
 	if err := tdb.Super.QueryRow(ctx, `SELECT id::text FROM finance_categories WHERE tenant_id=$1 AND name='Ventas'`, f.tenant).Scan(&id); err != nil {
 		t.Fatal(err)
