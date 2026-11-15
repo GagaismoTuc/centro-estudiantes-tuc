@@ -290,6 +290,12 @@ type MfaVerifyRequest struct {
 	RecoveryCode *string `json:"recoveryCode,omitempty"`
 }
 
+// PasswordChangeRequest defines model for PasswordChangeRequest.
+type PasswordChangeRequest struct {
+	CurrentPassword string `json:"currentPassword"`
+	NewPassword     string `json:"newPassword"`
+}
+
 // PasswordResetRequest defines model for PasswordResetRequest.
 type PasswordResetRequest struct {
 	Password string `json:"password"`
@@ -409,6 +415,9 @@ type PostAuthMfaEnrollmentConfirmJSONRequestBody = MfaCodeRequest
 // PostAuthMfaVerifyJSONRequestBody defines body for PostAuthMfaVerify for application/json ContentType.
 type PostAuthMfaVerifyJSONRequestBody = MfaVerifyRequest
 
+// PostAuthPasswordJSONRequestBody defines body for PostAuthPassword for application/json ContentType.
+type PostAuthPasswordJSONRequestBody = PasswordChangeRequest
+
 // PostAuthPasswordResetJSONRequestBody defines body for PostAuthPasswordReset for application/json ContentType.
 type PostAuthPasswordResetJSONRequestBody = PasswordResetRequest
 
@@ -456,6 +465,9 @@ type ServerInterface interface {
 	// PostAuthMfaVerify Complete two-factor sign-in
 	// (POST /auth/mfa/verify)
 	PostAuthMfaVerify(w http.ResponseWriter, r *http.Request)
+	// PostAuthPassword Change the password of the signed-in user
+	// (POST /auth/password)
+	PostAuthPassword(w http.ResponseWriter, r *http.Request)
 	// PostAuthPasswordReset Set a new password with an emailed token
 	// (POST /auth/password/reset)
 	PostAuthPasswordReset(w http.ResponseWriter, r *http.Request)
@@ -645,6 +657,20 @@ func (siw *ServerInterfaceWrapper) PostAuthMfaVerify(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostAuthMfaVerify(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostAuthPassword operation middleware
+func (siw *ServerInterfaceWrapper) PostAuthPassword(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostAuthPassword(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -976,6 +1002,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/link/consume", wrapper.PostAuthLinkConsume)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/password/reset-request", wrapper.PostAuthPasswordResetRequest)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/password/reset", wrapper.PostAuthPasswordReset)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/password", wrapper.PostAuthPassword)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/mfa/enrollment", wrapper.PostAuthMfaEnrollment)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/mfa/enrollment/confirm", wrapper.PostAuthMfaEnrollmentConfirm)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/mfa/verify", wrapper.PostAuthMfaVerify)

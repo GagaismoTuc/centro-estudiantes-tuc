@@ -103,6 +103,74 @@ func (s *Store) Authenticate(ctx context.Context, email, password string) (strin
 	return id, nil
 }
 
+// ErrSamePassword is returned by ChangePassword when the new password equals the current one.
+var ErrSamePassword = errors.New("auth: new password equals the current one")
+
+// ChangePassword replaces the password of userID, signed in with the session named by token. It
+// checks newPassword (ErrWeakPassword), then current against the stored hash (ErrInvalidCredentials),
+// then that they differ (ErrSamePassword). On success, in one transaction, it stores the new hash,
+// marks every pending emailed token of the user used, deletes every other session of the user and
+// rotates this one (same tenant, second-factor state and absolute expiry), returning the new token and
+// its expiry. An error changes nothing; ErrNoSession means the session ended meanwhile.
+func (s *Store) ChangePassword(ctx context.Context, token, userID, current, newPassword string) (string, time.Time, error) {
+	if err := ValidatePassword(newPassword); err != nil {
+		return "", time.Time{}, err
+	}
+	h, ok := hashToken(token)
+	if !ok {
+		return "", time.Time{}, ErrNoSession
+	}
+	var old string
+	err := s.pool.QueryRow(ctx, `SELECT password_hash FROM users WHERE id = $1`, userID).Scan(&old)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", time.Time{}, ErrNoSession
+	}
+	if err != nil {
+		return "", time.Time{}, fmt.Errorf("auth: find user: %w", err)
+	}
+	if ok, err := VerifyPassword(old, current); err != nil {
+		return "", time.Time{}, err
+	} else if !ok {
+		return "", time.Time{}, ErrInvalidCredentials
+	}
+	if newPassword == current {
+		return "", time.Time{}, ErrSamePassword
+	}
+	hash, err := HashPassword(newPassword)
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	now := s.now().UTC().Truncate(time.Microsecond)
+	var tok string
+	var expires time.Time
+	err = pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		// Only the hash the current password was checked against is replaced: a concurrent change
+		// that won the race leaves this one with a current password that no longer matches.
+		tag, err := tx.Exec(ctx, `UPDATE users SET password_hash = $3 WHERE id = $1 AND password_hash = $2`,
+			userID, old, hash)
+		if err != nil {
+			return fmt.Errorf("auth: update password: %w", err)
+		}
+		if tag.RowsAffected() == 0 {
+			return ErrInvalidCredentials
+		}
+		// As in ResetPassword: no emailed link sent before the change may outlive it.
+		if _, err := tx.Exec(ctx,
+			`UPDATE email_tokens SET used_at = $2 WHERE user_id = $1 AND used_at IS NULL`, userID, now); err != nil {
+			return fmt.Errorf("auth: use email tokens: %w", err)
+		}
+		if _, err := tx.Exec(ctx, `DELETE FROM sessions WHERE user_id = $1 AND token_hash <> $2`, userID, h); err != nil {
+			return fmt.Errorf("auth: delete other sessions: %w", err)
+		}
+		tok, expires, err = rotateSession(ctx, tx, token, userID, now, false, nil)
+		return err
+	})
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	return tok, expires, nil
+}
+
 // CreateSession starts a session for userID and returns the raw token for the cookie. Only its
 // SHA-256 is stored. The active tenant is the user's oldest membership, or none.
 func (s *Store) CreateSession(ctx context.Context, userID string) (string, error) {

@@ -11,6 +11,7 @@ const messages: Record<string, string> = {
   mfa_required: "Primero completá la verificación en dos pasos.",
   invalid_email: "Revisá el mail: no parece válido.",
   weak_password: "La contraseña tiene que tener entre 10 y 128 caracteres.",
+  same_password: "La contraseña nueva tiene que ser distinta de la actual.",
   invalid_code: "El código no es válido.",
   email_in_use: "Ya hay una cuenta con ese mail. Ingresá con ella y después canjeá el código.",
   already_member: "Ya sos parte de esa escuela. No hace falta canjear este código.",
@@ -29,11 +30,14 @@ const messages: Record<string, string> = {
 };
 
 /** Where the error happened, when the same code needs different advice. */
-export type ErrorContext = "access-code" | "mfa" | "mfa-recovery" | "reset" | "verify";
+export type ErrorContext = "access-code" | "change-password" | "mfa" | "mfa-recovery" | "reset" | "verify";
 
 const contextual: Record<ErrorContext, Record<string, string>> = {
   "access-code": {
     invalid_code: "El código no es válido, ya se usó o venció. Pedile uno nuevo a tu escuela.",
+  },
+  "change-password": {
+    invalid_credentials: "La contraseña actual no es correcta.",
   },
   mfa: {
     invalid_code: "El código no es correcto o ya se usó. Probá con el próximo que muestre tu app.",
@@ -56,10 +60,11 @@ export function errorMessage(code: string, context?: ErrorContext): string {
 
 /** Form fields an error code is about, so the form can mark them invalid and focus the first. */
 const fieldsByCode: Record<string, string[]> = {
-  invalid_credentials: ["email", "password"],
+  invalid_credentials: ["email", "password", "currentPassword"],
   invalid_email: ["email"],
   email_in_use: ["email"],
-  weak_password: ["password"],
+  weak_password: ["password", "newPassword"],
+  same_password: ["newPassword"],
   invalid_code: ["code", "recoveryCode"],
 };
 
