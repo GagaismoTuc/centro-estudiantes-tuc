@@ -1,5 +1,5 @@
-/* Visual language: neutral surfaces, hairline borders, Geist + Geist Mono, near-black
-   primary actions and one restrained blue accent (docs/design/reference-dashboard.jpg). */
+/* Visual language: neutral light UI, hairline borders, Geist + Geist Mono, black
+   primary actions and one restrained blue accent. */
 
 /* ---------- Tokens ---------- */
 /* One declaration per token: light-dark() picks the value from the root's used
