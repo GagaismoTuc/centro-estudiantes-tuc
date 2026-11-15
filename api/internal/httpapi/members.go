@@ -9,6 +9,7 @@ import (
 )
 
 func (s *server) GetMembers(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
 	sess, ok := rosterSession(w, r)
 	if !ok {
 		return

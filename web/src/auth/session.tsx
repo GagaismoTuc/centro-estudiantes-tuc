@@ -36,6 +36,11 @@ export const roleLabel: Record<Role, string> = {
   student: "Estudiante",
 };
 
+export function roleLabels(me: Me): string {
+  const roles = me.roles ?? (me.role ? [me.role] : []);
+  return roles.map((role) => roleLabel[role]).join(", ") || "Sin escuela";
+}
+
 /** Where a user belongs right now, given the two-factor state of the session. */
 export function homeFor(me: Me): string {
   if (me.mfa === "enrollment_required") return "/seguridad/activar";

@@ -480,3 +480,12 @@ describe("A6 under StrictMode: the leave dialog stays until the user answers", (
     expect(sentTo(sent, "POST /auth/logout")).toHaveLength(0);
   });
 });
+
+test("home and sidebar show all roles", async () => {
+  mockApi({ "GET /auth/me": ok(me({ role: "student", roles: ["student", "school_admin"], mfa: "satisfied" })) });
+  renderAt("/");
+  await screen.findByRole("heading", { name: "\u00a1Hola!" });
+  const sidebar = screen.getByRole("complementary");
+  expect(within(sidebar).getAllByText("Estudiante, Autoridad escolar")).toHaveLength(2);
+  expect(screen.getByText(/Estudiante, Autoridad escolar/, { selector: ".page-header__school" })).toBeTruthy();
+});

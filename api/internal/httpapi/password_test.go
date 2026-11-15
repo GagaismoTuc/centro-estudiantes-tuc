@@ -204,3 +204,17 @@ func TestChangePasswordNeedsTwoFactorForPrivilegedRoles(t *testing.T) {
 		})
 	}
 }
+
+func TestChangePasswordMultipleRolesNeedsTwoFactor(t *testing.T) {
+	ctx := integration(t)
+	f := newFixture(t, ctx)
+	user, tok := f.signIn(t, ctx, "student")
+	if _, err := tdb.Super.Exec(ctx, `INSERT INTO memberships (tenant_id, user_id, role) VALUES ($1, $2, 'officer')`, f.tenant, user); err != nil {
+		t.Fatal(err)
+	}
+	hash := passwordHash(t, ctx, user)
+	rec := f.changePassword(tok, password, changedPassword)
+	wantResponse(t, rec, http.StatusForbidden, mfaRequiredBody)
+	wantNoStore(t, rec)
+	unchanged(t, ctx, f, user, hash, tok, "", 1)
+}

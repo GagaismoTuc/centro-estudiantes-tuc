@@ -71,11 +71,13 @@ func (s *server) spendCode(w http.ResponseWriter, r *http.Request, use func() (r
 func (s *server) writeClaimMe(w http.ResponseWriter, r *http.Request, c roster.Claimed, status int) {
 	sess, err := s.store.Lookup(r.Context(), c.Token)
 	if err != nil {
+		slog.Error("claim session lookup", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal")
 		return
 	}
 	me, err := s.sessionMe(r.Context(), sess)
 	if err != nil {
+		slog.Error("claim session membership", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal")
 		return
 	}

@@ -15,13 +15,13 @@ func (s *server) PostAuthPassword(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	role, _, err := s.store.Membership(r.Context(), sess)
+	roles, _, err := s.store.Membership(r.Context(), sess)
 	if err != nil {
 		slog.Error("change password: membership", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal")
 		return
 	}
-	if auth.Privileged(role) && auth.RequireMFA(sess) != nil {
+	if auth.MFAStateOf(sess, roles...) != auth.MFANotRequired && auth.RequireMFA(sess) != nil {
 		writeError(w, http.StatusForbidden, "mfa_required")
 		return
 	}

@@ -248,6 +248,7 @@ func TestMembersListIncludesAccountsAndUnclaimedOfficersOnlyFromActiveSchool(t *
 		t.Fatal(err)
 	}
 	rec := f.do(http.MethodGet, "/api/members", "", "198.51.100.12", admin, nil)
+	wantNoStore(t, rec)
 	var rows []struct {
 		Email    *string  `json:"email"`
 		FullName *string  `json:"fullName"`
