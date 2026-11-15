@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -364,7 +365,7 @@ func TestMultipleRolesMigrationPreservesExistingMemberships(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = sqlDB.ExecContext(ctx, `WITH org AS (INSERT INTO organizations (kind, name) VALUES ('school', 'Migration') RETURNING id),
-		usr AS (INSERT INTO users (email, password_hash) VALUES ('admin-migration@example.com', 'x'), ('student-migration@example.com', 'x'), ('officer-migration@example.com', 'x') RETURNING id, email)
+		usr AS (INSERT INTO users (email, password_hash) VALUES ('admin-migration@example.com', 'x'), ('student-migration@example.com', 'x') RETURNING id, email)
 		INSERT INTO memberships (tenant_id, user_id, role) SELECT org.id, usr.id, CASE WHEN usr.email LIKE 'admin-%' THEN 'school_admin' ELSE split_part(usr.email, '-migration', 1) END FROM org, usr`)
 	if err != nil {
 		t.Fatal(err)
@@ -373,14 +374,71 @@ func TestMultipleRolesMigrationPreservesExistingMemberships(t *testing.T) {
 		t.Fatal(err)
 	}
 	var roles string
-	if err = sqlDB.QueryRowContext(ctx, `SELECT string_agg(role, ',' ORDER BY role) FROM memberships`).Scan(&roles); err != nil || roles != "officer,school_admin,student" {
+	if err = sqlDB.QueryRowContext(ctx, `SELECT string_agg(role, ',' ORDER BY role) FROM memberships`).Scan(&roles); err != nil || roles != "school_admin,student" {
 		t.Fatalf("preserved roles = %q, err = %v", roles, err)
 	}
 	if _, err = p.DownTo(ctx, 8); err != nil {
 		t.Fatalf("down: %v", err)
 	}
-	if err = sqlDB.QueryRowContext(ctx, `SELECT string_agg(role, ',' ORDER BY role) FROM memberships`).Scan(&roles); err != nil || roles != "officer,school_admin,student" {
+	if err = sqlDB.QueryRowContext(ctx, `SELECT string_agg(role, ',' ORDER BY role) FROM memberships`).Scan(&roles); err != nil || roles != "school_admin,student" {
 		t.Fatalf("roles after down = %q, err = %v", roles, err)
+	}
+}
+
+func TestMultipleRolesMigrationRejectsLegacyOfficersWithoutLosingRoles(t *testing.T) {
+	ctx := integration(t)
+	if _, err := env.super.Exec(ctx, `CREATE DATABASE legacy_officer_migration_check`); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := pgx.ParseConfig(env.superDSN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dsn := fmt.Sprintf("postgres://%s:%s@%s:%d/legacy_officer_migration_check?sslmode=disable", cfg.User, cfg.Password, cfg.Host, cfg.Port)
+	sqlDB, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sqlDB.Close()
+	p, err := goose.NewProvider(goose.DialectPostgres, sqlDB, migrations.FS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = p.UpTo(ctx, 8); err != nil {
+		t.Fatal(err)
+	}
+	_, err = sqlDB.ExecContext(ctx, `WITH org AS (INSERT INTO organizations (kind, name) VALUES ('school','Legacy') RETURNING id),
+		usr AS (INSERT INTO users (email,password_hash) VALUES ('legacy1@example.com','x'),('legacy2@example.com','x') RETURNING id)
+		INSERT INTO memberships (tenant_id,user_id,role) SELECT org.id,usr.id,'officer' FROM org,usr`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Exercise the migration as the non-superuser table owner: FORCE RLS otherwise hides rows.
+	sqlDB.SetMaxOpenConns(1)
+	for _, q := range []string{
+		`CREATE ROLE legacy_migration_owner NOLOGIN`,
+		`ALTER TABLE memberships OWNER TO legacy_migration_owner`,
+		`GRANT USAGE, CREATE ON SCHEMA public TO legacy_migration_owner`,
+		`GRANT SELECT, INSERT, UPDATE, DELETE ON goose_db_version TO legacy_migration_owner`,
+		`GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO legacy_migration_owner`,
+		`SET ROLE legacy_migration_owner`,
+	} {
+		if _, err := sqlDB.ExecContext(ctx, q); err != nil {
+			t.Fatalf("migration owner setup: %v", err)
+		}
+	}
+	if _, err = p.Up(ctx); err == nil || !strings.Contains(err.Error(), "2 legacy officer memberships without positions") {
+		t.Fatalf("migration error = %v, want count of 2", err)
+	}
+	if _, err = sqlDB.ExecContext(ctx, `RESET ROLE`); err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	var oldConstraint, forced bool
+	if err = sqlDB.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM memberships WHERE role='officer'),
+		EXISTS (SELECT FROM pg_constraint WHERE conrelid='memberships'::regclass AND conname='memberships_tenant_id_user_id_key'),
+		(SELECT relforcerowsecurity FROM pg_class WHERE oid='memberships'::regclass)`).Scan(&count, &oldConstraint, &forced); err != nil || count != 2 || !oldConstraint || !forced {
+		t.Fatalf("after failed migration: officers=%d old constraint=%v forced RLS=%v err=%v", count, oldConstraint, forced, err)
 	}
 }
 
