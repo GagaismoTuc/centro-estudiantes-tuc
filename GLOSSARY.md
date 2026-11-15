@@ -1,6 +1,6 @@
 # Student centers (Centros de estudiantes)
 
-A multi-tenant platform where secondary schools in Tucumán run their student center: its roster, its officers and its elections. Each term lists the Spanish word the UI shows beside it.
+A multi-tenant platform where secondary schools in Tucumán run their student center: its roster, its officers, its elections and its finances. Each term lists the Spanish word the UI shows beside it.
 
 ## Language
 
@@ -17,6 +17,10 @@ _Avoid_: Organization, client, instance
 **School admin** (UI: "Administrador de la escuela"):
 An authority or staff member of a School who keeps the Roster and issues Access codes.
 _Avoid_: Admin, director, platform admin
+
+**Platform admin** (UI: "Administrador de la plataforma"):
+One of the people who operate the platform itself; they create Tenants and approve Contacts for the Shared directory, and never act inside a School's Student center.
+_Avoid_: Admin, superuser, School admin
 
 **Student** (UI: "Alumno"):
 A person who uses the platform as a Roster member of a School.
@@ -117,3 +121,81 @@ _Avoid_: Attendance, quorum
 **Annulment** (UI: "Anulación"):
 The cancellation of an Election, with a reason visible to everyone; an annulled Election publishes no result and never reopens.
 _Avoid_: Cancellation, deletion, void
+
+### Finances
+
+**Fund** (UI: "Caja"):
+The single pool of money of a Student center; every Entry changes its balance, and a new Board takes it over with its balance.
+_Avoid_: Account, wallet, treasury
+
+**Entry** (UI: "Movimiento"):
+One income or expense of the Fund, with a Category, a date, an amount in pesos and a description, recorded by an Officer; once recorded it is never edited or deleted.
+_Avoid_: Transaction, record, item
+
+**Reversal** (UI: "Reversión"):
+An Entry that cancels an earlier Entry with the same amount in the opposite direction; the only way to correct a mistaken Entry.
+_Avoid_: Correction, deletion, refund, Annulment
+
+**Category** (UI: "Categoría"):
+A label from the Student center's list that groups Entries in reports.
+_Avoid_: Type, tag, account
+
+**Receipt** (UI: "Comprobante"):
+A file that backs an Entry, such as a photo of a ticket or a PDF invoice.
+_Avoid_: Attachment, invoice, voucher
+
+**Due** (UI: "Cuota"):
+An amount the Board asks every Roster member to pay by a due date, such as a monthly fee.
+_Avoid_: Fee, charge, debt, subscription
+
+**Due payment** (UI: "Pago de cuota"):
+Money a Roster member hands over toward one Due, recorded by an Officer as an income Entry; a Due is paid when its payments add up to its amount.
+_Avoid_: Collection, installment, receipt
+
+**Exemption** (UI: "Exención"):
+The Board's decision, with a reason, that a Roster member does not owe one Due.
+_Avoid_: Waiver, scholarship, discount
+
+**Term** (UI: "Gestión"):
+The time a Board holds office, from when it is seated until the next Board takes over.
+_Avoid_: Mandate, period, year
+
+**Fund report** (UI: "Informe de caja"):
+The Entries and balance of the Fund for any date range, produced on demand and never published.
+_Avoid_: Statement, balance sheet
+
+**Financial accountability report** (UI: "Rendición de cuentas"):
+The Entries and balance of the Fund for a period, usually a Term, that the Board publishes to the Students; once published it never changes.
+_Avoid_: Report, Fund report, audit
+
+**Event** (UI: "Evento"):
+A happening the Student center organizes, of one or more days, such as the Semana del Estudiante or "La semana de" the School.
+_Avoid_: Activity, party, festival
+
+**Event budget** (UI: "Presupuesto de evento"):
+The planned costs and income of one Event, kept and edited by the Officers until the Event happens, which shows its expected result and the ticket price at which it does not lose money.
+_Avoid_: Estimate, quote, plan, Fund report
+
+**Budget line** (UI: "Línea de presupuesto"):
+One planned cost or income of an Event budget, as a quantity times a unit price, optionally for one day of the Event and from one Contact.
+_Avoid_: Item, row, Entry
+
+**Heading** (UI: "Rubro"):
+A kind of good or service an Event needs or a Contact provides, such as chairs, gazebos, artists or food trucks; it groups Budget lines and Contacts.
+_Avoid_: Category, type, sector
+
+**Contact** (UI: "Contacto"):
+A provider of goods or services for Events, such as a gazebo rental or an artist, with its Heading, ways to reach it and its Reference prices.
+_Avoid_: Supplier, vendor, provider, client
+
+**Contact directory** (UI: "Directorio de contactos"):
+The Contacts a Student center keeps; it outlives every Term and no other School sees it.
+_Avoid_: Address book, supplier list, agenda
+
+**Reference price** (UI: "Precio de referencia"):
+A dated price a Contact quoted for one good or service, copied into a Budget line as a starting value.
+_Avoid_: Quote, list price, cost
+
+**Shared directory** (UI: "Directorio compartido"):
+The Contacts that Student centers chose to share with the other Schools of the same installation, each one visible only after the Platform admin approves it; it never shows which School shared a Contact.
+_Avoid_: Marketplace, public directory, Contact directory
