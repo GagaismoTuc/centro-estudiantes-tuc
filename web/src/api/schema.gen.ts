@@ -591,7 +591,7 @@ export interface components {
          * @enum {string}
          */
         ElectionState: "draft" | "submission" | "scheduled" | "open" | "closed";
-        /** @description Date-times are RFC 3339 with offset (Argentina is -03:00). `submissionEndsAt` is exclusive: a period "1 to 5 March" ends at 2027-03-06T00:00:00-03:00. Validation codes are listed in the 422 response. */
+        /** @description Date-times are RFC 3339 with offset (Argentina is -03:00). `submissionEndsAt` is exclusive: a period "1 to 5 March" ends at 2027-03-06T00:00:00-03:00. Date-times are stored and compared at microsecond precision: finer digits are discarded before validation. Validation codes are listed in the 422 response. */
         ElectionDraftRequest: {
             name: string;
             /** @description Defaults to `secret` when absent. */

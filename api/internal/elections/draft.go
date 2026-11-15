@@ -23,8 +23,12 @@ var (
 )
 
 // checkDraft validates d at now, in this order: name, voting window, submission period, positions,
-// mode. It returns d with the name and the position names trimmed.
+// mode. Timestamps and now are compared as PostgreSQL stores them (see stored), so the checks match
+// the table's CHECKs. It returns d with the timestamps stored, the name and the position names trimmed.
 func checkDraft(now time.Time, d Draft) (Draft, error) {
+	now = stored(now)
+	d.SubmissionStartsAt, d.SubmissionEndsAt = stored(d.SubmissionStartsAt), stored(d.SubmissionEndsAt)
+	d.StartsAt, d.EndsAt = stored(d.StartsAt), stored(d.EndsAt)
 	d.Name = strings.TrimSpace(d.Name)
 	if d.Name == "" || utf8.RuneCountInString(d.Name) > MaxNameLen {
 		return d, ErrInvalidName

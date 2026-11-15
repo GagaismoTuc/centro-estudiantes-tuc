@@ -87,7 +87,10 @@ func NewStore(pool *pgxpool.Pool, now func() time.Time) *Store {
 	return &Store{pool: pool, now: now}
 }
 
-func (s *Store) stamp() time.Time { return s.now().UTC().Truncate(time.Microsecond) } // PostgreSQL precision
+func (s *Store) stamp() time.Time { return stored(s.now()) }
+
+// stored returns t as PostgreSQL stores a timestamptz: UTC, finer digits than microseconds discarded.
+func stored(t time.Time) time.Time { return t.UTC().Truncate(time.Microsecond) }
 
 // ReplaceCommission sets the members of the tenant's current commission, creating it when there is
 // none. Repeated ids count once. Errors: ErrEmptyCommission, ErrNotFound (an id outside the tenant),
