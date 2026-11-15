@@ -92,7 +92,7 @@ describe("navigation", () => {
     const nav = await screen.findByRole("navigation", { name: "Principal" });
     expect(within(nav).getByRole("link", { name: "Inicio" }).getAttribute("aria-current")).toBe("page");
     expect(within(nav).queryByRole("link", { name: "Padrón" }) !== null).toBe(shown);
-    expect(within(nav).getByText("Finanzas")).toBeTruthy();
+    expect(within(nav).getByRole("link", { name: "Caja" }).getAttribute("href")).toBe("/caja");
   });
 
   test("clicking a nav link changes the route without reloading", async () => {
