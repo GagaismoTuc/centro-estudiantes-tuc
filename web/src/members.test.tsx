@@ -1,6 +1,7 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { App } from "./App.tsx";
+import { roleLabel, roleLabels } from "./auth/session.tsx";
 import css from "./styles.css?raw";
 import { fail, me, mockApi, ok, sentTo } from "./test/api.ts";
 
@@ -89,4 +90,97 @@ test("member selects have constrained, touch-sized field styling", () => {
   for (const declaration of ["inline-size: 100%", "min-inline-size: 0", "min-block-size: 2.875rem", "font-size: max(1rem, 1em)", "border:", "border-radius:"]) {
     expect(rule![1]).toContain(declaration);
   }
+});
+
+function memberRoleTexts(nameOrEmail: string): string[] {
+  const heading = screen.getByRole("heading", { level: 2, name: "Miembros" });
+  const list = heading.closest("section")!.querySelector(":scope > ul")!;
+  const item = Array.from(list.children).find((el) => el.textContent?.includes(nameOrEmail));
+  expect(item).toBeTruthy();
+  const roleItems = within(item as HTMLElement).getByRole("list");
+  return Array.from(roleItems.querySelectorAll("li")).map((li) => li.textContent ?? "");
+}
+
+test("members displays all three roles in Alumno, officer, Administrador order on Miembros", async () => {
+  mockApi({
+    "GET /auth/me": ok(me({ role: "school_admin", mfa: "satisfied" })),
+    "GET /members": ok([
+      {
+        email: "carla@example.com",
+        fullName: "Carla Ficticia",
+        rosterMemberId: "m3",
+        position: "Presidente",
+        roles: ["school_admin", "officer", "student"],
+      },
+    ]),
+    "GET /roster": ok([]),
+  });
+  window.history.replaceState(null, "", "/miembros");
+  render(<App />);
+  await screen.findByText("Carla Ficticia");
+  expect(memberRoleTexts("Carla Ficticia")).toEqual([
+    "Alumno",
+    "Integrante de la comisi\u00f3n directiva \u2014 Presidente",
+    "Administrador de la escuela",
+  ]);
+});
+
+test("role order does not depend on the API order officer, school_admin, student", async () => {
+  mockApi({
+    "GET /auth/me": ok(me({ role: "officer", roles: ["officer", "school_admin", "student"], mfa: "satisfied" })),
+    "GET /members": ok([
+      {
+        email: "carla@example.com",
+        fullName: "Carla Ficticia",
+        rosterMemberId: "m3",
+        position: "Presidente",
+        roles: ["officer", "school_admin", "student"],
+      },
+    ]),
+    "GET /roster": ok([]),
+  });
+  window.history.replaceState(null, "", "/miembros");
+  render(<App />);
+  await screen.findByText("Carla Ficticia");
+  const sidebar = screen.getByRole("complementary");
+  expect(within(sidebar).getAllByText("Alumno, Integrante de la comisi\u00f3n directiva, Administrador de la escuela")).toHaveLength(2);
+  expect(memberRoleTexts("Carla Ficticia")).toEqual([
+    "Alumno",
+    "Integrante de la comisi\u00f3n directiva \u2014 Presidente",
+    "Administrador de la escuela",
+  ]);
+});
+
+test("single role and unclaimed officer without account keep their labels and order", async () => {
+  mockApi({
+    "GET /auth/me": ok(me({ role: "school_admin", mfa: "satisfied" })),
+    "GET /members": ok([
+      { email: "admin@example.com", fullName: null, rosterMemberId: null, position: null, roles: ["school_admin"] },
+      { email: "diego@example.com", fullName: "Diego Ficticio", rosterMemberId: "m4", position: null, roles: ["student"] },
+      { email: null, fullName: "Ana Ficticia", rosterMemberId: "m1", position: "Tesorero", roles: ["officer", "student"] },
+    ]),
+    "GET /roster": ok([]),
+  });
+  window.history.replaceState(null, "", "/miembros");
+  render(<App />);
+  await screen.findByText("Ana Ficticia");
+  expect(memberRoleTexts("admin@example.com")).toEqual(["Administrador de la escuela"]);
+  expect(memberRoleTexts("Diego Ficticio")).toEqual(["Alumno"]);
+  expect(memberRoleTexts("Ana Ficticia")).toEqual([
+    "Alumno",
+    "Integrante de la comisi\u00f3n directiva \u2014 Tesorero",
+  ]);
+  expect(screen.getByText("sin cuenta")).toBeTruthy();
+});
+
+test("role labels match PR #65 strings in session.tsx", () => {
+  expect(roleLabel).toEqual({
+    school_admin: "Administrador de la escuela",
+    officer: "Integrante de la comisi\u00f3n directiva",
+    student: "Alumno",
+  });
+  expect(roleLabels(me({ role: "officer", roles: ["officer", "school_admin", "student"] }))).toBe(
+    "Alumno, Integrante de la comisi\u00f3n directiva, Administrador de la escuela",
+  );
+  expect(roleLabels(me({ role: null }))).toBe("Sin escuela");
 });
