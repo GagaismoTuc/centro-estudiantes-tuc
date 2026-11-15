@@ -2,7 +2,6 @@ package httpapi_test
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/auth"
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/totp"
+	"github.com/jackc/pgx/v5"
 )
 
 const changedPassword = "una clave nueva y larga"
@@ -213,75 +213,99 @@ func TestChangePasswordNeedsTwoFactorForPrivilegedRoles(t *testing.T) {
 func TestChangePasswordConcurrentChangeLoserIsUnauthenticated(t *testing.T) {
 	ctx := integration(t)
 	f := newFixture(t, ctx)
-	email := uniqueEmail("change-race")
-	user := f.seedUser(t, ctx, email, "student")
-	tok := f.loginOK(t, email)
+	const other = "otra clave nueva y larga"
 
-	// Hold the user's row: both changes verify the current password, then wait on the same UPDATE.
-	lock, err := tdb.Super.Begin(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer lock.Rollback(ctx) //nolint:errcheck // released below; this only covers a failed test
-	if _, err := lock.Exec(ctx, `SELECT 1 FROM users WHERE id = $1 FOR UPDATE`, user); err != nil {
-		t.Fatal(err)
-	}
-	nexts := []string{changedPassword, "otra clave nueva y larga"}
-	recs := make([]*httptest.ResponseRecorder, len(nexts))
-	var wg sync.WaitGroup
-	for i, next := range nexts {
-		wg.Go(func() { recs[i] = f.changePassword(tok, password, next) })
-	}
-	waitForPasswordUpdates(t, ctx, len(nexts))
-	if err := lock.Rollback(ctx); err != nil {
-		t.Fatal(err)
-	}
-	wg.Wait()
-
-	winner := -1
-	for i, rec := range recs {
-		if rec.Code == http.StatusNoContent {
-			winner = i
+	// winnerIs fails unless exactly one of recs changed the password to its next one and the other,
+	// the loser, answered 401; it returns the winner's new password.
+	winnerIs := func(user string, recs [2]*httptest.ResponseRecorder, nexts [2]string) string {
+		t.Helper()
+		w := -1
+		for i, rec := range recs {
+			if rec.Code == http.StatusNoContent {
+				w = i
+			}
 		}
+		if w < 0 {
+			t.Fatalf("no change succeeded: %d %s, %d %s", recs[0].Code, recs[0].Body, recs[1].Code, recs[1].Body)
+		}
+		wantResponse(t, recs[1-w], http.StatusUnauthorized, unauthBody)
+		wantNoStore(t, recs[1-w])
+		if ok, err := auth.VerifyPassword(passwordHash(t, ctx, user), nexts[w]); err != nil || !ok {
+			t.Fatalf("stored password is not the winner's (ok %v, err %v)", ok, err)
+		}
+		if n := sessionCount(t, ctx, user); n != 1 {
+			t.Fatalf("sessions = %d, want 1 (the winner's)", n)
+		}
+		return nexts[w]
 	}
-	if winner < 0 {
-		t.Fatalf("no change succeeded: %d %s, %d %s", recs[0].Code, recs[0].Body, recs[1].Code, recs[1].Body)
+
+	// Both changes verify the current password, then wait on the same UPDATE of the user's row.
+	user := f.seedUser(t, ctx, uniqueEmail("change-race"), "student")
+	tok := f.loginOK(t, userEmail(t, ctx, user))
+	row := lockTx(t, ctx, `SELECT 1 FROM users WHERE id = $1 FOR UPDATE`, user)
+	nexts := [2]string{changedPassword, other}
+	var recs [2]*httptest.ResponseRecorder
+	var wg sync.WaitGroup
+	for i := range nexts {
+		wg.Go(func() { recs[i] = f.changePassword(tok, password, nexts[i]) })
 	}
-	loser := recs[1-winner]
-	wantResponse(t, loser, http.StatusUnauthorized, unauthBody)
-	wantNoStore(t, loser)
-	if ok, err := auth.VerifyPassword(passwordHash(t, ctx, user), nexts[winner]); err != nil || !ok {
-		t.Fatalf("stored password is not the winner's (ok %v, err %v)", ok, err)
-	}
-	if n := sessionCount(t, ctx, user); n != 1 {
-		t.Fatalf("sessions = %d, want 1 (the winner's)", n)
-	}
+	waitForLockedQueries(t, ctx, "UPDATE users SET password_hash%", 2)
+	release(t, ctx, row)
+	wg.Wait()
+	winnerIs(user, recs, nexts)
+
+	// The loser takes its attempt after the winner committed and cleared the email's failures: it
+	// passed the session check, then waits on its membership while the winner finishes.
+	email := uniqueEmail("change-race-late")
+	user = f.seedUser(t, ctx, email, "student")
+	tok = f.loginOK(t, email)
+	row = lockTx(t, ctx, `SELECT 1 FROM users WHERE id = $1 FOR UPDATE`, user)
+	done := make(chan struct{})
+	go func() { recs[0] = f.changePassword(tok, password, nexts[0]); close(done) }()
+	waitForLockedQueries(t, ctx, "UPDATE users SET password_hash%", 1)
+	table := lockTx(t, ctx, `LOCK TABLE memberships IN ACCESS EXCLUSIVE MODE`)
+	wg.Go(func() { recs[1] = f.changePassword(tok, password, nexts[1]) })
+	waitForLockedQueries(t, ctx, "%FROM memberships m JOIN organizations o%", 1)
+	release(t, ctx, row)
+	<-done
+	release(t, ctx, table)
+	wg.Wait()
+	next := winnerIs(user, recs, nexts)
 	// No attempt was kept: four failed sign-ins still leave the fifth, which succeeds.
 	for range 4 {
 		wantResponse(t, f.login(email, "no es la clave", "198.51.100.87"), http.StatusUnauthorized, invalidBody)
 	}
-	wantResponse(t, f.login(email, nexts[winner], "198.51.100.87"), http.StatusNoContent, "")
+	wantResponse(t, f.login(email, next, "198.51.100.87"), http.StatusNoContent, "")
+}
 
-	// The loser can also read the hash only after the winner committed: its session is gone then too.
-	email = uniqueEmail("change-race-late")
-	user = f.seedUser(t, ctx, email, "student")
-	first, second := f.loginOK(t, email), f.loginOK(t, email)
-	store := auth.NewStore(tdb.App, f.clk.Now)
-	if _, _, err := store.ChangePassword(ctx, first, user, password, changedPassword); err != nil {
+// lockTx runs sql in a new transaction that keeps its locks until release; a failed test rolls it back.
+func lockTx(t *testing.T, ctx context.Context, sql string, args ...any) pgx.Tx {
+	t.Helper()
+	tx, err := tdb.Super.Begin(ctx)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := store.ChangePassword(ctx, second, user, password, "otra clave nueva y larga"); !errors.Is(err, auth.ErrNoSession) {
-		t.Fatalf("late loser err = %v, want %v", err, auth.ErrNoSession)
+	t.Cleanup(func() { _ = tx.Rollback(context.Background()) })
+	if _, err := tx.Exec(ctx, sql, args...); err != nil {
+		t.Fatal(err)
+	}
+	return tx
+}
+
+func release(t *testing.T, ctx context.Context, tx pgx.Tx) {
+	t.Helper()
+	if err := tx.Rollback(ctx); err != nil {
+		t.Fatal(err)
 	}
 }
 
-// waitForPasswordUpdates waits until n password UPDATEs are blocked on a row lock.
-func waitForPasswordUpdates(t *testing.T, ctx context.Context, n int) {
+// waitForLockedQueries waits until n queries of this database matching the LIKE pattern wait on a lock.
+func waitForLockedQueries(t *testing.T, ctx context.Context, pattern string, n int) {
 	t.Helper()
 	for {
 		var waiting int
 		if err := tdb.Super.QueryRow(ctx, `SELECT count(*) FROM pg_stat_activity
-			WHERE wait_event_type = 'Lock' AND query LIKE 'UPDATE users SET password_hash%'`).Scan(&waiting); err != nil {
+			WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE $1`, pattern).Scan(&waiting); err != nil {
 			t.Fatal(err)
 		}
 		if waiting >= n {
@@ -289,7 +313,7 @@ func waitForPasswordUpdates(t *testing.T, ctx context.Context, n int) {
 		}
 		select {
 		case <-ctx.Done():
-			t.Fatalf("%d of %d password updates waiting: %v", waiting, n, ctx.Err())
+			t.Fatalf("%d of %d queries like %q waiting: %v", waiting, n, pattern, ctx.Err())
 		case <-time.After(10 * time.Millisecond):
 		}
 	}
