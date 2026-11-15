@@ -59,16 +59,16 @@ func TestStoreEntryAuthorizationAndBalance(t *testing.T) {
 		t.Fatal(err)
 	}
 	balance, err := store.Balance(ctx, sess)
-	if err != nil || balance != 150000 {
-		t.Fatalf("balance=%d err=%v", balance, err)
+	if err != nil || balance != "150000" {
+		t.Fatalf("balance=%s err=%v", balance, err)
 	}
 	input.AmountCents = 200000
 	if _, err := store.Create(ctx, sess, input); err != nil {
 		t.Fatal(err)
 	}
 	balance, err = store.Balance(ctx, sess)
-	if err != nil || balance != -50000 {
-		t.Fatalf("negative balance=%d err=%v", balance, err)
+	if err != nil || balance != "-50000" {
+		t.Fatalf("negative balance=%s err=%v", balance, err)
 	}
 	sess.MFAVerified = false
 	if _, err := store.Create(ctx, sess, input); !errors.Is(err, auth.ErrMFARequired) {

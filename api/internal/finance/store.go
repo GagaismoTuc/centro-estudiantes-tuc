@@ -137,7 +137,7 @@ func (s *Store) Create(ctx context.Context, sess auth.Session, in NewEntry) (out
 			return e
 		}
 		recordedAt := s.now()
-		e = tx.QueryRow(ctx, `INSERT INTO finance_entries(tenant_id,category_id,direction,entry_date,amount_cents,description,recorded_by,recorded_by_name,recorded_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id::text`, sess.TenantID, in.CategoryID, in.Direction, date, in.AmountCents, in.Description, sess.UserID, name, recordedAt).Scan(&out.ID)
+		e = tx.QueryRow(ctx, `INSERT INTO finance_entries(tenant_id,category_id,direction,entry_date,amount_cents,description,recorded_by,recorded_by_name,recorded_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id::text, recorded_at`, sess.TenantID, in.CategoryID, in.Direction, date, in.AmountCents, in.Description, sess.UserID, name, recordedAt).Scan(&out.ID, &out.RecordedAt)
 		if e != nil {
 			return e
 		}
@@ -147,7 +147,6 @@ func (s *Store) Create(ctx context.Context, sess auth.Session, in NewEntry) (out
 		out.AmountCents = in.AmountCents
 		out.Description = in.Description
 		out.RecordedBy = name
-		out.RecordedAt = recordedAt
 		return nil
 	})
 	return
@@ -178,9 +177,9 @@ func (s *Store) Get(ctx context.Context, sess auth.Session, id string) (out Entr
 	})
 	return
 }
-func (s *Store) Balance(ctx context.Context, sess auth.Session) (out int64, err error) {
+func (s *Store) Balance(ctx context.Context, sess auth.Session) (out string, err error) {
 	err = s.withMember(ctx, sess, false, func(tx pgx.Tx) error {
-		return tx.QueryRow(ctx, `SELECT COALESCE(sum(CASE direction WHEN 'income' THEN amount_cents ELSE -amount_cents END),0)::bigint FROM finance_entries WHERE tenant_id=$1`, sess.TenantID).Scan(&out)
+		return tx.QueryRow(ctx, `SELECT COALESCE(sum(CASE direction WHEN 'income' THEN amount_cents ELSE -amount_cents END),0)::text FROM finance_entries WHERE tenant_id=$1`, sess.TenantID).Scan(&out)
 	})
 	return
 }
