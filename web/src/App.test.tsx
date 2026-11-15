@@ -204,7 +204,7 @@ describe("Inicio", () => {
     renderAt("/");
     const main = await screen.findByRole("main");
     await within(main).findByRole("heading", { name: "¡Hola!" });
-    expect(byText(main, "Escuela Demo Tucumán · Autoridad escolar")).toBeTruthy();
+    expect(byText(main, "Escuela Demo Tucum\u00e1n \u00b7 Administrador de la escuela")).toBeTruthy();
     expect(within(main).getByRole("link", { name: /Padrón/ })).toBeTruthy();
     expect(within(main).getAllByText("Próximamente")).toHaveLength(3);
 
@@ -479,4 +479,13 @@ describe("A6 under StrictMode: the leave dialog stays until the user answers", (
     expect(screen.getByRole("dialog", { name: leaveTitle })).toBeTruthy();
     expect(sentTo(sent, "POST /auth/logout")).toHaveLength(0);
   });
+});
+
+test("home and sidebar show all roles", async () => {
+  mockApi({ "GET /auth/me": ok(me({ role: "student", roles: ["student", "school_admin"], mfa: "satisfied" })) });
+  renderAt("/");
+  await screen.findByRole("heading", { name: "\u00a1Hola!" });
+  const sidebar = screen.getByRole("complementary");
+  expect(within(sidebar).getAllByText("Alumno, Administrador de la escuela")).toHaveLength(2);
+  expect(screen.getByText(/Alumno, Administrador de la escuela/, { selector: ".page-header__school" })).toBeTruthy();
 });

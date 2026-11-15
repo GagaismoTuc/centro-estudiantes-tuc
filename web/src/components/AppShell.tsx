@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { roleLabel, useMe } from "../auth/session.tsx";
+import { hasRole, roleLabels, useMe } from "../auth/session.tsx";
 import { LeaveConfirmHost, Link } from "../lib/router.tsx";
 import { Icon, type IconName } from "./Icon.tsx";
 import { BrandMark } from "./Page.tsx";
@@ -25,7 +25,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
               <bdi>{me.tenantName}</bdi>
             </p>
           )}
-          <p className="sidebar__subtitle">{me.role ? roleLabel[me.role] : "Sin escuela"}</p>
+          <p className="sidebar__subtitle">{roleLabels(me)}</p>
         </div>
       </div>
 
@@ -40,7 +40,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
               Inicio
             </Link>
           </li>
-          {me.role === "school_admin" && (
+          {hasRole(me, "school_admin") && (
             <li>
               <Link to="/padron" className="nav__item" onClick={onNavigate}>
                 <Icon name="users" />
@@ -48,6 +48,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
               </Link>
             </li>
           )}
+          {hasRole(me, "school_admin") && <li><Link to="/miembros" className="nav__item" onClick={onNavigate}><Icon name="users" />Miembros</Link></li>}
           {upcoming.map((item) => (
             <li key={item.label}>
               <span className="nav__item nav__item--disabled">
@@ -73,7 +74,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         </nav>
         <div className="user-card">
           <p className="user-card__email">{me.email}</p>
-          <p className="user-card__role">{me.role ? roleLabel[me.role] : "Sin escuela"}</p>
+          <p className="user-card__role">{roleLabels(me)}</p>
           <ThemeSwitch />
           <SignOutButton className="button button--ghost button--block">
             <Icon name="logout" />

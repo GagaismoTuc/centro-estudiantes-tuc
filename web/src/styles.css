@@ -95,7 +95,7 @@ a {
   text-underline-offset: 0.2em;
 }
 
-:where(a, button, input, summary, [tabindex]):focus-visible {
+:where(a, button, input, select, summary, [tabindex]):focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
@@ -267,8 +267,10 @@ form {
   font-size: 0.8125rem;
 }
 
-input:where([type="text"], [type="email"], [type="password"], :not([type])) {
+input:where([type="text"], [type="email"], [type="password"], :not([type])),
+select {
   inline-size: 100%;
+  min-inline-size: 0;
   min-block-size: 2.875rem;
   padding: 0.625rem 0.75rem;
   border: 1px solid var(--input-border);
@@ -288,7 +290,8 @@ input:user-invalid {
   text-transform: uppercase;
 }
 @media (pointer: coarse) {
-  input:where([type="text"], [type="email"], [type="password"], :not([type])) {
+  input:where([type="text"], [type="email"], [type="password"], :not([type])),
+  select {
     min-block-size: 3.25rem;
   }
 }

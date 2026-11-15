@@ -2,7 +2,7 @@ import { useState } from "react";
 import { call } from "../api/call.ts";
 import { apiClient } from "../api/client.ts";
 import { errorMessage } from "../api/errors.ts";
-import { roleLabel, useMe } from "../auth/session.tsx";
+import { hasRole, roleLabels, useMe } from "../auth/session.tsx";
 import { FormStatus, type Status } from "../components/Form.tsx";
 import { Icon, type IconName } from "../components/Icon.tsx";
 import { PageTitle, useDocumentTitle } from "../components/Page.tsx";
@@ -59,7 +59,7 @@ export function Home() {
           <p className="page-header__school">
             {me.tenantName !== null && me.role ? (
               <>
-                <bdi>{me.tenantName}</bdi> · {roleLabel[me.role]}
+                <bdi>{me.tenantName}</bdi> · {roleLabels(me)}
               </>
             ) : (
               "Sin escuela"
@@ -88,7 +88,7 @@ export function Home() {
           Módulos
         </h2>
         <ul className="cards">
-          {me.role === "school_admin" && (
+          {hasRole(me, "school_admin") && (
             <li>
               <Link to="/padron" className="card card--link">
                 <span className="card__icon">

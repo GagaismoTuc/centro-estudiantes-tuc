@@ -310,22 +310,29 @@ func (s *Store) DeleteSession(ctx context.Context, token string) error {
 
 // Membership returns the session user's role in the session's tenant and that organization's name,
 // read in one query; both are "" without a tenant or when the membership is gone.
-func (s *Store) Membership(ctx context.Context, sess Session) (role, tenantName string, err error) {
+func (s *Store) Membership(ctx context.Context, sess Session) (roles []string, tenantName string, err error) {
 	if sess.TenantID == "" {
-		return "", "", nil
+		return nil, "", nil
 	}
 	err = db.WithTenant(ctx, s.pool, sess.TenantID, func(tx pgx.Tx) error {
 		return tx.QueryRow(ctx, `
-			SELECT m.role, o.name FROM memberships m JOIN organizations o ON o.id = m.tenant_id
-			WHERE m.user_id = $1`, sess.UserID).Scan(&role, &tenantName)
+			SELECT array_agg(r.role ORDER BY CASE r.role WHEN 'student' THEN 0 WHEN 'officer' THEN 1 ELSE 2 END), r.name
+			FROM (SELECT DISTINCT roles.role, o.name
+			      FROM memberships m JOIN organizations o ON o.id = m.tenant_id
+			      CROSS JOIN LATERAL (SELECT m.role UNION SELECT 'officer' WHERE EXISTS (
+			          SELECT 1 FROM officer_positions p
+			          WHERE p.tenant_id = m.tenant_id AND p.roster_member_id = m.roster_member_id
+			      )) roles
+			      WHERE m.user_id = $1 AND m.tenant_id = $2) r
+			GROUP BY r.name`, sess.UserID, sess.TenantID).Scan(&roles, &tenantName)
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", "", nil // membership removed after sign-in
+		return nil, "", nil // membership removed after sign-in
 	}
 	if err != nil {
-		return "", "", fmt.Errorf("auth: membership: %w", err)
+		return nil, "", fmt.Errorf("auth: membership: %w", err)
 	}
-	return role, tenantName, nil
+	return roles, tenantName, nil
 }
 
 // Bootstrap creates a school, its first user and a school_admin membership in one transaction.

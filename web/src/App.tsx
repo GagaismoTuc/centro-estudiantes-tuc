@@ -1,6 +1,6 @@
 import type { JSX } from "react";
 import { errorMessage } from "./api/errors.ts";
-import { homeFor, SessionProvider, useSession } from "./auth/session.tsx";
+import { hasRole, homeFor, SessionProvider, useSession } from "./auth/session.tsx";
 import { AppShell } from "./components/AppShell.tsx";
 import { AuthLayout } from "./components/AuthLayout.tsx";
 import { PageTitle, useDocumentTitle } from "./components/Page.tsx";
@@ -11,6 +11,7 @@ import { Claim } from "./screens/Claim.tsx";
 import { Home } from "./screens/Home.tsx";
 import { MfaEnroll } from "./screens/MfaEnroll.tsx";
 import { MfaVerify } from "./screens/MfaVerify.tsx";
+import { Members } from "./screens/Members.tsx";
 import { ResetPassword } from "./screens/ResetPassword.tsx";
 import { SignIn } from "./screens/SignIn.tsx";
 import { Roster } from "./screens/Roster.tsx";
@@ -37,6 +38,7 @@ const publicRoutes: Record<string, () => JSX.Element> = {
 const shellRoutes: Record<string, { page: string; Screen: () => JSX.Element }> = {
   "/": { page: "Inicio", Screen: Home },
   "/padron": { page: "Padrón", Screen: Roster },
+  "/miembros": { page: "Miembros", Screen: Members },
   "/seguridad": { page: "Seguridad", Screen: Security },
 };
 
@@ -66,7 +68,7 @@ function Routes() {
     if (path !== home) return <Redirect to={destinationFor(home, nextFromHere)} />;
     return home === "/seguridad/activar" ? <MfaEnroll /> : <MfaVerify />;
   }
-  if (path === "/padron" && me.role !== "school_admin") return <Redirect to="/" />;
+  if ((path === "/padron" || path === "/miembros") && !hasRole(me, "school_admin")) return <Redirect to="/" />;
 
   const route = shellRoutes[path];
   return (

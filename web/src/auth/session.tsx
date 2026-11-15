@@ -8,6 +8,10 @@ import { navigate } from "../lib/router.tsx";
 export type Me = components["schemas"]["Me"];
 export type Role = components["schemas"]["Role"];
 
+export function hasRole(me: Me, role: Role): boolean {
+  return me.roles ? me.roles.includes(role) : me.role === role;
+}
+
 export type Session =
   | { status: "loading" }
   | { status: "anon" }
@@ -27,10 +31,15 @@ type SessionApi = {
 const SessionContext = createContext<SessionApi | null>(null);
 
 export const roleLabel: Record<Role, string> = {
-  school_admin: "Autoridad escolar",
-  officer: "Comisión del centro",
-  student: "Estudiante",
+  school_admin: "Administrador de la escuela",
+  officer: "Integrante de la comisi\u00f3n directiva",
+  student: "Alumno",
 };
+
+export function roleLabels(me: Me): string {
+  const roles = me.roles ?? (me.role ? [me.role] : []);
+  return roles.map((role) => roleLabel[role]).join(", ") || "Sin escuela";
+}
 
 /** Where a user belongs right now, given the two-factor state of the session. */
 export function homeFor(me: Me): string {

@@ -124,6 +124,69 @@ func (e RowErrorCode) Valid() bool {
 	}
 }
 
+// Defines values for DeleteMemberOfficer404JSONResponseBodyError.
+const (
+	DeleteMemberOfficer404JSONResponseBodyErrorNotFound DeleteMemberOfficer404JSONResponseBodyError = "not_found"
+)
+
+// Valid indicates whether the value is a known member of the DeleteMemberOfficer404JSONResponseBodyError enum.
+func (e DeleteMemberOfficer404JSONResponseBodyError) Valid() bool {
+	switch e {
+	case DeleteMemberOfficer404JSONResponseBodyErrorNotFound:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostMemberOfficer404JSONResponseBodyError.
+const (
+	PostMemberOfficer404JSONResponseBodyErrorNotFound PostMemberOfficer404JSONResponseBodyError = "not_found"
+)
+
+// Valid indicates whether the value is a known member of the PostMemberOfficer404JSONResponseBodyError enum.
+func (e PostMemberOfficer404JSONResponseBodyError) Valid() bool {
+	switch e {
+	case PostMemberOfficer404JSONResponseBodyErrorNotFound:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostMemberOfficer409JSONResponseBodyError.
+const (
+	AlreadyOfficer PostMemberOfficer409JSONResponseBodyError = "already_officer"
+	PositionTaken  PostMemberOfficer409JSONResponseBodyError = "position_taken"
+)
+
+// Valid indicates whether the value is a known member of the PostMemberOfficer409JSONResponseBodyError enum.
+func (e PostMemberOfficer409JSONResponseBodyError) Valid() bool {
+	switch e {
+	case AlreadyOfficer:
+		return true
+	case PositionTaken:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostMemberOfficer422JSONResponseBodyError.
+const (
+	InvalidPosition PostMemberOfficer422JSONResponseBodyError = "invalid_position"
+)
+
+// Valid indicates whether the value is a known member of the PostMemberOfficer422JSONResponseBodyError enum.
+func (e PostMemberOfficer422JSONResponseBodyError) Valid() bool {
+	switch e {
+	case InvalidPosition:
+		return true
+	default:
+		return false
+	}
+}
+
 // ClaimRequest defines model for ClaimRequest.
 type ClaimRequest struct {
 	Code     string `json:"code"`
@@ -192,6 +255,9 @@ type Me struct {
 
 	// Role Role in the active tenant; null when the user has no membership.
 	Role *Role `json:"role"`
+
+	// Roles All roles in the active tenant when there is more than one.
+	Roles *[]Role `json:"roles,omitempty"`
 
 	// TenantId Active tenant of the session; null whenever `role` is null (no membership there).
 	TenantId *string `json:"tenantId"`
@@ -278,6 +344,15 @@ type RowError struct {
 // RowErrorCode What is wrong with the line; clients explain it in their own language.
 type RowErrorCode string
 
+// SchoolMember defines model for SchoolMember.
+type SchoolMember struct {
+	Email          *string `json:"email"`
+	FullName       *string `json:"fullName"`
+	Position       *string `json:"position"`
+	Roles          []Role  `json:"roles"`
+	RosterMemberId *string `json:"rosterMemberId"`
+}
+
 // TokenRequest defines model for TokenRequest.
 type TokenRequest struct {
 	// Token The value after `#token=` in the emailed link.
@@ -301,6 +376,23 @@ type TooManyAttempts = Error
 
 // Unauthenticated defines model for Unauthenticated.
 type Unauthenticated = Error
+
+// DeleteMemberOfficer404JSONResponseBodyError defines parameters for DeleteMemberOfficer.
+type DeleteMemberOfficer404JSONResponseBodyError string
+
+// PostMemberOfficerJSONBody defines parameters for PostMemberOfficer.
+type PostMemberOfficerJSONBody struct {
+	Position string `json:"position"`
+}
+
+// PostMemberOfficer404JSONResponseBodyError defines parameters for PostMemberOfficer.
+type PostMemberOfficer404JSONResponseBodyError string
+
+// PostMemberOfficer409JSONResponseBodyError defines parameters for PostMemberOfficer.
+type PostMemberOfficer409JSONResponseBodyError string
+
+// PostMemberOfficer422JSONResponseBodyError defines parameters for PostMemberOfficer.
+type PostMemberOfficer422JSONResponseBodyError string
 
 // PostAuthClaimJSONRequestBody defines body for PostAuthClaim for application/json ContentType.
 type PostAuthClaimJSONRequestBody = ClaimRequest
@@ -334,6 +426,9 @@ type PostAuthPasswordResetRequestJSONRequestBody = EmailRequest
 
 // PostAuthRedeemJSONRequestBody defines body for PostAuthRedeem for application/json ContentType.
 type PostAuthRedeemJSONRequestBody = RedeemRequest
+
+// PostMemberOfficerJSONRequestBody defines body for PostMemberOfficer for application/json ContentType.
+type PostMemberOfficerJSONRequestBody PostMemberOfficerJSONBody
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -385,6 +480,15 @@ type ServerInterface interface {
 	// GetHealth Liveness check
 	// (GET /health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
+	// GetMembers List accounts and unclaimed officers in the active school
+	// (GET /members)
+	GetMembers(w http.ResponseWriter, r *http.Request)
+	// DeleteMemberOfficer Remove an officer position
+	// (DELETE /members/{memberId}/officer)
+	DeleteMemberOfficer(w http.ResponseWriter, r *http.Request, memberId string)
+	// PostMemberOfficer Assign an officer position to a roster member
+	// (POST /members/{memberId}/officer)
+	PostMemberOfficer(w http.ResponseWriter, r *http.Request, memberId string)
 	// GetRoster List the roster of the active tenant
 	// (GET /roster)
 	GetRoster(w http.ResponseWriter, r *http.Request)
@@ -632,6 +736,72 @@ func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Requ
 	handler.ServeHTTP(w, r)
 }
 
+// GetMembers operation middleware
+func (siw *ServerInterfaceWrapper) GetMembers(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetMembers(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteMemberOfficer operation middleware
+func (siw *ServerInterfaceWrapper) DeleteMemberOfficer(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "memberId" -------------
+	var memberId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "memberId", r.PathValue("memberId"), &memberId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "memberId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteMemberOfficer(w, r, memberId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostMemberOfficer operation middleware
+func (siw *ServerInterfaceWrapper) PostMemberOfficer(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "memberId" -------------
+	var memberId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "memberId", r.PathValue("memberId"), &memberId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "memberId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostMemberOfficer(w, r, memberId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetRoster operation middleware
 func (siw *ServerInterfaceWrapper) GetRoster(w http.ResponseWriter, r *http.Request) {
 
@@ -836,6 +1006,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/mfa/enrollment", wrapper.PostAuthMfaEnrollment)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/mfa/enrollment/confirm", wrapper.PostAuthMfaEnrollmentConfirm)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/mfa/verify", wrapper.PostAuthMfaVerify)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/members", wrapper.GetMembers)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/members/{memberId}/officer", wrapper.DeleteMemberOfficer)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/members/{memberId}/officer", wrapper.PostMemberOfficer)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/roster", wrapper.GetRoster)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/roster/import", wrapper.PostRosterImport)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/roster/{memberId}/access-code", wrapper.PostRosterMemberAccessCode)

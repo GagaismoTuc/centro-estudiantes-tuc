@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -183,22 +184,38 @@ func (s *server) GetAuthMe(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "unauthenticated")
 		return
 	}
-	role, tenantName, err := s.store.Membership(r.Context(), sess)
+	me, err := s.sessionMe(r.Context(), sess)
 	if err != nil {
 		slog.Error("me", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal")
 		return
 	}
+	writeJSON(w, http.StatusOK, me)
+}
+
+func (s *server) sessionMe(ctx context.Context, sess auth.Session) (oapi.Me, error) {
+	roles, tenantName, err := s.store.Membership(ctx, sess)
+	if err != nil {
+		return oapi.Me{}, err
+	}
 	me := oapi.Me{UserId: sess.UserID, Email: sess.Email, EmailVerified: sess.EmailVerified,
-		Mfa: oapi.MfaState(auth.MFAStateOf(sess, role))}
+		Mfa: oapi.MfaState(auth.MFAStateOf(sess, roles...))}
 	// A tenant without a role (membership removed after sign-in) is not reported.
-	if role != "" {
-		r := oapi.Role(role)
+	if len(roles) != 0 {
+		// Keep the legacy single-role view privileged when a user has several roles.
+		r := oapi.Role(roles[len(roles)-1])
 		me.Role = &r
+		if len(roles) > 1 {
+			all := make([]oapi.Role, len(roles))
+			for i, role := range roles {
+				all[i] = oapi.Role(role)
+			}
+			me.Roles = &all
+		}
 		me.TenantId = &sess.TenantID
 		me.TenantName = &tenantName
 	}
-	writeJSON(w, http.StatusOK, me)
+	return me, nil
 }
 
 // startSession replaces the request's previous session with a new one for userID and sets its

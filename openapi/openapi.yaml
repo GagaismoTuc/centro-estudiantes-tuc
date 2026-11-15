@@ -163,7 +163,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthenticated"
         "409":
-          description: The user already belongs to the code's tenant (`already_member`); the code stays usable.
+          description: The user already has the student role in the code's tenant (`already_member`); the code stays usable.
           content:
             application/json:
               schema:
@@ -463,6 +463,106 @@ paths:
           $ref: "#/components/responses/InvalidMfaCode"
         "429":
           $ref: "#/components/responses/TooManyAttempts"
+  /members:
+    get:
+      operationId: getMembers
+      summary: List accounts and unclaimed officers in the active school
+      responses:
+        "200":
+          description: Members.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SchoolMember"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /members/{memberId}/officer:
+    parameters:
+      - name: memberId
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      operationId: postMemberOfficer
+      summary: Assign an officer position to a roster member
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [position]
+              properties:
+                position:
+                  type: string
+      responses:
+        "201":
+          description: Assigned.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Roster member not found.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [not_found]
+        "409":
+          description: already_officer or position_taken.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [already_officer, position_taken]
+        "422":
+          description: invalid_position.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [invalid_position]
+    delete:
+      operationId: deleteMemberOfficer
+      summary: Remove an officer position
+      responses:
+        "204":
+          description: Removed.
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Officer not found.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [not_found]
   /roster:
     get:
       operationId: getRoster
@@ -786,10 +886,35 @@ components:
             - $ref: "#/components/schemas/Role"
           nullable: true
           description: Role in the active tenant; null when the user has no membership.
+        roles:
+          type: array
+          description: All roles in the active tenant when there is more than one.
+          items:
+            $ref: "#/components/schemas/Role"
         emailVerified:
           type: boolean
         mfa:
           $ref: "#/components/schemas/MfaState"
+    SchoolMember:
+      type: object
+      required: [email, fullName, rosterMemberId, position, roles]
+      properties:
+        email:
+          type: string
+          nullable: true
+        fullName:
+          type: string
+          nullable: true
+        rosterMemberId:
+          type: string
+          nullable: true
+        position:
+          type: string
+          nullable: true
+        roles:
+          type: array
+          items:
+            $ref: "#/components/schemas/Role"
     RosterMember:
       type: object
       required: [id, fullName, documentNumber, hasActiveCode, hasAccount]

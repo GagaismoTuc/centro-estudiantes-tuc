@@ -17,7 +17,7 @@ var (
 	// ErrInvalidCode covers malformed, unknown, used, revoked and expired codes, and codes whose roster
 	// member already has an account: callers must not be able to tell them apart.
 	ErrInvalidCode = errors.New("roster: invalid access code")
-	// ErrAlreadyMember means the user already belongs to the code's tenant.
+	// ErrAlreadyMember means the user already has the student role in the code's tenant.
 	ErrAlreadyMember = errors.New("roster: already a member of the code's tenant")
 )
 
@@ -120,7 +120,7 @@ func (s *Store) Redeem(ctx context.Context, sess auth.Session, token, code strin
 	out := Claimed{UserID: sess.UserID}
 	err := s.useCode(ctx, code, s.now, func(tx pgx.Tx, tenant, member string) error {
 		var already bool
-		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT FROM memberships WHERE tenant_id = $1 AND user_id = $2)`,
+		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT FROM memberships WHERE tenant_id = $1 AND user_id = $2 AND role = 'student')`,
 			tenant, sess.UserID).Scan(&already); err != nil {
 			return err
 		}
@@ -166,7 +166,7 @@ func mapClaimError(err error) error {
 	switch pgErr.ConstraintName {
 	case "users_email_lower_key":
 		return auth.ErrEmailTaken
-	case "memberships_tenant_id_user_id_key":
+	case "memberships_tenant_id_user_id_role_key":
 		return ErrAlreadyMember
 	case "memberships_roster_member_id_key":
 		return ErrInvalidCode
