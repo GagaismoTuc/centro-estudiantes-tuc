@@ -162,6 +162,7 @@ function DraftForm({ election, onSaved }: { election: Election | null; onSaved: 
           {...form.field("name")}
           value={name}
           maxLength={120}
+          required
           autoComplete="off"
           onChange={(event) => setName(event.target.value)}
         />
@@ -171,6 +172,7 @@ function DraftForm({ election, onSaved }: { election: Election | null; onSaved: 
               key={d.name}
               label={d.label}
               type="datetime-local"
+              required
               {...form.field(d.name)}
               value={dates[d.name]}
               onChange={(event) => setDates((current) => ({ ...current, [d.name]: event.target.value }))}

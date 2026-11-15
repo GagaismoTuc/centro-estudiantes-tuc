@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { App } from "./App.tsx";
+import css from "./styles.css?raw";
 import { fail, me, mockApi, ok, sentTo, type Reply } from "./test/api.ts";
 
 afterEach(() => vi.restoreAllMocks());
@@ -77,6 +78,15 @@ test("a commission member creates the draft with the default positions in Argent
   await screen.findByRole("heading", { level: 2, name: "Creá la elección" });
   const positions = screen.getAllByRole("textbox", { name: /^Cargo \d$/ }) as HTMLInputElement[];
   expect(positions.map((p) => p.value)).toEqual(["Presidente", "Vicepresidente", "Secretario", "Tesorero"]);
+  const requiredFields = [
+    "Nombre de la elección",
+    "Inicio de la presentación de listas",
+    "Fin de la presentación de listas",
+    "Inicio de la votación",
+    "Fin de la votación",
+  ];
+  for (const label of requiredFields) expect((screen.getByLabelText(label) as HTMLInputElement).required).toBe(true);
+  expect(screen.getByLabelText("Nombre de la elección").closest("form")?.noValidate).toBe(true);
 
   fireEvent.change(screen.getByLabelText("Nombre de la elección"), { target: { value: "Elección 2027" } });
   fireEvent.change(screen.getByLabelText("Inicio de la presentación de listas"), { target: { value: "2027-03-01T00:00" } });
@@ -169,4 +179,17 @@ test("a student sees the election with its Spanish state, dates, positions and c
   expect(within(commission).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["Ana Ficticia", "Beto Ficticio"]);
   expect(screen.queryByText("Elegí los integrantes")).toBeNull();
   expect(within(mainNav()).queryByRole("link", { name: "Centro de estudiantes" })).toBeNull();
+});
+
+test("long single-word names wrap at 360 px and checkboxes keep their size", () => {
+  // Every block whose selector list names `selector`, joined.
+  const rule = (selector: string) =>
+    [...css.matchAll(/([^{}]+)\{([^}]*)\}/g)]
+      .filter((m) => m[1]!.split(",").some((s) => s.trim() === selector))
+      .map((m) => m[2])
+      .join("\n");
+  expect(rule(".plain-list li")).toContain("overflow-wrap: anywhere");
+  expect(rule(".check label")).toContain("overflow-wrap: anywhere");
+  expect(rule(".check input")).toContain("flex: none");
+  expect(rule(".check input")).toContain("inline-size: 1.25rem");
 });
