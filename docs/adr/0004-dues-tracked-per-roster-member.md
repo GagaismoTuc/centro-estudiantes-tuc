@@ -8,7 +8,7 @@ Status: accepted · Date: 2026-11-14
 `AGENTS.md` notes that the Roster holds minors' personal data. In the Finanzas grilling (#29) the planner
 recommended tracking Dues only in aggregate. The owner reversed that, verbatim:
 
-> "preferiria que si se guarde el dato personal de quien pago y quien no (aca ignorar lo de la ley de datos porque no aplica)." (S5)
+> "preferiria que si se guarde el dato personal de quien pago y quien no (aca ignorar lo de la ley de datos porque no aplica)." (Q5)
 
 ## Decision
 
@@ -20,7 +20,8 @@ Each Due payment and each Exemption is recorded against one Roster member. Visib
 - The Financial accountability report shows only totals per Due ("312 de 470 pagaron"), never names.
 - An Exemption requires a reason, and only those who see the full list can see it.
 
-This supersedes `docs/spec/mvp.md` section 6 only for this data.
+This supersedes `docs/spec/mvp.md` section 6 only in its Law 25.326 objection to storing who paid; encrypted
+backups and the rest of section 6 still apply.
 
 ## Considered Options
 
