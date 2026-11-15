@@ -31,9 +31,9 @@ type SessionApi = {
 const SessionContext = createContext<SessionApi | null>(null);
 
 export const roleLabel: Record<Role, string> = {
-  school_admin: "Autoridad escolar",
-  officer: "Comisión del centro",
-  student: "Estudiante",
+  school_admin: "Administrador de la escuela",
+  officer: "Integrante de la comisi\u00f3n directiva",
+  student: "Alumno",
 };
 
 export function roleLabels(me: Me): string {

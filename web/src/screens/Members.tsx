@@ -3,17 +3,12 @@ import { call } from "../api/call.ts";
 import { apiClient } from "../api/client.ts";
 import { errorMessage } from "../api/errors.ts";
 import type { components } from "../api/schema.gen.ts";
-import { useSession } from "../auth/session.tsx";
+import { roleLabel, useSession } from "../auth/session.tsx";
 import { FormStatus, type Status } from "../components/Form.tsx";
 import { PageTitle, useDocumentTitle } from "../components/Page.tsx";
 
 type Member = components["schemas"]["SchoolMember"];
 type RosterMember = components["schemas"]["RosterMember"];
-const labels: Record<components["schemas"]["Role"], string> = {
-  school_admin: "Administrador de la escuela",
-  student: "Alumno",
-  officer: "Integrante de la comisi\u00f3n directiva",
-};
 const positions = ["Presidente", "Vicepresidente", "Secretario", "Tesorero"];
 
 export function Members() {
@@ -79,7 +74,7 @@ export function Members() {
     <section className="panel"><h2>Miembros</h2>
       <ul>{members.map((m, i) => <li key={m.email ?? m.rosterMemberId ?? i}>
         <bdi>{m.fullName ?? m.email}</bdi>{m.fullName && m.email && <> {"\u2014"} <bdi>{m.email}</bdi></>}{m.email === null && <> {"\u2014"} <span>sin cuenta</span></>}
-        <ul>{m.roles.map((role) => <li key={role}>{labels[role]}{role === "officer" && m.position ? ` \u2014 ${m.position}` : ""}</li>)}</ul>
+        <ul>{m.roles.map((role) => <li key={role}>{roleLabel[role]}{role === "officer" && m.position ? ` \u2014 ${m.position}` : ""}</li>)}</ul>
         {m.position && m.rosterMemberId && <button type="button" className="button button--secondary" disabled={busy} aria-label={`Quitar cargo de ${m.fullName ?? m.email ?? ""}`} onClick={() => void remove(m.rosterMemberId!)}>Quitar cargo</button>}
       </li>)}</ul>
     </section>

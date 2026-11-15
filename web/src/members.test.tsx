@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { App } from "./App.tsx";
+import css from "./styles.css?raw";
 import { fail, me, mockApi, ok, sentTo } from "./test/api.ts";
 
 afterEach(() => vi.restoreAllMocks());
@@ -17,8 +18,8 @@ test("members lists roles and unclaimed officers and assigns a position", async 
   });
   window.history.replaceState(null, "", "/miembros");
   render(<App />);
-  expect(await screen.findByText("Administrador de la escuela")).toBeTruthy();
-  expect(screen.getByText("Integrante de la comisi\u00f3n directiva \u2014 Tesorero")).toBeTruthy();
+  expect((await screen.findAllByText("Administrador de la escuela")).length).toBeGreaterThan(0);
+  expect(await screen.findByText("Integrante de la comisi\u00f3n directiva \u2014 Tesorero")).toBeTruthy();
   expect(screen.getByText("Alumno")).toBeTruthy();
   expect(screen.getByText("sin cuenta")).toBeTruthy();
   fireEvent.change(screen.getByLabelText("Alumno del padr\u00f3n"), { target: { value: "m2" } });
@@ -80,4 +81,12 @@ test("removing a position updates members", async () => {
   await waitFor(() => expect(sentTo(sent, "DELETE /members/m1/officer")).toHaveLength(1));
   await screen.findByText("Se quit\u00f3 el cargo.");
   expect(screen.queryByText("Ana Ficticia")).toBeNull();
+});
+
+test("member selects have constrained, touch-sized field styling", () => {
+  const rule = css.match(/(?:^|\n)select\s*\{([^}]*)\}/);
+  expect(rule).not.toBeNull();
+  for (const declaration of ["inline-size: 100%", "min-inline-size: 0", "min-block-size: 2.875rem", "font-size: max(1rem, 1em)", "border:", "border-radius:"]) {
+    expect(rule![1]).toContain(declaration);
+  }
 });

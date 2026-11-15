@@ -204,7 +204,7 @@ describe("Inicio", () => {
     renderAt("/");
     const main = await screen.findByRole("main");
     await within(main).findByRole("heading", { name: "¡Hola!" });
-    expect(byText(main, "Escuela Demo Tucumán · Autoridad escolar")).toBeTruthy();
+    expect(byText(main, "Escuela Demo Tucum\u00e1n \u00b7 Administrador de la escuela")).toBeTruthy();
     expect(within(main).getByRole("link", { name: /Padrón/ })).toBeTruthy();
     expect(within(main).getAllByText("Próximamente")).toHaveLength(3);
 
@@ -486,6 +486,6 @@ test("home and sidebar show all roles", async () => {
   renderAt("/");
   await screen.findByRole("heading", { name: "\u00a1Hola!" });
   const sidebar = screen.getByRole("complementary");
-  expect(within(sidebar).getAllByText("Estudiante, Autoridad escolar")).toHaveLength(2);
-  expect(screen.getByText(/Estudiante, Autoridad escolar/, { selector: ".page-header__school" })).toBeTruthy();
+  expect(within(sidebar).getAllByText("Alumno, Administrador de la escuela")).toHaveLength(2);
+  expect(screen.getByText(/Alumno, Administrador de la escuela/, { selector: ".page-header__school" })).toBeTruthy();
 });
