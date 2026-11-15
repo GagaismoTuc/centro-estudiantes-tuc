@@ -9,6 +9,7 @@ import { destinationFor, readNext, safeNext, withNext } from "./lib/next.ts";
 import { Redirect, usePathname } from "./lib/router.tsx";
 import { Claim } from "./screens/Claim.tsx";
 import { Home } from "./screens/Home.tsx";
+import { Finance } from "./screens/Finance.tsx";
 import { MfaEnroll } from "./screens/MfaEnroll.tsx";
 import { MfaVerify } from "./screens/MfaVerify.tsx";
 import { Members } from "./screens/Members.tsx";
@@ -37,6 +38,7 @@ const publicRoutes: Record<string, () => JSX.Element> = {
 
 const shellRoutes: Record<string, { page: string; Screen: () => JSX.Element }> = {
   "/": { page: "Inicio", Screen: Home },
+  "/caja": { page: "Caja", Screen: Finance },
   "/padron": { page: "Padrón", Screen: Roster },
   "/miembros": { page: "Miembros", Screen: Members },
   "/seguridad": { page: "Seguridad", Screen: Security },

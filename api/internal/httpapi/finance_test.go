@@ -51,12 +51,21 @@ func TestFinanceRules(t *testing.T) {
 		}
 		return n
 	}
+	snapshot := func() string {
+		t.Helper()
+		var n int
+		var balance string
+		if err := tdb.Super.QueryRow(ctx, `SELECT count(*), COALESCE(sum(CASE direction WHEN 'income' THEN amount_cents ELSE -amount_cents END),0)::text FROM finance_entries WHERE tenant_id=$1`, f.tenant).Scan(&n, &balance); err != nil {
+			t.Fatal(err)
+		}
+		return fmt.Sprintf("%d:%s", n, balance)
+	}
 	checkReject := func(t *testing.T, body string, status int, code string) {
 		t.Helper()
-		before := count()
+		before := snapshot()
 		r := f.do(http.MethodPost, "/api/finance/entries", body, "198.51.100.12", officer, nil)
 		wantResponse(t, r, status, fmt.Sprintf(`{"error":%q}`, code))
-		if count() != before {
+		if snapshot() != before {
 			t.Fatal("rejected entry was written")
 		}
 	}
@@ -78,27 +87,16 @@ func TestFinanceRules(t *testing.T) {
 		if out.RecordedBy != "Ana Ficticia" || out.Date != "2026-11-10" || out.AmountCents != 200000 || !out.RecordedAt.Equal(f.clk.Now()) {
 			t.Fatalf("entry=%+v", out)
 		}
+		var stored time.Time
+		if err := tdb.Super.QueryRow(ctx, `SELECT recorded_at FROM finance_entries WHERE id=$1`, created).Scan(&stored); err != nil || !stored.Equal(out.RecordedAt) {
+			t.Fatalf("stored time=%v err=%v", stored, err)
+		}
 	})
 	t.Run("R2 rejects invalid amounts without writes", func(t *testing.T) {
 		for _, amount := range []string{"0", "-50000", "1250.5", "null", "9223372036854775808"} {
 			checkReject(t, makeBody(income, "income", "2026-11-10", amount, "Fixture"), 422, "invalid_amount")
 		}
 		checkReject(t, fmt.Sprintf(`{"categoryId":%q,"direction":"income","date":"2026-11-10","description":"Fixture"}`, income), 422, "invalid_amount")
-	})
-	t.Run("R3 validates Argentina date", func(t *testing.T) {
-		for _, date := range []string{"2026-11-14", "2025-03-01"} {
-			if got := post(makeBody(income, "income", date, "1", "Fixture"), officer); got != 201 {
-				t.Fatalf("date %s status=%d", date, got)
-			}
-		}
-		checkReject(t, makeBody(income, "income", "2026-11-15", "1", "Fixture"), 422, "future_date")
-		for _, date := range []string{"", "not-a-date"} {
-			checkReject(t, makeBody(income, "income", date, "1", "Fixture"), 422, "invalid_date")
-		}
-		checkReject(t, fmt.Sprintf(`{"categoryId":%q,"direction":"income","amountCents":1,"description":"Fixture"}`, income), 422, "invalid_date")
-		f.clk.t = time.Date(2026, 11, 14, 2, 0, 0, 0, time.UTC)
-		checkReject(t, makeBody(income, "income", "2026-11-14", "1", "Fixture"), 422, "future_date")
-		f.clk.t = time.Date(2026, 11, 14, 12, 1, 0, 0, time.UTC)
 	})
 	t.Run("R4 validates descriptions", func(t *testing.T) {
 		for _, d := range []string{"", "   "} {
@@ -150,7 +148,7 @@ func TestFinanceRules(t *testing.T) {
 		}
 		r := f.do("GET", "/api/finance/balance", "", "198.51.100.12", student, nil)
 		var b struct{ BalanceCents int64 }
-		if err := json.Unmarshal(r.Body.Bytes(), &b); err != nil || b.BalanceCents != 150002 {
+		if err := json.Unmarshal(r.Body.Bytes(), &b); err != nil || b.BalanceCents != 150000 {
 			t.Fatalf("balance=%+v err=%v", b, err)
 		}
 		if post(makeBody(expense, "expense", "2026-11-10", "200000", "Fixture"), officer) != 201 {
@@ -158,7 +156,7 @@ func TestFinanceRules(t *testing.T) {
 		}
 		r = f.do("GET", "/api/finance/balance", "", "198.51.100.12", student, nil)
 		_ = json.Unmarshal(r.Body.Bytes(), &b)
-		if b.BalanceCents != -49998 {
+		if b.BalanceCents != -50000 {
 			t.Fatalf("balance=%+v", b)
 		}
 		for i := 0; i < 2; i++ {
@@ -167,7 +165,7 @@ func TestFinanceRules(t *testing.T) {
 			}
 		}
 		r = f.do("GET", "/api/finance/balance", "", "198.51.100.12", student, nil)
-		if r.Code != 200 || !strings.Contains(r.Body.String(), "18446744073709501616") {
+		if r.Code != 200 || !strings.Contains(r.Body.String(), "18446744073709501614") {
 			t.Fatalf("wide balance: %d %s", r.Code, r.Body)
 		}
 		for i := 0; i < 2; i++ {
@@ -176,14 +174,29 @@ func TestFinanceRules(t *testing.T) {
 			}
 		}
 	})
+	t.Run("R3 validates Argentina date", func(t *testing.T) {
+		for _, date := range []string{"2026-11-14", "2025-03-01"} {
+			if got := post(makeBody(income, "income", date, "1", "Fixture"), officer); got != 201 {
+				t.Fatalf("date %s status=%d", date, got)
+			}
+		}
+		checkReject(t, makeBody(income, "income", "2026-11-15", "1", "Fixture"), 422, "future_date")
+		for _, date := range []string{"", "not-a-date"} {
+			checkReject(t, makeBody(income, "income", date, "1", "Fixture"), 422, "invalid_date")
+		}
+		checkReject(t, fmt.Sprintf(`{"categoryId":%q,"direction":"income","amountCents":1,"description":"Fixture"}`, income), 422, "invalid_date")
+		f.clk.t = time.Date(2026, 11, 14, 2, 0, 0, 0, time.UTC)
+		checkReject(t, makeBody(income, "income", "2026-11-14", "1", "Fixture"), 422, "future_date")
+		f.clk.t = time.Date(2026, 11, 14, 12, 1, 0, 0, time.UTC)
+	})
 	t.Run("R8 edit and delete are unsupported", func(t *testing.T) {
 		for _, method := range []string{"PUT", "DELETE"} {
-			before := count()
+			before := snapshot()
 			r := f.do(method, "/api/finance/entries/"+created, "", "198.51.100.12", officer, nil)
 			if r.Code != 405 {
 				t.Fatalf("%s status=%d", method, r.Code)
 			}
-			if count() != before {
+			if snapshot() != before {
 				t.Fatal("entry changed")
 			}
 		}
@@ -195,10 +208,10 @@ func TestFinanceRules(t *testing.T) {
 			status int
 			code   string
 		}{{"", 401, "unauthenticated"}, {student, 403, "forbidden"}, {admin, 403, "forbidden"}, {unverified, 403, "mfa_required"}} {
-			before := count()
+			before := snapshot()
 			r := f.do("POST", "/api/finance/entries", body, "198.51.100.12", c.token, nil)
 			wantResponse(t, r, c.status, fmt.Sprintf(`{"error":%q}`, c.code))
-			if count() != before {
+			if snapshot() != before {
 				t.Fatal("unauthorized write")
 			}
 		}
@@ -230,11 +243,17 @@ func TestFinanceRules(t *testing.T) {
 		if _, err := tdb.Super.Exec(ctx, `DELETE FROM memberships WHERE tenant_id=$1 AND role='officer'`, f.tenant); err != nil {
 			t.Fatal(err)
 		}
-		before := count()
-		r := f.do("POST", "/api/finance/entries", makeBody(income, "income", "2026-11-10", "1", "Fixture"), "198.51.100.12", student, nil)
-		wantResponse(t, r, 403, `{"error":"forbidden"}`)
-		if count() != before {
+		before := snapshot()
+		for _, token := range []string{student, admin} {
+			r := f.do("POST", "/api/finance/entries", makeBody(income, "income", "2026-11-10", "1", "Fixture"), "198.51.100.12", token, nil)
+			wantResponse(t, r, 403, `{"error":"forbidden"}`)
+		}
+		if snapshot() != before {
 			t.Fatal("headless write")
+		}
+		r := f.do("GET", "/api/finance/entries", "", "198.51.100.12", student, nil)
+		if r.Code != 200 {
+			t.Fatalf("entries %d", r.Code)
 		}
 		if r = f.do("GET", "/api/finance/balance", "", "198.51.100.12", student, nil); r.Code != 200 {
 			t.Fatalf("balance %d", r.Code)

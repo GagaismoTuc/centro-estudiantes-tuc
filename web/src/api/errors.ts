@@ -21,6 +21,13 @@ const messages: Record<string, string> = {
   already_officer: "Ese alumno ya tiene un cargo.",
   position_taken: "Ese cargo ya est\u00e1 ocupado.",
   invalid_position: "Eleg\u00ed un cargo v\u00e1lido.",
+  invalid_amount: "Ingres\u00e1 un monto positivo en centavos enteros.",
+  invalid_date: "Eleg\u00ed una fecha v\u00e1lida.",
+  future_date: "La fecha no puede ser futura.",
+  description_required: "Escrib\u00ed una descripci\u00f3n.",
+  description_too_long: "La descripci\u00f3n puede tener hasta 500 caracteres.",
+  invalid_category: "Eleg\u00ed una categor\u00eda v\u00e1lida para el movimiento.",
+  reserved_category: "Esa categor\u00eda est\u00e1 reservada para pagos de cuotas.",
   member_has_account: "Esa persona ya tiene una cuenta.",
   body_too_large: "El archivo es demasiado grande. El máximo es 1 MB.",
   unsupported_media_type: "El archivo tiene que ser CSV.",
@@ -60,6 +67,11 @@ export function errorMessage(code: string, context?: ErrorContext): string {
 
 /** Form fields an error code is about, so the form can mark them invalid and focus the first. */
 const fieldsByCode: Record<string, string[]> = {
+  invalid_amount: ["amount"],
+  invalid_date: ["date"],
+  future_date: ["date"],
+  description_required: ["description"],
+  description_too_long: ["description"],
   invalid_credentials: ["email", "password", "currentPassword"],
   invalid_email: ["email"],
   email_in_use: ["email"],

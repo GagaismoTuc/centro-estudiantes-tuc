@@ -7,7 +7,6 @@ import { SignOutButton } from "./SignOut.tsx";
 import { ThemeSwitch } from "./ThemeSwitch.tsx";
 
 const upcoming: { label: string; icon: IconName }[] = [
-  { label: "Finanzas", icon: "wallet" },
   { label: "Elecciones", icon: "ballot" },
   { label: "Notas", icon: "note" },
 ];
@@ -49,6 +48,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
             </li>
           )}
           {hasRole(me, "school_admin") && <li><Link to="/miembros" className="nav__item" onClick={onNavigate}><Icon name="users" />Miembros</Link></li>}
+          <li><Link to="/caja" className="nav__item" onClick={onNavigate}><Icon name="wallet" />Caja</Link></li>
           {upcoming.map((item) => (
             <li key={item.label}>
               <span className="nav__item nav__item--disabled">
