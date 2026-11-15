@@ -249,7 +249,7 @@ export interface paths {
         put?: never;
         /**
          * Change the password of the signed-in user
-         * @description Checks the new password first (10 to 128 characters, `weak_password`), then the current one. A wrong current password counts as a failed sign-in for the user's email (same limit as `/auth/login`: 5 per 15 minutes, then 429). A school admin or officer needs a session that completed two-factor authentication. On success stores the new password, marks every pending emailed link of the user used, deletes every other session of the user and rotates this one: a new cookie with the same absolute expiry (Max-Age is the remaining lifetime) and the old token stops working. Errors change nothing. Responses carry `Cache-Control: no-store`.
+         * @description Checks the new password first (10 to 128 characters, `weak_password`), then the current one. A wrong current password counts as a failed sign-in for the user's email (same limit as `/auth/login`: 5 per 15 minutes, then 429). A school admin, officer or Electoral commission member needs a session that completed two-factor authentication. On success stores the new password, marks every pending emailed link of the user used, deletes every other session of the user and rotates this one: a new cookie with the same absolute expiry (Max-Age is the remaining lifetime) and the old token stops working. Errors change nothing. Responses carry `Cache-Control: no-store`.
          */
         post: operations["postAuthPassword"];
         delete?: never;
@@ -591,10 +591,208 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/electoral-commission": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the active school's current Electoral commission
+         * @description Any member of the active school (student, officer or school admin); no second factor needed. `commission` is null until one is designated. `isMember` says whether the caller's roster entry sits on it; `canDesignate` whether the caller may designate or replace it now by role (any officer when the school has officers, otherwise the school admin), regardless of the second factor and of `election_frozen`. Responses carry `Cache-Control: no-store`.
+         */
+        get: operations["getElectoralCommission"];
+        /**
+         * Designate or replace the members of the current Electoral commission
+         * @description Any officer when the school has officers (an officer position or the officer role); otherwise the school admin. Checked on every request, so it applies to replacing too. The role is checked first (`forbidden`), then the second factor (`mfa_required`); both before the body is read. Each id is a roster member of the active school with an account; a repeated id is stored once. The whole list replaces the current members; the commission is created when the school has none. Every error writes nothing. Responses carry `Cache-Control: no-store`.
+         */
+        put: operations["putElectoralCommission"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/electoral-commission/candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the roster members who can sit on the Electoral commission
+         * @description Roster members of the active school with an account, ordered by name. Same permission and order of checks as `PUT /electoral-commission` (`forbidden`, then `mfa_required`). Responses carry `Cache-Control: no-store`.
+         */
+        get: operations["getElectoralCommissionCandidates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/elections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create the draft of an election
+         * @description Members of the current Electoral commission only, with a verified second factor (`forbidden` first, then `mfa_required`, both before the body is read): students, officers (the Presidente included) and school admins who are not on it get `forbidden`. The election belongs to the current commission. Every error writes nothing; the validation codes are listed in the 422 response. Responses carry `Cache-Control: no-store`.
+         */
+        post: operations["postElection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/elections/current": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the active school's election in progress (neither published nor annulled)
+         * @description Any member of the active school. Responses carry `Cache-Control: no-store`.
+         */
+        get: operations["getCurrentElection"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/elections/{electionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                electionId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Read an election of the active school
+         * @description Any member of the active school. Responses carry `Cache-Control: no-store`.
+         */
+        get: operations["getElection"];
+        /**
+         * Edit the draft of an election
+         * @description Same permission and order of checks as `POST /elections`. Replaces name, mode, dates and positions while the election is a draft (state `draft`). Every error writes nothing. Responses carry `Cache-Control: no-store`.
+         */
+        put: operations["putElection"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        ForbiddenError: {
+            /** @enum {string} */
+            error: "forbidden" | "mfa_required";
+        };
+        NotFoundError: {
+            /** @enum {string} */
+            error: "not_found";
+        };
+        CommissionMember: {
+            rosterMemberId: string;
+            fullName: string;
+        };
+        /** @description The Electoral commission (UI "Centro de estudiantes"). */
+        ElectoralCommission: {
+            id: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** @description Ordered by name. */
+            members: components["schemas"]["CommissionMember"][];
+        };
+        ElectoralCommissionStatus: {
+            /** @description The current commission; null when none was designated. */
+            commission: components["schemas"]["ElectoralCommission"] | null;
+            /** @description The caller's roster entry is on the current commission. */
+            isMember: boolean;
+            /** @description The caller's role allows designating or replacing the commission now. */
+            canDesignate: boolean;
+        };
+        CommissionDesignation: {
+            /** @description Roster member ids; at least one (`empty_commission` otherwise), repeats count once. */
+            rosterMemberIds?: string[];
+        };
+        /**
+         * @description Only "Voto secreto"; any other value is 422 `mode_not_supported`.
+         * @enum {string}
+         */
+        ElectionMode: "secret";
+        /**
+         * @description Computed from the server clock against the dates; every window includes its start and excludes its end. `draft` before `submissionStartsAt`, `submission` until `submissionEndsAt`, `scheduled` until `startsAt`, `open` until `endsAt`, `closed` from `endsAt` on.
+         * @enum {string}
+         */
+        ElectionState: "draft" | "submission" | "scheduled" | "open" | "closed";
+        /** @description Date-times are RFC 3339 with offset (Argentina is -03:00). `submissionEndsAt` is exclusive: a period "1 to 5 March" ends at 2027-03-06T00:00:00-03:00. The four dates are whole minutes (no seconds): one with seconds or a fraction of a second is rejected with its field's code. Validation codes are listed in the 422 response. */
+        ElectionDraftRequest: {
+            name: string;
+            /** @description Defaults to `secret` when absent. */
+            mode?: components["schemas"]["ElectionMode"];
+            /**
+             * Format: date-time
+             * @description Whole minutes (no seconds); otherwise `invalid_submission_period`.
+             */
+            submissionStartsAt: string;
+            /**
+             * Format: date-time
+             * @description Whole minutes (no seconds); otherwise `invalid_submission_period`.
+             */
+            submissionEndsAt: string;
+            /**
+             * Format: date-time
+             * @description Whole minutes (no seconds); otherwise `invalid_window`.
+             */
+            startsAt: string;
+            /**
+             * Format: date-time
+             * @description Whole minutes (no seconds); otherwise `invalid_window`.
+             */
+            endsAt: string;
+            /** @description Positions in order. When absent the election gets "Presidente", "Vicepresidente", "Secretario", "Tesorero". */
+            positions?: string[];
+        };
+        Election: {
+            id: string;
+            name: string;
+            mode: components["schemas"]["ElectionMode"];
+            /** Format: date-time */
+            submissionStartsAt: string;
+            /** Format: date-time */
+            submissionEndsAt: string;
+            /** Format: date-time */
+            startsAt: string;
+            /** Format: date-time */
+            endsAt: string;
+            /** @description In order. */
+            positions: string[];
+            state: components["schemas"]["ElectionState"];
+            /** @description Members of the election's Electoral commission, ordered by name. */
+            commission: components["schemas"]["CommissionMember"][];
+        };
         Health: {
             /** @enum {string} */
             status: "ok";
@@ -632,7 +830,7 @@ export interface components {
         /** @enum {string} */
         Role: "school_admin" | "officer" | "student";
         /**
-         * @description Two-factor state of the session, computed from the role in the active tenant. `not_required`: student or no membership. `enrollment_required`: school admin or officer without a confirmed TOTP. `pending`: confirmed TOTP but this session has not verified it. `satisfied`: this session verified a code. Endpoints for school admins and officers answer 403 `mfa_required` unless `satisfied`.
+         * @description Two-factor state of the session, computed from the role in the active tenant. School admins, officers and members of the current Electoral commission are privileged. `not_required`: not privileged or no membership. `enrollment_required`: privileged without a confirmed TOTP. `pending`: confirmed TOTP but this session has not verified it. `satisfied`: this session verified a code. Endpoints for privileged users answer 403 `mfa_required` unless `satisfied`.
          * @enum {string}
          */
         MfaState: "not_required" | "enrollment_required" | "pending" | "satisfied";
@@ -776,6 +974,18 @@ export interface components {
         };
     };
     responses: {
+        /** @description Nothing was written. `invalid_name`: name missing, null, blank or longer than 120 characters. `invalid_window`: `startsAt` or `endsAt` missing, null, not an RFC 3339 date-time or not a whole minute, `endsAt` not after `startsAt`, or `startsAt` in the past. `invalid_submission_period`: `submissionStartsAt` or `submissionEndsAt` missing, null, not an RFC 3339 date-time or not a whole minute, `submissionEndsAt` not after `submissionStartsAt`, or `submissionEndsAt` not before `startsAt`. `invalid_positions`: `positions` null or empty, or a name blank, longer than 120 characters or repeated (case-insensitive). `mode_not_supported`: `mode` null or other than `secret`. */
+        InvalidElectionDraft: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    error: "invalid_name" | "invalid_window" | "invalid_submission_period" | "invalid_positions" | "mode_not_supported";
+                };
+            };
+        };
         /** @description Body is not JSON, has unknown fields or trailing data, or exceeds 4 KiB (`bad_request`). */
         BadRequest: {
             headers: {
@@ -1223,7 +1433,7 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
-            /** @description School admin or officer whose session has not completed two-factor authentication (`mfa_required`). */
+            /** @description School admin, officer or Electoral commission member whose session has not completed two-factor authentication (`mfa_required`). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -2031,6 +2241,321 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
+        };
+    };
+    getElectoralCommission: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The commission (or null) and the caller's relation to it. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ElectoralCommissionStatus"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description The account has no membership in the active school (`forbidden`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForbiddenError"];
+                };
+            };
+        };
+    };
+    putElectoralCommission: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CommissionDesignation"];
+            };
+        };
+        responses: {
+            /** @description The commission as stored. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ElectoralCommission"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            /** @description `forbidden` (a student without an officer position, a school admin while the school has officers, or no membership) or `mfa_required` (allowed role, session without a verified second factor). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForbiddenError"];
+                };
+            };
+            /** @description An id is not a roster member of the active school (`not_found`); never says whether it exists elsewhere. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotFoundError"];
+                };
+            };
+            /** @description An election of this commission already opened (`election_frozen`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "election_frozen";
+                    };
+                };
+            };
+            /** @description `empty_commission` (the list is empty, null or missing) or `no_account` (a roster member without an account). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "empty_commission" | "no_account";
+                    };
+                };
+            };
+        };
+    };
+    getElectoralCommissionCandidates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Candidates. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommissionMember"][];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description `forbidden` or `mfa_required`, as in `PUT /electoral-commission`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForbiddenError"];
+                };
+            };
+        };
+    };
+    postElection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ElectionDraftRequest"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Election"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            /** @description `forbidden` (not on the current Electoral commission) or `mfa_required`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForbiddenError"];
+                };
+            };
+            /** @description The school already has an election neither published nor annulled (`election_in_progress`). Of two simultaneous requests exactly one gets 201. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "election_in_progress";
+                    };
+                };
+            };
+            422: components["responses"]["InvalidElectionDraft"];
+        };
+    };
+    getCurrentElection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The election. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Election"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description The account has no membership in the active school (`forbidden`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForbiddenError"];
+                };
+            };
+            /** @description No election in progress (`not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotFoundError"];
+                };
+            };
+        };
+    };
+    getElection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                electionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The election. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Election"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description The account has no membership in the active school (`forbidden`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForbiddenError"];
+                };
+            };
+            /** @description No such election in the active school (`not_found`), whether or not it exists in another. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotFoundError"];
+                };
+            };
+        };
+    };
+    putElection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                electionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ElectionDraftRequest"];
+            };
+        };
+        responses: {
+            /** @description The election as stored. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Election"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            /** @description `forbidden` (not on the current Electoral commission) or `mfa_required`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForbiddenError"];
+                };
+            };
+            /** @description No such election in the active school (`not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotFoundError"];
+                };
+            };
+            /** @description The election is no longer a draft (`election_not_draft`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "election_not_draft";
+                    };
+                };
+            };
+            422: components["responses"]["InvalidElectionDraft"];
         };
     };
 }

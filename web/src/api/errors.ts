@@ -35,6 +35,16 @@ const messages: Record<string, string> = {
   invalid_amount: "Ingresá un monto mayor a cero.",
   future_date: "La fecha no puede ser futura.",
   invalid_date: "Ingresá una fecha válida.",
+  election_frozen: "La elección ya abrió: no se puede cambiar el Centro de estudiantes.",
+  empty_commission: "Elegí al menos un integrante para el Centro de estudiantes.",
+  no_account: "Ese alumno todavía no tiene cuenta. Pedile que la active antes de sumarlo al Centro de estudiantes.",
+  election_in_progress: "Ya hay una elección en curso en la escuela. Terminala antes de crear otra.",
+  election_not_draft: "La elección ya no es un borrador: no se puede editar.",
+  invalid_name: "Escribí un nombre para la elección de hasta 120 caracteres.",
+  invalid_window: "Revisá las fechas de votación: el inicio tiene que ser futuro y el fin, posterior al inicio.",
+  invalid_submission_period: "Revisá la presentación de listas: tiene que terminar antes de que empiece la votación.",
+  invalid_positions: "Revisá los cargos: tiene que haber al menos uno, sin nombres vacíos ni repetidos.",
+  mode_not_supported: "Por ahora solo se puede votar con voto secreto.",
   network: "No pudimos conectarnos. Revisá tu conexión e intentá de nuevo.",
 };
 
@@ -82,6 +92,11 @@ const fieldsByCode: Record<string, string[]> = {
   invalid_amount: ["amount"],
   future_date: ["date"],
   invalid_date: ["date"],
+  invalid_name: ["name"],
+  invalid_window: ["startsAt", "endsAt"],
+  invalid_submission_period: ["submissionStartsAt", "submissionEndsAt"],
+  invalid_positions: ["position"],
+  mode_not_supported: ["mode"],
 };
 
 export function errorFields(code: string): string[] {

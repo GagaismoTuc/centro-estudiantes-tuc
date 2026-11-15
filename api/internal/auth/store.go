@@ -308,15 +308,20 @@ func (s *Store) DeleteSession(ctx context.Context, token string) error {
 	return DeleteSessionIn(ctx, s.pool, token)
 }
 
-// Membership returns the session user's role in the session's tenant and that organization's name,
-// read in one query; both are "" without a tenant or when the membership is gone.
-func (s *Store) Membership(ctx context.Context, sess Session) (roles []string, tenantName string, err error) {
+// Membership returns the session user's roles slice in the session's tenant and that tenant's name,
+// read in one query; without a tenant or when the membership is removed after sign-in, it returns nil, "", false, nil.
+// commission reports that the user's roster entry is on the tenant's current Electoral commission (see CommissionRole).
+func (s *Store) Membership(ctx context.Context, sess Session) (roles []string, tenantName string, commission bool, err error) {
 	if sess.TenantID == "" {
-		return nil, "", nil
+		return nil, "", false, nil
 	}
 	err = db.WithTenant(ctx, s.pool, sess.TenantID, func(tx pgx.Tx) error {
 		return tx.QueryRow(ctx, `
-			SELECT array_agg(r.role ORDER BY CASE r.role WHEN 'student' THEN 0 WHEN 'officer' THEN 1 ELSE 2 END), r.name
+			SELECT array_agg(r.role ORDER BY CASE r.role WHEN 'student' THEN 0 WHEN 'officer' THEN 1 ELSE 2 END), r.name,
+			       EXISTS (SELECT FROM electoral_commission_members cm
+			               JOIN electoral_commissions c ON c.tenant_id = cm.tenant_id AND c.id = cm.commission_id AND c.ended_at IS NULL
+			               JOIN memberships ms ON ms.tenant_id = cm.tenant_id AND ms.roster_member_id = cm.roster_member_id
+			               WHERE cm.tenant_id = $2 AND ms.user_id = $1)
 			FROM (SELECT DISTINCT roles.role, o.name
 			      FROM memberships m JOIN organizations o ON o.id = m.tenant_id
 			      CROSS JOIN LATERAL (SELECT m.role UNION SELECT 'officer' WHERE EXISTS (
@@ -324,15 +329,15 @@ func (s *Store) Membership(ctx context.Context, sess Session) (roles []string, t
 			          WHERE p.tenant_id = m.tenant_id AND p.roster_member_id = m.roster_member_id
 			      )) roles
 			      WHERE m.user_id = $1 AND m.tenant_id = $2) r
-			GROUP BY r.name`, sess.UserID, sess.TenantID).Scan(&roles, &tenantName)
+			GROUP BY r.name`, sess.UserID, sess.TenantID).Scan(&roles, &tenantName, &commission)
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, "", nil // membership removed after sign-in
+		return nil, "", false, nil // membership removed after sign-in
 	}
 	if err != nil {
-		return nil, "", fmt.Errorf("auth: membership: %w", err)
+		return nil, "", false, fmt.Errorf("auth: membership: %w", err)
 	}
-	return roles, tenantName, nil
+	return roles, tenantName, commission, nil
 }
 
 // DefaultContactHeadings are seeded for every school at creation time (R1).

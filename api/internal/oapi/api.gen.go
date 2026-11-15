@@ -14,6 +14,66 @@ import (
 	"github.com/oapi-codegen/runtime"
 )
 
+// Defines values for ElectionMode.
+const (
+	Secret ElectionMode = "secret"
+)
+
+// Valid indicates whether the value is a known member of the ElectionMode enum.
+func (e ElectionMode) Valid() bool {
+	switch e {
+	case Secret:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ElectionState.
+const (
+	Closed     ElectionState = "closed"
+	Draft      ElectionState = "draft"
+	Open       ElectionState = "open"
+	Scheduled  ElectionState = "scheduled"
+	Submission ElectionState = "submission"
+)
+
+// Valid indicates whether the value is a known member of the ElectionState enum.
+func (e ElectionState) Valid() bool {
+	switch e {
+	case Closed:
+		return true
+	case Draft:
+		return true
+	case Open:
+		return true
+	case Scheduled:
+		return true
+	case Submission:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ForbiddenErrorError.
+const (
+	ForbiddenErrorErrorForbidden   ForbiddenErrorError = "forbidden"
+	ForbiddenErrorErrorMfaRequired ForbiddenErrorError = "mfa_required"
+)
+
+// Valid indicates whether the value is a known member of the ForbiddenErrorError enum.
+func (e ForbiddenErrorError) Valid() bool {
+	switch e {
+	case ForbiddenErrorErrorForbidden:
+		return true
+	case ForbiddenErrorErrorMfaRequired:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for HealthStatus.
 const (
 	Ok HealthStatus = "ok"
@@ -47,6 +107,21 @@ func (e MfaState) Valid() bool {
 	case Pending:
 		return true
 	case Satisfied:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for NotFoundErrorError.
+const (
+	NotFoundErrorErrorNotFound NotFoundErrorError = "not_found"
+)
+
+// Valid indicates whether the value is a known member of the NotFoundErrorError enum.
+func (e NotFoundErrorError) Valid() bool {
+	switch e {
+	case NotFoundErrorErrorNotFound:
 		return true
 	default:
 		return false
@@ -125,6 +200,150 @@ func (e RowErrorCode) Valid() bool {
 	}
 }
 
+// Defines values for InvalidElectionDraftError.
+const (
+	InvalidElectionDraftErrorInvalidName             InvalidElectionDraftError = "invalid_name"
+	InvalidElectionDraftErrorInvalidPositions        InvalidElectionDraftError = "invalid_positions"
+	InvalidElectionDraftErrorInvalidSubmissionPeriod InvalidElectionDraftError = "invalid_submission_period"
+	InvalidElectionDraftErrorInvalidWindow           InvalidElectionDraftError = "invalid_window"
+	InvalidElectionDraftErrorModeNotSupported        InvalidElectionDraftError = "mode_not_supported"
+)
+
+// Valid indicates whether the value is a known member of the InvalidElectionDraftError enum.
+func (e InvalidElectionDraftError) Valid() bool {
+	switch e {
+	case InvalidElectionDraftErrorInvalidName:
+		return true
+	case InvalidElectionDraftErrorInvalidPositions:
+		return true
+	case InvalidElectionDraftErrorInvalidSubmissionPeriod:
+		return true
+	case InvalidElectionDraftErrorInvalidWindow:
+		return true
+	case InvalidElectionDraftErrorModeNotSupported:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostElection409JSONResponseBodyError.
+const (
+	ElectionInProgress PostElection409JSONResponseBodyError = "election_in_progress"
+)
+
+// Valid indicates whether the value is a known member of the PostElection409JSONResponseBodyError enum.
+func (e PostElection409JSONResponseBodyError) Valid() bool {
+	switch e {
+	case ElectionInProgress:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostElection422JSONResponseBodyError.
+const (
+	PostElection422JSONResponseBodyErrorInvalidName             PostElection422JSONResponseBodyError = "invalid_name"
+	PostElection422JSONResponseBodyErrorInvalidPositions        PostElection422JSONResponseBodyError = "invalid_positions"
+	PostElection422JSONResponseBodyErrorInvalidSubmissionPeriod PostElection422JSONResponseBodyError = "invalid_submission_period"
+	PostElection422JSONResponseBodyErrorInvalidWindow           PostElection422JSONResponseBodyError = "invalid_window"
+	PostElection422JSONResponseBodyErrorModeNotSupported        PostElection422JSONResponseBodyError = "mode_not_supported"
+)
+
+// Valid indicates whether the value is a known member of the PostElection422JSONResponseBodyError enum.
+func (e PostElection422JSONResponseBodyError) Valid() bool {
+	switch e {
+	case PostElection422JSONResponseBodyErrorInvalidName:
+		return true
+	case PostElection422JSONResponseBodyErrorInvalidPositions:
+		return true
+	case PostElection422JSONResponseBodyErrorInvalidSubmissionPeriod:
+		return true
+	case PostElection422JSONResponseBodyErrorInvalidWindow:
+		return true
+	case PostElection422JSONResponseBodyErrorModeNotSupported:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PutElection409JSONResponseBodyError.
+const (
+	ElectionNotDraft PutElection409JSONResponseBodyError = "election_not_draft"
+)
+
+// Valid indicates whether the value is a known member of the PutElection409JSONResponseBodyError enum.
+func (e PutElection409JSONResponseBodyError) Valid() bool {
+	switch e {
+	case ElectionNotDraft:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PutElection422JSONResponseBodyError.
+const (
+	PutElection422JSONResponseBodyErrorInvalidName             PutElection422JSONResponseBodyError = "invalid_name"
+	PutElection422JSONResponseBodyErrorInvalidPositions        PutElection422JSONResponseBodyError = "invalid_positions"
+	PutElection422JSONResponseBodyErrorInvalidSubmissionPeriod PutElection422JSONResponseBodyError = "invalid_submission_period"
+	PutElection422JSONResponseBodyErrorInvalidWindow           PutElection422JSONResponseBodyError = "invalid_window"
+	PutElection422JSONResponseBodyErrorModeNotSupported        PutElection422JSONResponseBodyError = "mode_not_supported"
+)
+
+// Valid indicates whether the value is a known member of the PutElection422JSONResponseBodyError enum.
+func (e PutElection422JSONResponseBodyError) Valid() bool {
+	switch e {
+	case PutElection422JSONResponseBodyErrorInvalidName:
+		return true
+	case PutElection422JSONResponseBodyErrorInvalidPositions:
+		return true
+	case PutElection422JSONResponseBodyErrorInvalidSubmissionPeriod:
+		return true
+	case PutElection422JSONResponseBodyErrorInvalidWindow:
+		return true
+	case PutElection422JSONResponseBodyErrorModeNotSupported:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PutElectoralCommission409JSONResponseBodyError.
+const (
+	ElectionFrozen PutElectoralCommission409JSONResponseBodyError = "election_frozen"
+)
+
+// Valid indicates whether the value is a known member of the PutElectoralCommission409JSONResponseBodyError enum.
+func (e PutElectoralCommission409JSONResponseBodyError) Valid() bool {
+	switch e {
+	case ElectionFrozen:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PutElectoralCommission422JSONResponseBodyError.
+const (
+	EmptyCommission PutElectoralCommission422JSONResponseBodyError = "empty_commission"
+	NoAccount       PutElectoralCommission422JSONResponseBodyError = "no_account"
+)
+
+// Valid indicates whether the value is a known member of the PutElectoralCommission422JSONResponseBodyError enum.
+func (e PutElectoralCommission422JSONResponseBodyError) Valid() bool {
+	switch e {
+	case EmptyCommission:
+		return true
+	case NoAccount:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for DeleteMemberOfficer404JSONResponseBodyError.
 const (
 	DeleteMemberOfficer404JSONResponseBodyErrorNotFound DeleteMemberOfficer404JSONResponseBodyError = "not_found"
@@ -195,6 +414,18 @@ type ClaimRequest struct {
 	Password string `json:"password"`
 }
 
+// CommissionDesignation defines model for CommissionDesignation.
+type CommissionDesignation struct {
+	// RosterMemberIds Roster member ids; at least one (`empty_commission` otherwise), repeats count once.
+	RosterMemberIds *[]string `json:"rosterMemberIds,omitempty"`
+}
+
+// CommissionMember defines model for CommissionMember.
+type CommissionMember struct {
+	FullName       string `json:"fullName"`
+	RosterMemberId string `json:"rosterMemberId"`
+}
+
 // Contact defines model for Contact.
 type Contact struct {
 	CreatedAt       time.Time        `json:"createdAt"`
@@ -238,6 +469,76 @@ type CreateReferencePriceRequest struct {
 	Description string `json:"description"`
 }
 
+// Election defines model for Election.
+type Election struct {
+	// Commission Members of the election's Electoral commission, ordered by name.
+	Commission []CommissionMember `json:"commission"`
+	EndsAt     time.Time          `json:"endsAt"`
+	Id         string             `json:"id"`
+
+	// Mode Only "Voto secreto"; any other value is 422 `mode_not_supported`.
+	Mode ElectionMode `json:"mode"`
+	Name string       `json:"name"`
+
+	// Positions In order.
+	Positions []string  `json:"positions"`
+	StartsAt  time.Time `json:"startsAt"`
+
+	// State Computed from the server clock against the dates; every window includes its start and excludes its end. `draft` before `submissionStartsAt`, `submission` until `submissionEndsAt`, `scheduled` until `startsAt`, `open` until `endsAt`, `closed` from `endsAt` on.
+	State              ElectionState `json:"state"`
+	SubmissionEndsAt   time.Time     `json:"submissionEndsAt"`
+	SubmissionStartsAt time.Time     `json:"submissionStartsAt"`
+}
+
+// ElectionDraftRequest Date-times are RFC 3339 with offset (Argentina is -03:00). `submissionEndsAt` is exclusive: a period "1 to 5 March" ends at 2027-03-06T00:00:00-03:00. The four dates are whole minutes (no seconds): one with seconds or a fraction of a second is rejected with its field's code. Validation codes are listed in the 422 response.
+type ElectionDraftRequest struct {
+	// EndsAt Whole minutes (no seconds); otherwise `invalid_window`.
+	EndsAt time.Time `json:"endsAt"`
+
+	// Mode Defaults to `secret` when absent.
+	Mode *ElectionMode `json:"mode,omitempty"`
+	Name string        `json:"name"`
+
+	// Positions Positions in order. When absent the election gets "Presidente", "Vicepresidente", "Secretario", "Tesorero".
+	Positions *[]string `json:"positions,omitempty"`
+
+	// StartsAt Whole minutes (no seconds); otherwise `invalid_window`.
+	StartsAt time.Time `json:"startsAt"`
+
+	// SubmissionEndsAt Whole minutes (no seconds); otherwise `invalid_submission_period`.
+	SubmissionEndsAt time.Time `json:"submissionEndsAt"`
+
+	// SubmissionStartsAt Whole minutes (no seconds); otherwise `invalid_submission_period`.
+	SubmissionStartsAt time.Time `json:"submissionStartsAt"`
+}
+
+// ElectionMode Only "Voto secreto"; any other value is 422 `mode_not_supported`.
+type ElectionMode string
+
+// ElectionState Computed from the server clock against the dates; every window includes its start and excludes its end. `draft` before `submissionStartsAt`, `submission` until `submissionEndsAt`, `scheduled` until `startsAt`, `open` until `endsAt`, `closed` from `endsAt` on.
+type ElectionState string
+
+// ElectoralCommission The Electoral commission (UI "Centro de estudiantes").
+type ElectoralCommission struct {
+	CreatedAt time.Time `json:"createdAt"`
+	Id        string    `json:"id"`
+
+	// Members Ordered by name.
+	Members []CommissionMember `json:"members"`
+}
+
+// ElectoralCommissionStatus defines model for ElectoralCommissionStatus.
+type ElectoralCommissionStatus struct {
+	// CanDesignate The caller's role allows designating or replacing the commission now.
+	CanDesignate bool `json:"canDesignate"`
+
+	// Commission The current commission; null when none was designated.
+	Commission *ElectoralCommission `json:"commission"`
+
+	// IsMember The caller's roster entry is on the current commission.
+	IsMember bool `json:"isMember"`
+}
+
 // EmailRequest defines model for EmailRequest.
 type EmailRequest struct {
 	Email string `json:"email"`
@@ -247,6 +548,14 @@ type EmailRequest struct {
 type Error struct {
 	Error string `json:"error"`
 }
+
+// ForbiddenError defines model for ForbiddenError.
+type ForbiddenError struct {
+	Error ForbiddenErrorError `json:"error"`
+}
+
+// ForbiddenErrorError defines model for ForbiddenError.Error.
+type ForbiddenErrorError string
 
 // HeadingNameRequest defines model for HeadingNameRequest.
 type HeadingNameRequest struct {
@@ -299,7 +608,7 @@ type Me struct {
 	Email         string `json:"email"`
 	EmailVerified bool   `json:"emailVerified"`
 
-	// Mfa Two-factor state of the session, computed from the role in the active tenant. `not_required`: student or no membership. `enrollment_required`: school admin or officer without a confirmed TOTP. `pending`: confirmed TOTP but this session has not verified it. `satisfied`: this session verified a code. Endpoints for school admins and officers answer 403 `mfa_required` unless `satisfied`.
+	// Mfa Two-factor state of the session, computed from the role in the active tenant. School admins, officers and members of the current Electoral commission are privileged. `not_required`: not privileged or no membership. `enrollment_required`: privileged without a confirmed TOTP. `pending`: confirmed TOTP but this session has not verified it. `satisfied`: this session verified a code. Endpoints for privileged users answer 403 `mfa_required` unless `satisfied`.
 	Mfa MfaState `json:"mfa"`
 
 	// Role Role in the active tenant; null when the user has no membership.
@@ -330,7 +639,7 @@ type MfaEnrollment struct {
 	Secret string `json:"secret"`
 }
 
-// MfaState Two-factor state of the session, computed from the role in the active tenant. `not_required`: student or no membership. `enrollment_required`: school admin or officer without a confirmed TOTP. `pending`: confirmed TOTP but this session has not verified it. `satisfied`: this session verified a code. Endpoints for school admins and officers answer 403 `mfa_required` unless `satisfied`.
+// MfaState Two-factor state of the session, computed from the role in the active tenant. School admins, officers and members of the current Electoral commission are privileged. `not_required`: not privileged or no membership. `enrollment_required`: privileged without a confirmed TOTP. `pending`: confirmed TOTP but this session has not verified it. `satisfied`: this session verified a code. Endpoints for privileged users answer 403 `mfa_required` unless `satisfied`.
 type MfaState string
 
 // MfaVerifyRequest Exactly one of `code` and `recoveryCode`; otherwise 400 `bad_request`.
@@ -338,6 +647,14 @@ type MfaVerifyRequest struct {
 	Code         *string `json:"code,omitempty"`
 	RecoveryCode *string `json:"recoveryCode,omitempty"`
 }
+
+// NotFoundError defines model for NotFoundError.
+type NotFoundError struct {
+	Error NotFoundErrorError `json:"error"`
+}
+
+// NotFoundErrorError defines model for NotFoundError.Error.
+type NotFoundErrorError string
 
 // PasswordChangeRequest defines model for PasswordChangeRequest.
 type PasswordChangeRequest struct {
@@ -438,6 +755,14 @@ type DirectoryForbidden = Error
 // Forbidden defines model for Forbidden.
 type Forbidden = Error
 
+// InvalidElectionDraft defines model for InvalidElectionDraft.
+type InvalidElectionDraft struct {
+	Error InvalidElectionDraftError `json:"error"`
+}
+
+// InvalidElectionDraftError defines model for InvalidElectionDraft.Error.
+type InvalidElectionDraftError string
+
 // InvalidMfaCode defines model for InvalidMfaCode.
 type InvalidMfaCode = Error
 
@@ -455,6 +780,24 @@ type GetContactsParams struct {
 	HeadingId *string `form:"headingId,omitempty" json:"headingId,omitempty"`
 	Q         *string `form:"q,omitempty" json:"q,omitempty"`
 }
+
+// PostElection409JSONResponseBodyError defines parameters for PostElection.
+type PostElection409JSONResponseBodyError string
+
+// PostElection422JSONResponseBodyError defines parameters for PostElection.
+type PostElection422JSONResponseBodyError string
+
+// PutElection409JSONResponseBodyError defines parameters for PutElection.
+type PutElection409JSONResponseBodyError string
+
+// PutElection422JSONResponseBodyError defines parameters for PutElection.
+type PutElection422JSONResponseBodyError string
+
+// PutElectoralCommission409JSONResponseBodyError defines parameters for PutElectoralCommission.
+type PutElectoralCommission409JSONResponseBodyError string
+
+// PutElectoralCommission422JSONResponseBodyError defines parameters for PutElectoralCommission.
+type PutElectoralCommission422JSONResponseBodyError string
 
 // DeleteMemberOfficer404JSONResponseBodyError defines parameters for DeleteMemberOfficer.
 type DeleteMemberOfficer404JSONResponseBodyError string
@@ -520,6 +863,15 @@ type PatchContactJSONRequestBody = UpdateContactRequest
 
 // PostContactReferencePriceJSONRequestBody defines body for PostContactReferencePrice for application/json ContentType.
 type PostContactReferencePriceJSONRequestBody = CreateReferencePriceRequest
+
+// PostElectionJSONRequestBody defines body for PostElection for application/json ContentType.
+type PostElectionJSONRequestBody = ElectionDraftRequest
+
+// PutElectionJSONRequestBody defines body for PutElection for application/json ContentType.
+type PutElectionJSONRequestBody = ElectionDraftRequest
+
+// PutElectoralCommissionJSONRequestBody defines body for PutElectoralCommission for application/json ContentType.
+type PutElectoralCommissionJSONRequestBody = CommissionDesignation
 
 // PostMemberOfficerJSONRequestBody defines body for PostMemberOfficer for application/json ContentType.
 type PostMemberOfficerJSONRequestBody PostMemberOfficerJSONBody
@@ -604,6 +956,27 @@ type ServerInterface interface {
 	// DeleteContactReferencePrice Delete a reference price from a contact
 	// (DELETE /contacts/{id}/reference-prices/{priceId})
 	DeleteContactReferencePrice(w http.ResponseWriter, r *http.Request, id string, priceId string)
+	// PostElection Create the draft of an election
+	// (POST /elections)
+	PostElection(w http.ResponseWriter, r *http.Request)
+	// GetCurrentElection Read the active school's election in progress (neither published nor annulled)
+	// (GET /elections/current)
+	GetCurrentElection(w http.ResponseWriter, r *http.Request)
+	// GetElection Read an election of the active school
+	// (GET /elections/{electionId})
+	GetElection(w http.ResponseWriter, r *http.Request, electionId string)
+	// PutElection Edit the draft of an election
+	// (PUT /elections/{electionId})
+	PutElection(w http.ResponseWriter, r *http.Request, electionId string)
+	// GetElectoralCommission Read the active school's current Electoral commission
+	// (GET /electoral-commission)
+	GetElectoralCommission(w http.ResponseWriter, r *http.Request)
+	// PutElectoralCommission Designate or replace the members of the current Electoral commission
+	// (PUT /electoral-commission)
+	PutElectoralCommission(w http.ResponseWriter, r *http.Request)
+	// GetElectoralCommissionCandidates List the roster members who can sit on the Electoral commission
+	// (GET /electoral-commission/candidates)
+	GetElectoralCommissionCandidates(w http.ResponseWriter, r *http.Request)
 	// GetHealth Liveness check
 	// (GET /health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
@@ -1128,6 +1501,128 @@ func (siw *ServerInterfaceWrapper) DeleteContactReferencePrice(w http.ResponseWr
 	handler.ServeHTTP(w, r)
 }
 
+// PostElection operation middleware
+func (siw *ServerInterfaceWrapper) PostElection(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostElection(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetCurrentElection operation middleware
+func (siw *ServerInterfaceWrapper) GetCurrentElection(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCurrentElection(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetElection operation middleware
+func (siw *ServerInterfaceWrapper) GetElection(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "electionId" -------------
+	var electionId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "electionId", r.PathValue("electionId"), &electionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "electionId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetElection(w, r, electionId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutElection operation middleware
+func (siw *ServerInterfaceWrapper) PutElection(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "electionId" -------------
+	var electionId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "electionId", r.PathValue("electionId"), &electionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "electionId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutElection(w, r, electionId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetElectoralCommission operation middleware
+func (siw *ServerInterfaceWrapper) GetElectoralCommission(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetElectoralCommission(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutElectoralCommission operation middleware
+func (siw *ServerInterfaceWrapper) PutElectoralCommission(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutElectoralCommission(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetElectoralCommissionCandidates operation middleware
+func (siw *ServerInterfaceWrapper) GetElectoralCommissionCandidates(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetElectoralCommissionCandidates(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetHealth operation middleware
 func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Request) {
 
@@ -1430,6 +1925,13 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/contacts/{id}/reference-prices", wrapper.PostContactReferencePrice)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/contacts/{id}/reference-prices/{priceId}", wrapper.DeleteContactReferencePrice)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/roster/access-codes", wrapper.PostRosterAccessCodes)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/electoral-commission", wrapper.GetElectoralCommission)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/electoral-commission", wrapper.PutElectoralCommission)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/electoral-commission/candidates", wrapper.GetElectoralCommissionCandidates)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/elections", wrapper.PostElection)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/elections/current", wrapper.GetCurrentElection)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/elections/{electionId}", wrapper.GetElection)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/elections/{electionId}", wrapper.PutElection)
 
 	return m
 }
