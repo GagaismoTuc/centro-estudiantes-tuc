@@ -25,10 +25,20 @@ func (s *server) PostAuthPassword(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, "mfa_required")
 		return
 	}
-	var req oapi.PasswordChangeRequest
-	if !decodeStrict(w, r, &req) {
+	// oapi.PasswordChangeRequest with pointers: both fields are required (see openapi.yaml), and an
+	// absent one is a malformed request, not a guess of the current password.
+	var body struct {
+		CurrentPassword *string `json:"currentPassword"`
+		NewPassword     *string `json:"newPassword"`
+	}
+	if !decodeStrict(w, r, &body) {
 		return
 	}
+	if body.CurrentPassword == nil || body.NewPassword == nil {
+		writeError(w, http.StatusBadRequest, "bad_request")
+		return
+	}
+	req := oapi.PasswordChangeRequest{CurrentPassword: *body.CurrentPassword, NewPassword: *body.NewPassword}
 	// Checked before the limiter: a weak new password is not a guess of the current one.
 	if auth.ValidatePassword(req.NewPassword) != nil {
 		writeError(w, http.StatusUnprocessableEntity, "weak_password")

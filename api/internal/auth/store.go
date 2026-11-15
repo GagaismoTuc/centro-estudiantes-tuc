@@ -111,7 +111,8 @@ var ErrSamePassword = errors.New("auth: new password equals the current one")
 // then that they differ (ErrSamePassword). On success, in one transaction, it stores the new hash,
 // marks every pending emailed token of the user used, deletes every other session of the user and
 // rotates this one (same tenant, second-factor state and absolute expiry), returning the new token and
-// its expiry. An error changes nothing; ErrNoSession means the session ended meanwhile.
+// its expiry. An error changes nothing; ErrNoSession means the session ended meanwhile, which is also
+// the outcome of the loser of two concurrent changes (see refusedChange).
 func (s *Store) ChangePassword(ctx context.Context, token, userID, current, newPassword string) (string, time.Time, error) {
 	if err := ValidatePassword(newPassword); err != nil {
 		return "", time.Time{}, err
@@ -131,7 +132,7 @@ func (s *Store) ChangePassword(ctx context.Context, token, userID, current, newP
 	if ok, err := VerifyPassword(old, current); err != nil {
 		return "", time.Time{}, err
 	} else if !ok {
-		return "", time.Time{}, ErrInvalidCredentials
+		return "", time.Time{}, s.refusedChange(ctx, h, userID)
 	}
 	if newPassword == current {
 		return "", time.Time{}, ErrSamePassword
@@ -152,7 +153,7 @@ func (s *Store) ChangePassword(ctx context.Context, token, userID, current, newP
 			return fmt.Errorf("auth: update password: %w", err)
 		}
 		if tag.RowsAffected() == 0 {
-			return ErrInvalidCredentials
+			return errPasswordReplaced
 		}
 		// As in ResetPassword: no emailed link sent before the change may outlive it.
 		if _, err := tx.Exec(ctx,
@@ -165,10 +166,35 @@ func (s *Store) ChangePassword(ctx context.Context, token, userID, current, newP
 		tok, expires, err = rotateSession(ctx, tx, token, userID, now, false, nil)
 		return err
 	})
+	if errors.Is(err, errPasswordReplaced) {
+		return "", time.Time{}, s.refusedChange(ctx, h, userID)
+	}
 	if err != nil {
 		return "", time.Time{}, err
 	}
 	return tok, expires, nil
+}
+
+// errPasswordReplaced aborts a change whose current password was checked against a hash that a
+// concurrent change replaced before this one could.
+var errPasswordReplaced = errors.New("auth: password replaced meanwhile")
+
+// refusedChange is the error of a change whose current password does not match the stored hash.
+// Every change of the hash ends each session it does not rotate (ChangePassword, ResetPassword), so
+// when this session is gone a concurrent change won: ErrNoSession, never a wrong current password
+// (two tabs must not cost a sign-in attempt). With the session alive it is ErrInvalidCredentials.
+func (s *Store) refusedChange(ctx context.Context, tokenHash []byte, userID string) error {
+	var alive bool
+	err := s.pool.QueryRow(ctx,
+		`SELECT EXISTS (SELECT FROM sessions WHERE token_hash = $1 AND user_id = $2 AND expires_at > $3)`,
+		tokenHash, userID, s.now()).Scan(&alive)
+	if err != nil {
+		return fmt.Errorf("auth: find session: %w", err)
+	}
+	if !alive {
+		return ErrNoSession
+	}
+	return ErrInvalidCredentials
 }
 
 // CreateSession starts a session for userID and returns the raw token for the cookie. Only its
