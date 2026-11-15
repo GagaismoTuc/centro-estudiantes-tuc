@@ -114,6 +114,40 @@ describe("R6 — Pantalla accesible y en vivo", () => {
     expect(gridRule).not.toBeNull();
     expect(gridRule![1]).toContain("minmax(");
   });
+
+  test("announces the visible error for the field just edited in both calculators", async () => {
+    mockApi({ "GET /auth/me": ok(me({ role: "officer", mfa: "satisfied" })) });
+    renderAt("/calculadora");
+
+    const personSection = await screen.findByRole("region", { name: "Precio por persona" });
+    const personLive = personSection.querySelector("[aria-live]");
+    const marginInput = within(personSection).getByLabelText("Margen opcional (%)");
+
+    // Empty earlier fields must not mask the edited field's error.
+    fireEvent.change(marginInput, { target: { value: "-1" } });
+    expect(personLive?.textContent).toContain("El margen no puede ser negativo");
+
+    // Even when an earlier field already has a visible error, editing margin announces margin's error.
+    fireEvent.blur(within(personSection).getByLabelText("Costo total ($)"));
+    expect(personLive?.textContent).toContain("Ingresá el costo total");
+    fireEvent.change(marginInput, { target: { value: "-2" } });
+    expect(personLive?.textContent).toContain("El margen no puede ser negativo");
+
+    // Fixing margin falls back to the remaining visible error.
+    fireEvent.change(marginInput, { target: { value: "10" } });
+    expect(personLive?.textContent).toContain("Ingresá el costo total");
+
+    // Same class in RaffleCard: editing a later field announces that field's error, not an earlier untouched/invalid field.
+    const raffleSection = screen.getByRole("region", { name: "Rifa o venta" });
+    const raffleLive = raffleSection.querySelector("[aria-live]");
+    const unitsInput = within(raffleSection).getByLabelText("Unidades disponibles");
+    fireEvent.change(unitsInput, { target: { value: "0" } });
+    expect(raffleLive?.textContent).toContain("Ingresá cuántas unidades hay disponibles");
+
+    const unitPriceInput = within(raffleSection).getByLabelText("Precio por unidad ($)");
+    fireEvent.change(unitPriceInput, { target: { value: "0" } });
+    expect(raffleLive?.textContent).toContain("Ingresá el precio por unidad");
+  });
 });
 
 describe("PRESERVE — App, AppShell, and Icon", () => {

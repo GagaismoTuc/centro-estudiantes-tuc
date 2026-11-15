@@ -10,10 +10,11 @@ type CalculatorPanelProps = {
   title: string;
   description: string;
   fieldOrder: readonly string[];
-  errors: Record<string, string | undefined>;
+  rawErrors: Record<string, string | undefined>;
+  visibleErrors: Record<string, string | undefined>;
+  activeField: string | null;
   hasResult: boolean;
   tone?: "ok" | undefined;
-  interacted: boolean;
   emptyPrompt: string;
   onReset: () => void;
   onSubmitInvalid: () => void;
@@ -21,14 +22,43 @@ type CalculatorPanelProps = {
   resultContent: ReactNode;
 };
 
+function useFieldInteraction() {
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const [submitted, setSubmitted] = useState(false);
+  const [activeField, setActiveField] = useState<string | null>(null);
+
+  function touch(name: string) {
+    setTouched((prev) => (prev[name] ? prev : { ...prev, [name]: true }));
+    setActiveField(name);
+  }
+
+  function submit() {
+    setSubmitted(true);
+    setActiveField(null);
+  }
+
+  function reset() {
+    setTouched({});
+    setSubmitted(false);
+    setActiveField(null);
+  }
+
+  function isVisible(name: string) {
+    return submitted || Boolean(touched[name]);
+  }
+
+  return { activeField, touch, submit, reset, isVisible };
+}
+
 function CalculatorPanel({
   title,
   description,
   fieldOrder,
-  errors,
+  rawErrors,
+  visibleErrors,
+  activeField,
   hasResult,
   tone,
-  interacted,
   emptyPrompt,
   onReset,
   onSubmitInvalid,
@@ -45,7 +75,7 @@ function CalculatorPanel({
     const form = formRef.current;
     if (!form) return;
     for (const name of fieldOrder) {
-      if (errors[name]) {
+      if (rawErrors[name]) {
         const input = form.elements.namedItem(name);
         if (input instanceof HTMLInputElement) {
           input.focus();
@@ -57,7 +87,9 @@ function CalculatorPanel({
     firstInput?.focus();
   }
 
-  const activeError = fieldOrder.map((name) => errors[name]).find(Boolean);
+  const activeError =
+    (activeField ? visibleErrors[activeField] : undefined) ??
+    fieldOrder.map((name) => visibleErrors[name]).find(Boolean);
 
   return (
     <section className="panel calc-panel" aria-labelledby={titleId}>
@@ -76,11 +108,7 @@ function CalculatorPanel({
       </form>
 
       <div className="calc-result" data-tone={tone} aria-live="polite" aria-atomic="true">
-        {hasResult ? (
-          resultContent
-        ) : (
-          <p className="muted small">{interacted ? (activeError ?? "Revisá los datos para ver el resultado.") : emptyPrompt}</p>
-        )}
+        {hasResult ? resultContent : <p className="muted small">{activeError ?? emptyPrompt}</p>}
       </div>
     </section>
   );
@@ -90,28 +118,26 @@ function PricePerPersonCard() {
   const [totalCost, setTotalCost] = useState("");
   const [peopleCount, setPeopleCount] = useState("");
   const [marginPercent, setMarginPercent] = useState("");
-  const [touched, setTouched] = useState<Record<string, boolean>>({});
-  const [submitted, setSubmitted] = useState(false);
+  const fields = useFieldInteraction();
 
   const outcome = calculatePricePerPerson({ totalCost, peopleCount, marginPercent });
-  const rawErrors = outcome.ok ? {} : outcome.errors;
-  const interacted = submitted || Object.values(touched).some(Boolean);
-  const visibleErrors: Record<string, string | undefined> = {
-    personTotalCost: submitted || touched.personTotalCost ? rawErrors.totalCost : undefined,
-    peopleCount: submitted || touched.peopleCount ? rawErrors.peopleCount : undefined,
-    marginPercent: submitted || touched.marginPercent ? rawErrors.marginPercent : undefined,
+  const outcomeErrors = outcome.ok ? {} : outcome.errors;
+  const rawErrors: Record<string, string | undefined> = {
+    personTotalCost: outcomeErrors.totalCost,
+    peopleCount: outcomeErrors.peopleCount,
+    marginPercent: outcomeErrors.marginPercent,
   };
-
-  function mark(name: string) {
-    setTouched((prev) => (prev[name] ? prev : { ...prev, [name]: true }));
-  }
+  const visibleErrors: Record<string, string | undefined> = {
+    personTotalCost: fields.isVisible("personTotalCost") ? rawErrors.personTotalCost : undefined,
+    peopleCount: fields.isVisible("peopleCount") ? rawErrors.peopleCount : undefined,
+    marginPercent: fields.isVisible("marginPercent") ? rawErrors.marginPercent : undefined,
+  };
 
   function reset() {
     setTotalCost("");
     setPeopleCount("");
     setMarginPercent("");
-    setTouched({});
-    setSubmitted(false);
+    fields.reset();
   }
 
   return (
@@ -119,17 +145,14 @@ function PricePerPersonCard() {
       title="Precio por persona"
       description="Dividí el costo total entre las personas y sumá un margen opcional. Se redondea hacia arriba a múltiplos de $ 100."
       fieldOrder={["personTotalCost", "peopleCount", "marginPercent"]}
-      errors={{
-        personTotalCost: rawErrors.totalCost,
-        peopleCount: rawErrors.peopleCount,
-        marginPercent: rawErrors.marginPercent,
-      }}
+      rawErrors={rawErrors}
+      visibleErrors={visibleErrors}
+      activeField={fields.activeField}
       hasResult={outcome.ok}
       tone={outcome.ok ? "ok" : undefined}
-      interacted={interacted}
       emptyPrompt="Completá los datos para calcular el precio por persona."
       onReset={reset}
-      onSubmitInvalid={() => setSubmitted(true)}
+      onSubmitInvalid={fields.submit}
       resultContent={
         outcome.ok && (
           <>
@@ -153,9 +176,9 @@ function PricePerPersonCard() {
         hint="Ej.: 180000 o 180.000"
         value={totalCost}
         error={visibleErrors.personTotalCost}
-        onBlur={() => mark("personTotalCost")}
+        onBlur={() => fields.touch("personTotalCost")}
         onChange={(event) => {
-          mark("personTotalCost");
+          fields.touch("personTotalCost");
           setTotalCost(event.target.value);
         }}
       />
@@ -168,9 +191,9 @@ function PricePerPersonCard() {
         enterKeyHint="next"
         value={peopleCount}
         error={visibleErrors.peopleCount}
-        onBlur={() => mark("peopleCount")}
+        onBlur={() => fields.touch("peopleCount")}
         onChange={(event) => {
-          mark("peopleCount");
+          fields.touch("peopleCount");
           setPeopleCount(event.target.value);
         }}
       />
@@ -184,9 +207,9 @@ function PricePerPersonCard() {
         hint="Dejalo vacío si no querés sumar margen."
         value={marginPercent}
         error={visibleErrors.marginPercent}
-        onBlur={() => mark("marginPercent")}
+        onBlur={() => fields.touch("marginPercent")}
         onChange={(event) => {
-          mark("marginPercent");
+          fields.touch("marginPercent");
           setMarginPercent(event.target.value);
         }}
       />
@@ -198,28 +221,26 @@ function RaffleCard() {
   const [totalCost, setTotalCost] = useState("");
   const [unitPrice, setUnitPrice] = useState("");
   const [availableUnits, setAvailableUnits] = useState("");
-  const [touched, setTouched] = useState<Record<string, boolean>>({});
-  const [submitted, setSubmitted] = useState(false);
+  const fields = useFieldInteraction();
 
   const outcome = calculateRaffle({ totalCost, unitPrice, availableUnits });
-  const rawErrors = outcome.ok ? {} : outcome.errors;
-  const interacted = submitted || Object.values(touched).some(Boolean);
-  const visibleErrors: Record<string, string | undefined> = {
-    raffleTotalCost: submitted || touched.raffleTotalCost ? rawErrors.totalCost : undefined,
-    unitPrice: submitted || touched.unitPrice ? rawErrors.unitPrice : undefined,
-    availableUnits: submitted || touched.availableUnits ? rawErrors.availableUnits : undefined,
+  const outcomeErrors = outcome.ok ? {} : outcome.errors;
+  const rawErrors: Record<string, string | undefined> = {
+    raffleTotalCost: outcomeErrors.totalCost,
+    unitPrice: outcomeErrors.unitPrice,
+    availableUnits: outcomeErrors.availableUnits,
   };
-
-  function mark(name: string) {
-    setTouched((prev) => (prev[name] ? prev : { ...prev, [name]: true }));
-  }
+  const visibleErrors: Record<string, string | undefined> = {
+    raffleTotalCost: fields.isVisible("raffleTotalCost") ? rawErrors.raffleTotalCost : undefined,
+    unitPrice: fields.isVisible("unitPrice") ? rawErrors.unitPrice : undefined,
+    availableUnits: fields.isVisible("availableUnits") ? rawErrors.availableUnits : undefined,
+  };
 
   function reset() {
     setTotalCost("");
     setUnitPrice("");
     setAvailableUnits("");
-    setTouched({});
-    setSubmitted(false);
+    fields.reset();
   }
 
   return (
@@ -227,17 +248,14 @@ function RaffleCard() {
       title="Rifa o venta"
       description="Calculá cuántas unidades tenés que vender para no perder y cuánto ganás si vendés todo."
       fieldOrder={["raffleTotalCost", "unitPrice", "availableUnits"]}
-      errors={{
-        raffleTotalCost: rawErrors.totalCost,
-        unitPrice: rawErrors.unitPrice,
-        availableUnits: rawErrors.availableUnits,
-      }}
+      rawErrors={rawErrors}
+      visibleErrors={visibleErrors}
+      activeField={fields.activeField}
       hasResult={outcome.ok}
       tone={outcome.ok && outcome.result.coversCost ? "ok" : undefined}
-      interacted={interacted}
       emptyPrompt="Completá los datos para calcular la rifa o venta."
       onReset={reset}
-      onSubmitInvalid={() => setSubmitted(true)}
+      onSubmitInvalid={fields.submit}
       resultContent={
         outcome.ok && (
           <>
@@ -277,9 +295,9 @@ function RaffleCard() {
         hint="Ej.: 60000"
         value={totalCost}
         error={visibleErrors.raffleTotalCost}
-        onBlur={() => mark("raffleTotalCost")}
+        onBlur={() => fields.touch("raffleTotalCost")}
         onChange={(event) => {
-          mark("raffleTotalCost");
+          fields.touch("raffleTotalCost");
           setTotalCost(event.target.value);
         }}
       />
@@ -292,9 +310,9 @@ function RaffleCard() {
         enterKeyHint="next"
         value={unitPrice}
         error={visibleErrors.unitPrice}
-        onBlur={() => mark("unitPrice")}
+        onBlur={() => fields.touch("unitPrice")}
         onChange={(event) => {
-          mark("unitPrice");
+          fields.touch("unitPrice");
           setUnitPrice(event.target.value);
         }}
       />
@@ -307,9 +325,9 @@ function RaffleCard() {
         enterKeyHint="done"
         value={availableUnits}
         error={visibleErrors.availableUnits}
-        onBlur={() => mark("availableUnits")}
+        onBlur={() => fields.touch("availableUnits")}
         onChange={(event) => {
-          mark("availableUnits");
+          fields.touch("availableUnits");
           setAvailableUnits(event.target.value);
         }}
       />
