@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/auth"
@@ -32,13 +33,40 @@ type draftBody struct {
 	Positions          json.RawMessage `json:"positions"`
 }
 
-// parseTime reads an RFC 3339 date-time; false when missing, null or malformed.
+// parseTime reads an RFC 3339 date-time; false when missing, null or malformed. time.Parse drops
+// fraction digits past the nanosecond, which would turn "10:00:00.0000000001" into a whole minute;
+// a non-zero fraction in the text therefore stays non-zero (1 ns), so the store's whole-minute check
+// rejects it.
 func parseTime(s *string) (time.Time, bool) {
 	if s == nil {
 		return time.Time{}, false
 	}
 	t, err := time.Parse(time.RFC3339, *s)
-	return t, err == nil
+	if err != nil {
+		return t, false
+	}
+	if t.Nanosecond() == 0 && nonZeroFraction(*s) {
+		t = t.Add(time.Nanosecond) // no rollover: the parsed fraction is 0
+	}
+	return t, true
+}
+
+// nonZeroFraction reports whether the seconds fraction of a valid RFC 3339 date-time has a non-zero
+// digit. The fraction is the run of digits after the first '.', which only the seconds may carry.
+func nonZeroFraction(s string) bool {
+	i := strings.IndexByte(s, '.')
+	if i < 0 {
+		return false
+	}
+	for _, c := range s[i+1:] {
+		if c < '0' || c > '9' {
+			return false
+		}
+		if c != '0' {
+			return true
+		}
+	}
+	return false
 }
 
 // draft turns the body into an elections.Draft, or the error of the first missing, null or

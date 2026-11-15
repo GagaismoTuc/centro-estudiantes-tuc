@@ -223,6 +223,15 @@ func TestElectionDraftRequiresMFA(t *testing.T) {
 	}
 }
 
+// The S6 example times plus a fraction of 10^-10 s: below the nanosecond time.Parse keeps, so it
+// must not be read as a whole minute.
+const (
+	subNanoStart    = "2027-03-10T08:00:00.0000000001-03:00"
+	subNanoEnd      = "2027-03-10T18:00:00.0000000001-03:00"
+	subNanoSubStart = "2027-03-01T00:00:00.0000000001-03:00"
+	subNanoSubEnd   = "2027-03-06T00:00:00.0000000001-03:00"
+)
+
 // S6: the S6 example is stored as given; each invalid draft is refused with its field's code and
 // nothing is stored.
 func TestElectionDraftValidation(t *testing.T) {
@@ -248,6 +257,10 @@ func TestElectionDraftValidation(t *testing.T) {
 		{"end with a fraction of a second", with(draft(), "endsAt", "2027-03-10T18:00:00.5-03:00"), "invalid_window"},
 		{"submission start with seconds", with(draft(), "submissionStartsAt", "2027-03-01T00:00:30-03:00"), "invalid_submission_period"},
 		{"submission end with a fraction of a second", with(draft(), "submissionEndsAt", "2027-03-06T00:00:00.5-03:00"), "invalid_submission_period"},
+		{"start with a fraction below a nanosecond", with(draft(), "startsAt", subNanoStart), "invalid_window"},
+		{"end with a fraction below a nanosecond", with(draft(), "endsAt", subNanoEnd), "invalid_window"},
+		{"submission start with a fraction below a nanosecond", with(draft(), "submissionStartsAt", subNanoSubStart), "invalid_submission_period"},
+		{"submission end with a fraction below a nanosecond", with(draft(), "submissionEndsAt", subNanoSubEnd), "invalid_submission_period"},
 		{"missing start", without(draft(), "startsAt"), "invalid_window"},
 		{"null end", with(draft(), "endsAt", nil), "invalid_window"},
 		{"start not a date-time", with(draft(), "startsAt", "10/03/2027 08:00"), "invalid_window"},
@@ -283,8 +296,23 @@ func TestElectionDraftValidation(t *testing.T) {
 		wantResponse(t, s.edit(s.member, e.ID, encode(with(draft(), "name", " "))), http.StatusUnprocessableEntity, `{"error":"invalid_name"}`)
 		wantResponse(t, s.edit(s.member, e.ID, encode(with(draft(), "endsAt", nil))), http.StatusUnprocessableEntity, `{"error":"invalid_window"}`)
 		wantResponse(t, s.edit(s.member, e.ID, encode(with(draft(), "startsAt", "2027-03-10T08:00:30-03:00"))), http.StatusUnprocessableEntity, `{"error":"invalid_window"}`)
+		for _, tc := range []struct{ field, value, code string }{
+			{"startsAt", subNanoStart, "invalid_window"},
+			{"endsAt", subNanoEnd, "invalid_window"},
+			{"submissionStartsAt", subNanoSubStart, "invalid_submission_period"},
+			{"submissionEndsAt", subNanoSubEnd, "invalid_submission_period"},
+		} {
+			wantResponse(t, s.edit(s.member, e.ID, encode(with(draft(), tc.field, tc.value))), http.StatusUnprocessableEntity, fmt.Sprintf(`{"error":%q}`, tc.code))
+		}
 		if got := strings.TrimSpace(s.get(s.reader, currentPath).Body.String()); got != want {
 			t.Fatalf("after rejected edits = %s, want unchanged", got)
+		}
+		// Ten zero fraction digits are no fraction: still a whole minute.
+		if rec := s.edit(s.member, e.ID, encode(with(draft(), "startsAt", "2027-03-10T08:00:00.0000000000-03:00"))); rec.Code != http.StatusOK {
+			t.Fatalf("zero fraction: status %d, body %s; want 200", rec.Code, rec.Body)
+		}
+		if got := strings.TrimSpace(s.get(s.reader, currentPath).Body.String()); got != want {
+			t.Fatalf("after zero-fraction edit = %s, want unchanged", got)
 		}
 		name := strings.Repeat("ñ", 120)
 		if got := decodeElection(t, s.edit(s.member, e.ID, encode(with(draft(), "name", name))), http.StatusOK); got.Name != name {
