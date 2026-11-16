@@ -11,12 +11,16 @@ const (
 	StatusScheduled  Status = "scheduled"  // [SubmissionEndsAt, StartsAt)
 	StatusOpen       Status = "open"       // [StartsAt, EndsAt)
 	StatusClosed     Status = "closed"     // from EndsAt on
+	StatusAnnulled   Status = "annulled"   // annulled, whatever the clock says
 )
 
-// State returns e's phase at now. Every window includes its start and excludes its end, so at EndsAt
-// exactly the election is closed. Callers pass now from an injected clock (a func() time.Time).
+// State returns e's phase at now: StatusAnnulled once e was annulled, otherwise from its dates. Every
+// window includes its start and excludes its end, so at EndsAt exactly the election is closed. Callers
+// pass now from an injected clock (a func() time.Time).
 func State(now time.Time, e Election) Status {
 	switch {
+	case e.AnnulledAt != nil:
+		return StatusAnnulled
 	case now.Before(e.SubmissionStartsAt):
 		return StatusDraft
 	case now.Before(e.SubmissionEndsAt):

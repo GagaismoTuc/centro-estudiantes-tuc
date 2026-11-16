@@ -203,8 +203,8 @@ func TestElectionForeignKeysStayInsideTheTenant(t *testing.T) {
 		{"member from another school", `INSERT INTO electoral_commission_members (tenant_id, commission_id, roster_member_id) VALUES ($1, $2, $3)`,
 			[]any{env.tenantB, b.commission, memberA}},
 		// Annulled, so the one-in-progress index (tenant B already has a draft) does not answer first.
-		{"commission from another school", `INSERT INTO elections (tenant_id, commission_id, name, mode, submission_starts_at, submission_ends_at, starts_at, ends_at, annulled_at)
-			VALUES ($1, $2, 'Cruzada', 'secret', '2028-03-01', '2028-03-02', '2028-03-03', '2028-03-04', now())`, []any{env.tenantB, a.commission}},
+		{"commission from another school", `INSERT INTO elections (tenant_id, commission_id, name, mode, submission_starts_at, submission_ends_at, starts_at, ends_at, annulled_at, annulment_reason)
+			VALUES ($1, $2, 'Cruzada', 'secret', '2028-03-01', '2028-03-02', '2028-03-03', '2028-03-04', now(), 'Prueba')`, []any{env.tenantB, a.commission}},
 		{"election from another school", `INSERT INTO election_positions (tenant_id, election_id, position_order, name) VALUES ($1, $2, 9, 'Cruzado')`,
 			[]any{env.tenantB, a.election}},
 	} {
@@ -239,8 +239,8 @@ func TestElectionsAcceptOnlySecretModeAndOrderedDates(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			// Done as superuser so neither RLS nor the in-progress index decide: only the CHECKs.
 			_, err := env.super.Exec(ctx, `
-				INSERT INTO elections (tenant_id, commission_id, name, mode, submission_starts_at, submission_ends_at, starts_at, ends_at, annulled_at)
-				VALUES ($1, $2, 'Inválida', $3, $4, $5, $6, $7, now())`,
+				INSERT INTO elections (tenant_id, commission_id, name, mode, submission_starts_at, submission_ends_at, starts_at, ends_at, annulled_at, annulment_reason)
+				VALUES ($1, $2, 'Inválida', $3, $4, $5, $6, $7, now(), 'Prueba')`,
 				env.tenantA, a.commission, tc.mode, tc.subStart, tc.subEnd, tc.start, tc.end)
 			var pgErr *pgconn.PgError
 			if !errors.As(err, &pgErr) || pgErr.Code != "23514" {

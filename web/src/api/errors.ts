@@ -54,6 +54,10 @@ const messages: Record<string, string> = {
   mode_not_supported: "Por ahora solo se puede votar con voto secreto.",
   empty_roster: "El padrón está vacío. Cargá al menos un alumno antes de crear una cuota.",
   due_frozen: "Esta cuota ya tiene pagos o exenciones: solo podés cambiar el nombre.",
+  election_annulled: "La elección fue anulada: ya no se puede cambiar.",
+  election_published: "La votación ya terminó y el resultado está publicado: no se puede anular.",
+  reason_required: "Escribí el motivo antes de anular la elección.",
+  reason_too_long: "El motivo puede tener hasta 500 caracteres.",
   network: "No pudimos conectarnos. Revisá tu conexión e intentá de nuevo.",
 };
 
