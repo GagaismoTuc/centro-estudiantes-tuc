@@ -73,6 +73,32 @@ func TestEventBudgetCostLineValidation(t *testing.T) {
 	if rec.Code != 201 {
 		t.Fatalf("create line: %d %s", rec.Code, rec.Body)
 	}
+	var line struct {
+		ID          string `json:"id"`
+		HeadingID   string `json:"headingId"`
+		Description string `json:"description"`
+		Quantity    int64  `json:"quantity"`
+		Amount      int64  `json:"unitAmountCents"`
+		Day         string `json:"day"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &line); err != nil || line.ID == "" || line.HeadingID != headings["mesas y sillas"] || line.Description != "Chairs" || line.Quantity != 200 || line.Amount != 50000 || line.Day != "2026-09-22" {
+		t.Fatalf("created line %s %v", rec.Body, err)
+	}
+	rec = f.do("GET", "/api/event-budgets/"+budget.ID, "", ip, officer, nil)
+	var detail struct {
+		Lines []struct {
+			ID       string `json:"id"`
+			Quantity int64  `json:"quantity"`
+			Amount   int64  `json:"unitAmountCents"`
+			Day      string `json:"day"`
+		} `json:"lines"`
+		Totals struct {
+			CostCents int64 `json:"costCents"`
+		} `json:"totals"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &detail); err != nil || rec.Code != 200 || len(detail.Lines) != 1 || detail.Lines[0].ID != line.ID || detail.Lines[0].Quantity != 200 || detail.Lines[0].Amount != 50000 || detail.Lines[0].Day != "2026-09-22" || detail.Totals.CostCents != 10000000 {
+		t.Fatalf("persisted line %d %s %v", rec.Code, rec.Body, err)
+	}
 }
 
 func TestEventBudgetResult(t *testing.T) {
