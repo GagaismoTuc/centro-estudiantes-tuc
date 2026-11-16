@@ -8,24 +8,12 @@ import { hasRole, useMe, useSession } from "../auth/session.tsx";
 import { ConfirmDialog } from "../components/ConfirmDialog.tsx";
 import { Field, FormStatus, useFormErrors, type Status } from "../components/Form.tsx";
 import { PageTitle, useDocumentTitle } from "../components/Page.tsx";
+import { centsOf, dayMonthYear, pesos, todayArgentina } from "../lib/money.ts";
 import { FinanceCategories } from "./FinanceCategories.tsx";
 
 type Category = components["schemas"]["FinanceCategory"];
 type Entry = Omit<components["schemas"]["FinanceEntry"], "amountCents"> & { amountCents: string };
-const pesos = (value: string) => {
-  const cents = BigInt(value); const negative = cents < 0n; const absolute = negative ? -cents : cents;
-  return `$ ${negative ? "-" : ""}${new Intl.NumberFormat("es-AR").format(absolute / 100n)},${String(absolute % 100n).padStart(2, "0")}`;
-};
-const dayMonthYear = (isoDate: string) => isoDate.split("-").reverse().join("/");
-const today = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Argentina/Buenos_Aires", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
-
-function centsOf(value: string): string | null {
-  const match = /^(\d+)(?:[,.](\d{1,2}))?$/.exec(value.trim());
-  if (!match || match[1]!.length > 17) return null;
-  const cents = BigInt(match[1]!) * 100n + BigInt((match[2] ?? "").padEnd(2, "0"));
-  if (cents <= 0n || cents > 9223372036854775807n) return null;
-  return String(cents);
-}
+const today = todayArgentina;
 
 export function Finance() {
   useDocumentTitle("Caja");

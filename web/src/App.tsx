@@ -16,6 +16,7 @@ import { Contacts } from "./screens/Contacts.tsx";
 import { Home } from "./screens/Home.tsx";
 import { EventBudgets } from "./screens/EventBudgets.tsx";
 import { Finance } from "./screens/Finance.tsx";
+import { Dues } from "./screens/Dues.tsx";
 import { MfaEnroll } from "./screens/MfaEnroll.tsx";
 import { MfaVerify } from "./screens/MfaVerify.tsx";
 import { Members } from "./screens/Members.tsx";
@@ -45,6 +46,7 @@ const publicRoutes: Record<string, () => JSX.Element> = {
 const shellRoutes: Record<string, { page: string; Screen: () => JSX.Element }> = {
   "/": { page: "Inicio", Screen: Home },
   "/caja": { page: "Caja", Screen: Finance },
+  "/cuotas": { page: "Cuotas", Screen: Dues },
   "/padron": { page: "Padrón", Screen: Roster },
   "/miembros": { page: "Miembros", Screen: Members },
   "/eleccion": { page: "Elección", Screen: Election },
@@ -83,7 +85,7 @@ function Routes() {
     return home === "/seguridad/activar" ? <MfaEnroll /> : <MfaVerify />;
   }
   if ((path === "/padron" || path === "/miembros") && !hasRole(me, "school_admin")) return <Redirect to="/" />;
-  if ((path === "/eleccion" || path === "/centro-de-estudiantes") && me.role === null) return <Redirect to="/" />;
+  if ((path === "/eleccion" || path === "/centro-de-estudiantes" || path === "/cuotas") && me.role === null) return <Redirect to="/" />;
 
   const route = shellRoutes[path];
   return (
