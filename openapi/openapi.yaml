@@ -1329,6 +1329,35 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/NotFoundError"
+  /elections/latest:
+    get:
+      operationId: getLatestElection
+      summary: Read the active school's election in progress, or else its most recently created one
+      description: >
+        Any member of the active school. The election in progress when there is one (the same as
+        `GET /elections/current`); otherwise the most recently created election, so everyone still sees an annulled
+        election and its reason. Responses carry `Cache-Control: no-store`.
+      responses:
+        "200":
+          description: The election.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Election"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          description: The account has no membership in the active school (`forbidden`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForbiddenError"
+        "404":
+          description: The school has no election (`not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotFoundError"
   /elections/{electionId}:
     parameters:
       - name: electionId
@@ -1398,7 +1427,8 @@ paths:
               schema:
                 $ref: "#/components/schemas/NotFoundError"
         "409":
-          description: The election is no longer a draft (`election_not_draft`).
+          description: >
+            The election was annulled (`election_annulled`), or it is no longer a draft (`election_not_draft`).
           content:
             application/json:
               schema:
@@ -1407,9 +1437,83 @@ paths:
                 properties:
                   error:
                     type: string
-                    enum: [election_not_draft]
+                    enum: [election_annulled, election_not_draft]
         "422":
           $ref: "#/components/responses/InvalidElectionDraft"
+  /elections/{electionId}/annulment:
+    parameters:
+      - name: electionId
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      operationId: postElectionAnnulment
+      summary: Annul an election before its result is published
+      description: >
+        Members of the election's Electoral commission only, with a verified second factor. Checks, in order and
+        before the body is read: `forbidden` (no membership in the active school), `not_found` (no such election
+        in it, whether or not it exists in another), `forbidden` (not on the election's commission: students,
+        officers and school admins who are not on it), `mfa_required`. Then the reason (422) and the election's
+        state (409). Annulling is irreversible: the election publishes no result, accepts no change and never
+        reopens; the commission's mandate ends, so the school can organize another election once the officers
+        designate a new commission. Of two simultaneous requests exactly one annuls. Every error writes nothing.
+        Responses carry `Cache-Control: no-store`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnnulmentRequest"
+      responses:
+        "200":
+          description: The election as stored, with state `annulled` and its `annulment`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Election"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          description: "`forbidden` (not on the election's Electoral commission) or `mfa_required`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForbiddenError"
+        "404":
+          description: No such election in the active school (`not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotFoundError"
+        "409":
+          description: >
+            The election was already annulled (`election_annulled`; the original reason stays) or its result is
+            published: the voting ended (state `closed`) (`election_published`).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [election_annulled, election_published]
+        "422":
+          description: >
+            Nothing was written. `reason_required`: `reason` missing, null, empty or only spaces.
+            `reason_too_long`: more than 500 characters once trimmed.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [reason_required, reason_too_long]
   /finance/categories:
     get:
       operationId: getFinanceCategories
@@ -1425,6 +1529,149 @@ paths:
                   $ref: "#/components/schemas/FinanceCategory"
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      operationId: postFinanceCategories
+      summary: Add a category
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NewFinanceCategory" }
+      responses:
+        "201":
+          description: Created category.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FinanceCategory" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409":
+          description: Category already exists.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [category_exists]
+        "422":
+          description: Invalid category input.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [name_required, invalid_category]
+  /finance/categories/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+    patch:
+      operationId: patchFinanceCategory
+      summary: Rename a category
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RenameFinanceCategory" }
+      responses:
+        "200":
+          description: Renamed category.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FinanceCategory" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: Category not found.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotFoundError" }
+        "409":
+          description: Duplicate or reserved category.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [category_exists, reserved_category]
+        "422":
+          description: Category name is required.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [name_required]
+    delete:
+      operationId: deleteFinanceCategory
+      summary: Delete an unused category
+      responses:
+        "204": { description: Deleted. }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: Category not found.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotFoundError" }
+        "409":
+          description: Used or reserved category.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [category_in_use, reserved_category]
+  /finance/categories/{id}/archive:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+    post:
+      operationId: postFinanceCategoryArchive
+      summary: Archive a category
+      responses:
+        "200":
+          description: Archived category.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FinanceCategory" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: Category not found.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotFoundError" }
+        "409":
+          description: Reserved category.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [reserved_category]
   /finance/balance:
     get:
       operationId: getFinanceBalance
@@ -1504,6 +1751,46 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+  /finance/entries/{entryId}/reversal:
+    parameters:
+      - name: entryId
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      operationId: postFinanceEntryReversal
+      summary: Reverse an entry as any officer with MFA
+      description: >
+        Records, in one transaction, a Reversal: an entry with the same amount and category, the
+        opposite direction, today's date in Argentina and the description "Reversión: " followed by
+        the original's. Old entries may be reversed; the Reversal falls in the current period.
+      responses:
+        "201":
+          description: Reversal recorded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FinanceEntry"
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: Entry not found in the active school (`not_found`). Nothing is written.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotFoundError" }
+        "409":
+          description: >
+            Nothing is written. `already_reversed`: the entry already has its Reversal.
+            `cannot_reverse_reversal`: the entry is itself a Reversal; record a new entry instead.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [already_reversed, cannot_reverse_reversal]
 components:
   responses:
     InvalidElectionDraft:
@@ -1572,6 +1859,19 @@ components:
           schema:
             $ref: "#/components/schemas/Error"
   schemas:
+    NewFinanceCategory:
+      type: object
+      additionalProperties: false
+      required: [name, direction]
+      properties:
+        name: { type: string }
+        direction: { type: string, enum: [income, expense] }
+    RenameFinanceCategory:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: { type: string }
     FinanceCategory:
       type: object
       required: [id, name, direction, active, reserved]
@@ -1603,6 +1903,18 @@ components:
         description: { type: string }
         recordedBy: { type: string }
         recordedAt: { type: string, format: date-time }
+        reversesId:
+          type: string
+          description: Present when this entry is a Reversal; the id of the entry it reverses.
+        reversalId:
+          type: string
+          description: Present when this entry was reversed; the id of its Reversal.
+        reversedBy:
+          type: string
+          description: Present when this entry was reversed; the Roster name of the officer who reversed it.
+        reversedOn:
+          type: string
+          description: Present when this entry was reversed; the Reversal's date (YYYY-MM-DD, Argentina).
     FinanceBalance:
       type: object
       required: [balanceCents]
@@ -1675,11 +1987,31 @@ components:
       description: Only "Voto secreto"; any other value is 422 `mode_not_supported`.
     ElectionState:
       type: string
-      enum: [draft, submission, scheduled, open, closed]
+      enum: [draft, submission, scheduled, open, closed, annulled]
       description: >
-        Computed from the server clock against the dates; every window includes its start and excludes its end.
+        `annulled` once the election was annulled, whatever the clock says. Otherwise computed from the server
+        clock against the dates; every window includes its start and excludes its end.
         `draft` before `submissionStartsAt`, `submission` until `submissionEndsAt`, `scheduled` until `startsAt`,
         `open` until `endsAt`, `closed` from `endsAt` on.
+    AnnulmentRequest:
+      type: object
+      additionalProperties: false
+      required: [reason]
+      properties:
+        reason:
+          type: string
+          description: >
+            Public: every member of the school sees it next to the election. Trimmed; 1 to 500 characters once trimmed
+            (`reason_required`, `reason_too_long`). The request body is capped at 4 KiB (`bad_request`).
+    Annulment:
+      type: object
+      required: [reason, annulledAt]
+      properties:
+        reason:
+          type: string
+        annulledAt:
+          type: string
+          format: date-time
     ElectionDraftRequest:
       type: object
       additionalProperties: false
@@ -1750,6 +2082,12 @@ components:
             type: string
         state:
           $ref: "#/components/schemas/ElectionState"
+        annulment:
+          allOf:
+            - $ref: "#/components/schemas/Annulment"
+          description: >
+            Present only when the election was annulled: its public reason. An annulled election carries no vote
+            counts.
         commission:
           type: array
           description: Members of the election's Electoral commission, ordered by name.

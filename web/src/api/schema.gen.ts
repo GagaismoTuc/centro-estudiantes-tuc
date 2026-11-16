@@ -715,6 +715,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/elections/latest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the active school's election in progress, or else its most recently created one
+         * @description Any member of the active school. The election in progress when there is one (the same as `GET /elections/current`); otherwise the most recently created election, so everyone still sees an annulled election and its reason. Responses carry `Cache-Control: no-store`.
+         */
+        get: operations["getLatestElection"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/elections/{electionId}": {
         parameters: {
             query?: never;
@@ -741,6 +761,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/elections/{electionId}/annulment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                electionId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Annul an election before its result is published
+         * @description Members of the election's Electoral commission only, with a verified second factor. Checks, in order and before the body is read: `forbidden` (no membership in the active school), `not_found` (no such election in it, whether or not it exists in another), `forbidden` (not on the election's commission: students, officers and school admins who are not on it), `mfa_required`. Then the reason (422) and the election's state (409). Annulling is irreversible: the election publishes no result, accepts no change and never reopens; the commission's mandate ends, so the school can organize another election once the officers designate a new commission. Of two simultaneous requests exactly one annuls. Every error writes nothing. Responses carry `Cache-Control: no-store`.
+         */
+        post: operations["postElectionAnnulment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/finance/categories": {
         parameters: {
             query?: never;
@@ -751,7 +793,47 @@ export interface paths {
         /** List categories in the active school */
         get: operations["getFinanceCategories"];
         put?: never;
+        /** Add a category */
+        post: operations["postFinanceCategories"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/finance/categories/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
         post?: never;
+        /** Delete an unused category */
+        delete: operations["deleteFinanceCategory"];
+        options?: never;
+        head?: never;
+        /** Rename a category */
+        patch: operations["patchFinanceCategory"];
+        trace?: never;
+    };
+    "/finance/categories/{id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Archive a category */
+        post: operations["postFinanceCategoryArchive"];
         delete?: never;
         options?: never;
         head?: never;
@@ -812,10 +894,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/finance/entries/{entryId}/reversal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entryId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reverse an entry as any officer with MFA
+         * @description Records, in one transaction, a Reversal: an entry with the same amount and category, the opposite direction, today's date in Argentina and the description "Reversión: " followed by the original's. Old entries may be reversed; the Reversal falls in the current period.
+         */
+        post: operations["postFinanceEntryReversal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        NewFinanceCategory: {
+            name: string;
+            /** @enum {string} */
+            direction: "income" | "expense";
+        };
+        RenameFinanceCategory: {
+            name: string;
+        };
         FinanceCategory: {
             id: string;
             name: string;
@@ -842,6 +954,14 @@ export interface components {
             recordedBy: string;
             /** Format: date-time */
             recordedAt: string;
+            /** @description Present when this entry is a Reversal; the id of the entry it reverses. */
+            reversesId?: string;
+            /** @description Present when this entry was reversed; the id of its Reversal. */
+            reversalId?: string;
+            /** @description Present when this entry was reversed; the Roster name of the officer who reversed it. */
+            reversedBy?: string;
+            /** @description Present when this entry was reversed; the Reversal's date (YYYY-MM-DD, Argentina). */
+            reversedOn?: string;
         };
         FinanceBalance: {
             /** @description The exact sum; may exceed int64. */
@@ -885,10 +1005,19 @@ export interface components {
          */
         ElectionMode: "secret";
         /**
-         * @description Computed from the server clock against the dates; every window includes its start and excludes its end. `draft` before `submissionStartsAt`, `submission` until `submissionEndsAt`, `scheduled` until `startsAt`, `open` until `endsAt`, `closed` from `endsAt` on.
+         * @description `annulled` once the election was annulled, whatever the clock says. Otherwise computed from the server clock against the dates; every window includes its start and excludes its end. `draft` before `submissionStartsAt`, `submission` until `submissionEndsAt`, `scheduled` until `startsAt`, `open` until `endsAt`, `closed` from `endsAt` on.
          * @enum {string}
          */
-        ElectionState: "draft" | "submission" | "scheduled" | "open" | "closed";
+        ElectionState: "draft" | "submission" | "scheduled" | "open" | "closed" | "annulled";
+        AnnulmentRequest: {
+            /** @description Public: every member of the school sees it next to the election. Trimmed; 1 to 500 characters once trimmed (`reason_required`, `reason_too_long`). The request body is capped at 4 KiB (`bad_request`). */
+            reason: string;
+        };
+        Annulment: {
+            reason: string;
+            /** Format: date-time */
+            annulledAt: string;
+        };
         /** @description Date-times are RFC 3339 with offset (Argentina is -03:00). `submissionEndsAt` is exclusive: a period "1 to 5 March" ends at 2027-03-06T00:00:00-03:00. The four dates are whole minutes (no seconds): one with seconds or a fraction of a second is rejected with its field's code. Validation codes are listed in the 422 response. */
         ElectionDraftRequest: {
             name: string;
@@ -932,6 +1061,8 @@ export interface components {
             /** @description In order. */
             positions: string[];
             state: components["schemas"]["ElectionState"];
+            /** @description Present only when the election was annulled: its public reason. An annulled election carries no vote counts. */
+            annulment?: components["schemas"]["Annulment"];
             /** @description Members of the election's Electoral commission, ordered by name. */
             commission: components["schemas"]["CommissionMember"][];
         };
@@ -2707,6 +2838,45 @@ export interface operations {
             };
         };
     };
+    getLatestElection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The election. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Election"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description The account has no membership in the active school (`forbidden`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForbiddenError"];
+                };
+            };
+            /** @description The school has no election (`not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotFoundError"];
+                };
+            };
+        };
+    };
     getElection: {
         parameters: {
             query?: never;
@@ -2792,7 +2962,7 @@ export interface operations {
                     "application/json": components["schemas"]["NotFoundError"];
                 };
             };
-            /** @description The election is no longer a draft (`election_not_draft`). */
+            /** @description The election was annulled (`election_annulled`), or it is no longer a draft (`election_not_draft`). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -2800,11 +2970,81 @@ export interface operations {
                 content: {
                     "application/json": {
                         /** @enum {string} */
-                        error: "election_not_draft";
+                        error: "election_annulled" | "election_not_draft";
                     };
                 };
             };
             422: components["responses"]["InvalidElectionDraft"];
+        };
+    };
+    postElectionAnnulment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                electionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnnulmentRequest"];
+            };
+        };
+        responses: {
+            /** @description The election as stored, with state `annulled` and its `annulment`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Election"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            /** @description `forbidden` (not on the election's Electoral commission) or `mfa_required`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForbiddenError"];
+                };
+            };
+            /** @description No such election in the active school (`not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotFoundError"];
+                };
+            };
+            /** @description The election was already annulled (`election_annulled`; the original reason stays) or its result is published: the voting ended (state `closed`) (`election_published`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "election_annulled" | "election_published";
+                    };
+                };
+            };
+            /** @description Nothing was written. `reason_required`: `reason` missing, null, empty or only spaces. `reason_too_long`: more than 500 characters once trimmed. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "reason_required" | "reason_too_long";
+                    };
+                };
+            };
         };
     };
     getFinanceCategories: {
@@ -2827,6 +3067,205 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
+        };
+    };
+    postFinanceCategories: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewFinanceCategory"];
+            };
+        };
+        responses: {
+            /** @description Created category. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinanceCategory"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            /** @description Category already exists. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "category_exists";
+                    };
+                };
+            };
+            /** @description Invalid category input. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "name_required" | "invalid_category";
+                    };
+                };
+            };
+        };
+    };
+    deleteFinanceCategory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            /** @description Category not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotFoundError"];
+                };
+            };
+            /** @description Used or reserved category. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "category_in_use" | "reserved_category";
+                    };
+                };
+            };
+        };
+    };
+    patchFinanceCategory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenameFinanceCategory"];
+            };
+        };
+        responses: {
+            /** @description Renamed category. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinanceCategory"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            /** @description Category not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotFoundError"];
+                };
+            };
+            /** @description Duplicate or reserved category. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "category_exists" | "reserved_category";
+                    };
+                };
+            };
+            /** @description Category name is required. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "name_required";
+                    };
+                };
+            };
+        };
+    };
+    postFinanceCategoryArchive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Archived category. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinanceCategory"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            /** @description Category not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotFoundError"];
+                };
+            };
+            /** @description Reserved category. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "reserved_category";
+                    };
+                };
+            };
         };
     };
     getFinanceBalance: {
@@ -2947,6 +3386,51 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    postFinanceEntryReversal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entryId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Reversal recorded. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinanceEntry"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            /** @description Entry not found in the active school (`not_found`). Nothing is written. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotFoundError"];
+                };
+            };
+            /** @description Nothing is written. `already_reversed`: the entry already has its Reversal. `cannot_reverse_reversal`: the entry is itself a Reversal; record a new entry instead. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "already_reversed" | "cannot_reverse_reversal";
+                    };
                 };
             };
         };

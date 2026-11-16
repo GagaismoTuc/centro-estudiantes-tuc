@@ -12,6 +12,7 @@ import (
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/auth"
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/db"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -25,6 +26,8 @@ var (
 	ErrDescriptionLong = errors.New("finance: description too long")
 	ErrCategory        = errors.New("finance: invalid category")
 	ErrReserved        = errors.New("finance: reserved category")
+	ErrAlreadyReversed = errors.New("finance: entry already reversed")
+	ErrReverseReversal = errors.New("finance: cannot reverse a reversal")
 )
 var uuidPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 var argentina = time.FixedZone("Argentina", -3*60*60)
@@ -37,7 +40,17 @@ type Entry struct {
 	ID, CategoryID, Direction, Date, Description, RecordedBy string
 	AmountCents                                              int64
 	RecordedAt                                               time.Time
+	// ReversesID is set on a Reversal. ReversalID, ReversedBy and ReversedOn are set on an entry
+	// that was reversed: its Reversal's id, recorder name and date.
+	ReversesID, ReversalID, ReversedBy, ReversedOn string
 }
+
+// entryColumns selects an Entry of finance_entries e, with its Reversal r (LEFT JOIN), in the
+// field order of Entry.
+const entryColumns = `e.id::text,e.category_id::text,e.direction,to_char(e.entry_date,'YYYY-MM-DD'),e.description,e.recorded_by_name,e.amount_cents,e.recorded_at,
+  COALESCE(e.reverses_id::text,''),COALESCE(r.id::text,''),COALESCE(r.recorded_by_name,''),COALESCE(to_char(r.entry_date,'YYYY-MM-DD'),'')
+  FROM finance_entries e LEFT JOIN finance_entries r ON r.tenant_id=e.tenant_id AND r.reverses_id=e.id`
+
 type NewEntry struct {
 	CategoryID, Direction, Date, Description string
 	AmountCents                              int64
@@ -125,7 +138,7 @@ func (s *Store) Create(ctx context.Context, sess auth.Session, in NewEntry) (out
 		}
 		var direction string
 		var active, reserved bool
-		e = tx.QueryRow(ctx, `SELECT direction,active,reserved FROM finance_categories WHERE tenant_id=$1 AND id=$2`, sess.TenantID, in.CategoryID).Scan(&direction, &active, &reserved)
+		e = tx.QueryRow(ctx, `SELECT direction,active,reserved FROM finance_categories WHERE tenant_id=$1 AND id=$2 FOR KEY SHARE`, sess.TenantID, in.CategoryID).Scan(&direction, &active, &reserved)
 		if errors.Is(e, pgx.ErrNoRows) {
 			return ErrNotFound
 		}
@@ -138,11 +151,7 @@ func (s *Store) Create(ctx context.Context, sess auth.Session, in NewEntry) (out
 		if reserved {
 			return ErrReserved
 		}
-		var name string
-		e = tx.QueryRow(ctx, `SELECT rm.full_name FROM memberships m JOIN roster_members rm ON rm.tenant_id=m.tenant_id AND rm.id=m.roster_member_id WHERE m.tenant_id=$1 AND m.user_id=$2 LIMIT 1`, sess.TenantID, sess.UserID).Scan(&name)
-		if errors.Is(e, pgx.ErrNoRows) {
-			return ErrForbidden
-		}
+		name, e := officerName(ctx, tx, sess)
 		if e != nil {
 			return e
 		}
@@ -161,10 +170,63 @@ func (s *Store) Create(ctx context.Context, sess auth.Session, in NewEntry) (out
 	})
 	return
 }
+
+// officerName is the Roster name an officer's entries are recorded under.
+func officerName(ctx context.Context, tx pgx.Tx, sess auth.Session) (string, error) {
+	var name string
+	err := tx.QueryRow(ctx, `SELECT rm.full_name FROM memberships m JOIN roster_members rm ON rm.tenant_id=m.tenant_id AND rm.id=m.roster_member_id WHERE m.tenant_id=$1 AND m.user_id=$2 LIMIT 1`, sess.TenantID, sess.UserID).Scan(&name)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrForbidden
+	}
+	return name, err
+}
+
+// Reverse records, in one transaction, the Reversal of entry id: same amount and category, the
+// opposite direction, today's date in Argentina and "Reversión: " plus the original description.
+// The unique reference on reverses_id settles parallel reversals: the loser gets ErrAlreadyReversed.
+func (s *Store) Reverse(ctx context.Context, sess auth.Session, id string) (out Entry, err error) {
+	err = s.withMember(ctx, sess, true, func(tx pgx.Tx) error {
+		if !uuidPattern.MatchString(id) {
+			return ErrNotFound
+		}
+		var original Entry
+		e := tx.QueryRow(ctx, `SELECT `+entryColumns+` WHERE e.tenant_id=$1 AND e.id=$2`, sess.TenantID, id).Scan(&original.ID, &original.CategoryID, &original.Direction, &original.Date, &original.Description, &original.RecordedBy, &original.AmountCents, &original.RecordedAt, &original.ReversesID, &original.ReversalID, &original.ReversedBy, &original.ReversedOn)
+		if errors.Is(e, pgx.ErrNoRows) {
+			return ErrNotFound
+		}
+		if e != nil {
+			return e
+		}
+		if original.ReversesID != "" {
+			return ErrReverseReversal
+		}
+		if original.ReversalID != "" {
+			return ErrAlreadyReversed
+		}
+		name, e := officerName(ctx, tx, sess)
+		if e != nil {
+			return e
+		}
+		out = Entry{CategoryID: original.CategoryID, Direction: "income", Date: s.now().In(argentina).Format("2006-01-02"), Description: "Reversión: " + original.Description, RecordedBy: name, AmountCents: original.AmountCents, ReversesID: original.ID}
+		if original.Direction == "income" {
+			out.Direction = "expense"
+		}
+		e = tx.QueryRow(ctx, `INSERT INTO finance_entries(tenant_id,category_id,direction,entry_date,amount_cents,description,recorded_by,recorded_by_name,recorded_at,reverses_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id::text, recorded_at`, sess.TenantID, out.CategoryID, out.Direction, out.Date, out.AmountCents, out.Description, sess.UserID, name, s.now(), out.ReversesID).Scan(&out.ID, &out.RecordedAt)
+		var pgErr *pgconn.PgError
+		if errors.As(e, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "finance_entries_reverses_id_key" {
+			return ErrAlreadyReversed
+		}
+		return e
+	})
+	if err != nil {
+		return Entry{}, err
+	}
+	return
+}
 func (s *Store) List(ctx context.Context, sess auth.Session) (out []Entry, err error) {
 	out = []Entry{}
 	err = s.withMember(ctx, sess, false, func(tx pgx.Tx) error {
-		rows, e := tx.Query(ctx, `SELECT id::text,category_id::text,direction,to_char(entry_date,'YYYY-MM-DD'),description,recorded_by_name,amount_cents,recorded_at FROM finance_entries WHERE tenant_id=$1 ORDER BY recorded_at DESC,id DESC`, sess.TenantID)
+		rows, e := tx.Query(ctx, `SELECT `+entryColumns+` WHERE e.tenant_id=$1 ORDER BY e.recorded_at DESC,e.id DESC`, sess.TenantID)
 		if e != nil {
 			return e
 		}
@@ -179,7 +241,7 @@ func (s *Store) Get(ctx context.Context, sess auth.Session, id string) (out Entr
 		if !uuidPattern.MatchString(id) {
 			return ErrNotFound
 		}
-		e := tx.QueryRow(ctx, `SELECT id::text,category_id::text,direction,to_char(entry_date,'YYYY-MM-DD'),description,recorded_by_name,amount_cents,recorded_at FROM finance_entries WHERE tenant_id=$1 AND id=$2`, sess.TenantID, id).Scan(&out.ID, &out.CategoryID, &out.Direction, &out.Date, &out.Description, &out.RecordedBy, &out.AmountCents, &out.RecordedAt)
+		e := tx.QueryRow(ctx, `SELECT `+entryColumns+` WHERE e.tenant_id=$1 AND e.id=$2`, sess.TenantID, id).Scan(&out.ID, &out.CategoryID, &out.Direction, &out.Date, &out.Description, &out.RecordedBy, &out.AmountCents, &out.RecordedAt, &out.ReversesID, &out.ReversalID, &out.ReversedBy, &out.ReversedOn)
 		if errors.Is(e, pgx.ErrNoRows) {
 			return ErrNotFound
 		}

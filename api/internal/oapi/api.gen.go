@@ -31,6 +31,7 @@ func (e ElectionMode) Valid() bool {
 
 // Defines values for ElectionState.
 const (
+	Annulled   ElectionState = "annulled"
 	Closed     ElectionState = "closed"
 	Draft      ElectionState = "draft"
 	Open       ElectionState = "open"
@@ -41,6 +42,8 @@ const (
 // Valid indicates whether the value is a known member of the ElectionState enum.
 func (e ElectionState) Valid() bool {
 	switch e {
+	case Annulled:
+		return true
 	case Closed:
 		return true
 	case Draft:
@@ -107,6 +110,24 @@ func (e MfaState) Valid() bool {
 	case MfaStatePending:
 		return true
 	case MfaStateSatisfied:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for NewFinanceCategoryDirection.
+const (
+	Expense NewFinanceCategoryDirection = "expense"
+	Income  NewFinanceCategoryDirection = "income"
+)
+
+// Valid indicates whether the value is a known member of the NewFinanceCategoryDirection enum.
+func (e NewFinanceCategoryDirection) Valid() bool {
+	switch e {
+	case Expense:
+		return true
+	case Income:
 		return true
 	default:
 		return false
@@ -310,13 +331,16 @@ func (e PostElection422JSONResponseBodyError) Valid() bool {
 
 // Defines values for PutElection409JSONResponseBodyError.
 const (
-	ElectionNotDraft PutElection409JSONResponseBodyError = "election_not_draft"
+	PutElection409JSONResponseBodyErrorElectionAnnulled PutElection409JSONResponseBodyError = "election_annulled"
+	PutElection409JSONResponseBodyErrorElectionNotDraft PutElection409JSONResponseBodyError = "election_not_draft"
 )
 
 // Valid indicates whether the value is a known member of the PutElection409JSONResponseBodyError enum.
 func (e PutElection409JSONResponseBodyError) Valid() bool {
 	switch e {
-	case ElectionNotDraft:
+	case PutElection409JSONResponseBodyErrorElectionAnnulled:
+		return true
+	case PutElection409JSONResponseBodyErrorElectionNotDraft:
 		return true
 	default:
 		return false
@@ -350,6 +374,42 @@ func (e PutElection422JSONResponseBodyError) Valid() bool {
 	}
 }
 
+// Defines values for PostElectionAnnulment409JSONResponseBodyError.
+const (
+	PostElectionAnnulment409JSONResponseBodyErrorElectionAnnulled  PostElectionAnnulment409JSONResponseBodyError = "election_annulled"
+	PostElectionAnnulment409JSONResponseBodyErrorElectionPublished PostElectionAnnulment409JSONResponseBodyError = "election_published"
+)
+
+// Valid indicates whether the value is a known member of the PostElectionAnnulment409JSONResponseBodyError enum.
+func (e PostElectionAnnulment409JSONResponseBodyError) Valid() bool {
+	switch e {
+	case PostElectionAnnulment409JSONResponseBodyErrorElectionAnnulled:
+		return true
+	case PostElectionAnnulment409JSONResponseBodyErrorElectionPublished:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostElectionAnnulment422JSONResponseBodyError.
+const (
+	ReasonRequired PostElectionAnnulment422JSONResponseBodyError = "reason_required"
+	ReasonTooLong  PostElectionAnnulment422JSONResponseBodyError = "reason_too_long"
+)
+
+// Valid indicates whether the value is a known member of the PostElectionAnnulment422JSONResponseBodyError enum.
+func (e PostElectionAnnulment422JSONResponseBodyError) Valid() bool {
+	switch e {
+	case ReasonRequired:
+		return true
+	case ReasonTooLong:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PutElectoralCommission409JSONResponseBodyError.
 const (
 	ElectionFrozen PutElectoralCommission409JSONResponseBodyError = "election_frozen"
@@ -377,6 +437,123 @@ func (e PutElectoralCommission422JSONResponseBodyError) Valid() bool {
 	case EmptyCommission:
 		return true
 	case NoAccount:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostFinanceCategories409JSONResponseBodyError.
+const (
+	PostFinanceCategories409JSONResponseBodyErrorCategoryExists PostFinanceCategories409JSONResponseBodyError = "category_exists"
+)
+
+// Valid indicates whether the value is a known member of the PostFinanceCategories409JSONResponseBodyError enum.
+func (e PostFinanceCategories409JSONResponseBodyError) Valid() bool {
+	switch e {
+	case PostFinanceCategories409JSONResponseBodyErrorCategoryExists:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostFinanceCategories422JSONResponseBodyError.
+const (
+	PostFinanceCategories422JSONResponseBodyErrorInvalidCategory PostFinanceCategories422JSONResponseBodyError = "invalid_category"
+	PostFinanceCategories422JSONResponseBodyErrorNameRequired    PostFinanceCategories422JSONResponseBodyError = "name_required"
+)
+
+// Valid indicates whether the value is a known member of the PostFinanceCategories422JSONResponseBodyError enum.
+func (e PostFinanceCategories422JSONResponseBodyError) Valid() bool {
+	switch e {
+	case PostFinanceCategories422JSONResponseBodyErrorInvalidCategory:
+		return true
+	case PostFinanceCategories422JSONResponseBodyErrorNameRequired:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DeleteFinanceCategory409JSONResponseBodyError.
+const (
+	DeleteFinanceCategory409JSONResponseBodyErrorCategoryInUse    DeleteFinanceCategory409JSONResponseBodyError = "category_in_use"
+	DeleteFinanceCategory409JSONResponseBodyErrorReservedCategory DeleteFinanceCategory409JSONResponseBodyError = "reserved_category"
+)
+
+// Valid indicates whether the value is a known member of the DeleteFinanceCategory409JSONResponseBodyError enum.
+func (e DeleteFinanceCategory409JSONResponseBodyError) Valid() bool {
+	switch e {
+	case DeleteFinanceCategory409JSONResponseBodyErrorCategoryInUse:
+		return true
+	case DeleteFinanceCategory409JSONResponseBodyErrorReservedCategory:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatchFinanceCategory409JSONResponseBodyError.
+const (
+	PatchFinanceCategory409JSONResponseBodyErrorCategoryExists   PatchFinanceCategory409JSONResponseBodyError = "category_exists"
+	PatchFinanceCategory409JSONResponseBodyErrorReservedCategory PatchFinanceCategory409JSONResponseBodyError = "reserved_category"
+)
+
+// Valid indicates whether the value is a known member of the PatchFinanceCategory409JSONResponseBodyError enum.
+func (e PatchFinanceCategory409JSONResponseBodyError) Valid() bool {
+	switch e {
+	case PatchFinanceCategory409JSONResponseBodyErrorCategoryExists:
+		return true
+	case PatchFinanceCategory409JSONResponseBodyErrorReservedCategory:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatchFinanceCategory422JSONResponseBodyError.
+const (
+	PatchFinanceCategory422JSONResponseBodyErrorNameRequired PatchFinanceCategory422JSONResponseBodyError = "name_required"
+)
+
+// Valid indicates whether the value is a known member of the PatchFinanceCategory422JSONResponseBodyError enum.
+func (e PatchFinanceCategory422JSONResponseBodyError) Valid() bool {
+	switch e {
+	case PatchFinanceCategory422JSONResponseBodyErrorNameRequired:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostFinanceCategoryArchive409JSONResponseBodyError.
+const (
+	PostFinanceCategoryArchive409JSONResponseBodyErrorReservedCategory PostFinanceCategoryArchive409JSONResponseBodyError = "reserved_category"
+)
+
+// Valid indicates whether the value is a known member of the PostFinanceCategoryArchive409JSONResponseBodyError enum.
+func (e PostFinanceCategoryArchive409JSONResponseBodyError) Valid() bool {
+	switch e {
+	case PostFinanceCategoryArchive409JSONResponseBodyErrorReservedCategory:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostFinanceEntryReversal409JSONResponseBodyError.
+const (
+	AlreadyReversed       PostFinanceEntryReversal409JSONResponseBodyError = "already_reversed"
+	CannotReverseReversal PostFinanceEntryReversal409JSONResponseBodyError = "cannot_reverse_reversal"
+)
+
+// Valid indicates whether the value is a known member of the PostFinanceEntryReversal409JSONResponseBodyError enum.
+func (e PostFinanceEntryReversal409JSONResponseBodyError) Valid() bool {
+	switch e {
+	case AlreadyReversed:
+		return true
+	case CannotReverseReversal:
 		return true
 	default:
 		return false
@@ -446,6 +623,18 @@ func (e PostMemberOfficer422JSONResponseBodyError) Valid() bool {
 	}
 }
 
+// Annulment defines model for Annulment.
+type Annulment struct {
+	AnnulledAt time.Time `json:"annulledAt"`
+	Reason     string    `json:"reason"`
+}
+
+// AnnulmentRequest defines model for AnnulmentRequest.
+type AnnulmentRequest struct {
+	// Reason Public: every member of the school sees it next to the election. Trimmed; 1 to 500 characters once trimmed (`reason_required`, `reason_too_long`). The request body is capped at 4 KiB (`bad_request`).
+	Reason string `json:"reason"`
+}
+
 // ClaimRequest defines model for ClaimRequest.
 type ClaimRequest struct {
 	Code     string `json:"code"`
@@ -511,6 +700,9 @@ type CreateReferencePriceRequest struct {
 
 // Election defines model for Election.
 type Election struct {
+	// Annulment Present only when the election was annulled: its public reason. An annulled election carries no vote counts.
+	Annulment *Annulment `json:"annulment,omitempty"`
+
 	// Commission Members of the election's Electoral commission, ordered by name.
 	Commission []CommissionMember `json:"commission"`
 	EndsAt     time.Time          `json:"endsAt"`
@@ -524,7 +716,7 @@ type Election struct {
 	Positions []string  `json:"positions"`
 	StartsAt  time.Time `json:"startsAt"`
 
-	// State Computed from the server clock against the dates; every window includes its start and excludes its end. `draft` before `submissionStartsAt`, `submission` until `submissionEndsAt`, `scheduled` until `startsAt`, `open` until `endsAt`, `closed` from `endsAt` on.
+	// State `annulled` once the election was annulled, whatever the clock says. Otherwise computed from the server clock against the dates; every window includes its start and excludes its end. `draft` before `submissionStartsAt`, `submission` until `submissionEndsAt`, `scheduled` until `startsAt`, `open` until `endsAt`, `closed` from `endsAt` on.
 	State              ElectionState `json:"state"`
 	SubmissionEndsAt   time.Time     `json:"submissionEndsAt"`
 	SubmissionStartsAt time.Time     `json:"submissionStartsAt"`
@@ -555,7 +747,7 @@ type ElectionDraftRequest struct {
 // ElectionMode Only "Voto secreto"; any other value is 422 `mode_not_supported`.
 type ElectionMode string
 
-// ElectionState Computed from the server clock against the dates; every window includes its start and excludes its end. `draft` before `submissionStartsAt`, `submission` until `submissionEndsAt`, `scheduled` until `startsAt`, `open` until `endsAt`, `closed` from `endsAt` on.
+// ElectionState `annulled` once the election was annulled, whatever the clock says. Otherwise computed from the server clock against the dates; every window includes its start and excludes its end. `draft` before `submissionStartsAt`, `submission` until `submissionEndsAt`, `scheduled` until `startsAt`, `open` until `endsAt`, `closed` from `endsAt` on.
 type ElectionState string
 
 // ElectoralCommission The Electoral commission (UI "Centro de estudiantes").
@@ -614,6 +806,18 @@ type FinanceEntry struct {
 	Id          string    `json:"id"`
 	RecordedAt  time.Time `json:"recordedAt"`
 	RecordedBy  string    `json:"recordedBy"`
+
+	// ReversalId Present when this entry was reversed; the id of its Reversal.
+	ReversalId *string `json:"reversalId,omitempty"`
+
+	// ReversedBy Present when this entry was reversed; the Roster name of the officer who reversed it.
+	ReversedBy *string `json:"reversedBy,omitempty"`
+
+	// ReversedOn Present when this entry was reversed; the Reversal's date (YYYY-MM-DD, Argentina).
+	ReversedOn *string `json:"reversedOn,omitempty"`
+
+	// ReversesId Present when this entry is a Reversal; the id of the entry it reverses.
+	ReversesId *string `json:"reversesId,omitempty"`
 }
 
 // ForbiddenError defines model for ForbiddenError.
@@ -715,6 +919,15 @@ type MfaVerifyRequest struct {
 	RecoveryCode *string `json:"recoveryCode,omitempty"`
 }
 
+// NewFinanceCategory defines model for NewFinanceCategory.
+type NewFinanceCategory struct {
+	Direction NewFinanceCategoryDirection `json:"direction"`
+	Name      string                      `json:"name"`
+}
+
+// NewFinanceCategoryDirection defines model for NewFinanceCategory.Direction.
+type NewFinanceCategoryDirection string
+
 // NewFinanceEntry defines model for NewFinanceEntry.
 type NewFinanceEntry struct {
 	AmountCents int64  `json:"amountCents"`
@@ -763,6 +976,11 @@ type ReferencePrice struct {
 	Date        string `json:"date"`
 	Description string `json:"description"`
 	Id          string `json:"id"`
+}
+
+// RenameFinanceCategory defines model for RenameFinanceCategory.
+type RenameFinanceCategory struct {
+	Name string `json:"name"`
 }
 
 // Role defines model for Role.
@@ -913,11 +1131,38 @@ type PutElection409JSONResponseBodyError string
 // PutElection422JSONResponseBodyError defines parameters for PutElection.
 type PutElection422JSONResponseBodyError string
 
+// PostElectionAnnulment409JSONResponseBodyError defines parameters for PostElectionAnnulment.
+type PostElectionAnnulment409JSONResponseBodyError string
+
+// PostElectionAnnulment422JSONResponseBodyError defines parameters for PostElectionAnnulment.
+type PostElectionAnnulment422JSONResponseBodyError string
+
 // PutElectoralCommission409JSONResponseBodyError defines parameters for PutElectoralCommission.
 type PutElectoralCommission409JSONResponseBodyError string
 
 // PutElectoralCommission422JSONResponseBodyError defines parameters for PutElectoralCommission.
 type PutElectoralCommission422JSONResponseBodyError string
+
+// PostFinanceCategories409JSONResponseBodyError defines parameters for PostFinanceCategories.
+type PostFinanceCategories409JSONResponseBodyError string
+
+// PostFinanceCategories422JSONResponseBodyError defines parameters for PostFinanceCategories.
+type PostFinanceCategories422JSONResponseBodyError string
+
+// DeleteFinanceCategory409JSONResponseBodyError defines parameters for DeleteFinanceCategory.
+type DeleteFinanceCategory409JSONResponseBodyError string
+
+// PatchFinanceCategory409JSONResponseBodyError defines parameters for PatchFinanceCategory.
+type PatchFinanceCategory409JSONResponseBodyError string
+
+// PatchFinanceCategory422JSONResponseBodyError defines parameters for PatchFinanceCategory.
+type PatchFinanceCategory422JSONResponseBodyError string
+
+// PostFinanceCategoryArchive409JSONResponseBodyError defines parameters for PostFinanceCategoryArchive.
+type PostFinanceCategoryArchive409JSONResponseBodyError string
+
+// PostFinanceEntryReversal409JSONResponseBodyError defines parameters for PostFinanceEntryReversal.
+type PostFinanceEntryReversal409JSONResponseBodyError string
 
 // DeleteMemberOfficer404JSONResponseBodyError defines parameters for DeleteMemberOfficer.
 type DeleteMemberOfficer404JSONResponseBodyError string
@@ -997,8 +1242,17 @@ type PostElectionJSONRequestBody = ElectionDraftRequest
 // PutElectionJSONRequestBody defines body for PutElection for application/json ContentType.
 type PutElectionJSONRequestBody = ElectionDraftRequest
 
+// PostElectionAnnulmentJSONRequestBody defines body for PostElectionAnnulment for application/json ContentType.
+type PostElectionAnnulmentJSONRequestBody = AnnulmentRequest
+
 // PutElectoralCommissionJSONRequestBody defines body for PutElectoralCommission for application/json ContentType.
 type PutElectoralCommissionJSONRequestBody = CommissionDesignation
+
+// PostFinanceCategoriesJSONRequestBody defines body for PostFinanceCategories for application/json ContentType.
+type PostFinanceCategoriesJSONRequestBody = NewFinanceCategory
+
+// PatchFinanceCategoryJSONRequestBody defines body for PatchFinanceCategory for application/json ContentType.
+type PatchFinanceCategoryJSONRequestBody = RenameFinanceCategory
 
 // PostFinanceEntriesJSONRequestBody defines body for PostFinanceEntries for application/json ContentType.
 type PostFinanceEntriesJSONRequestBody = NewFinanceEntry
@@ -1095,12 +1349,18 @@ type ServerInterface interface {
 	// GetCurrentElection Read the active school's election in progress (neither published nor annulled)
 	// (GET /elections/current)
 	GetCurrentElection(w http.ResponseWriter, r *http.Request)
+	// GetLatestElection Read the active school's election in progress, or else its most recently created one
+	// (GET /elections/latest)
+	GetLatestElection(w http.ResponseWriter, r *http.Request)
 	// GetElection Read an election of the active school
 	// (GET /elections/{electionId})
 	GetElection(w http.ResponseWriter, r *http.Request, electionId string)
 	// PutElection Edit the draft of an election
 	// (PUT /elections/{electionId})
 	PutElection(w http.ResponseWriter, r *http.Request, electionId string)
+	// PostElectionAnnulment Annul an election before its result is published
+	// (POST /elections/{electionId}/annulment)
+	PostElectionAnnulment(w http.ResponseWriter, r *http.Request, electionId string)
 	// GetElectoralCommission Read the active school's current Electoral commission
 	// (GET /electoral-commission)
 	GetElectoralCommission(w http.ResponseWriter, r *http.Request)
@@ -1116,6 +1376,18 @@ type ServerInterface interface {
 	// GetFinanceCategories List categories in the active school
 	// (GET /finance/categories)
 	GetFinanceCategories(w http.ResponseWriter, r *http.Request)
+	// PostFinanceCategories Add a category
+	// (POST /finance/categories)
+	PostFinanceCategories(w http.ResponseWriter, r *http.Request)
+	// DeleteFinanceCategory Delete an unused category
+	// (DELETE /finance/categories/{id})
+	DeleteFinanceCategory(w http.ResponseWriter, r *http.Request, id string)
+	// PatchFinanceCategory Rename a category
+	// (PATCH /finance/categories/{id})
+	PatchFinanceCategory(w http.ResponseWriter, r *http.Request, id string)
+	// PostFinanceCategoryArchive Archive a category
+	// (POST /finance/categories/{id}/archive)
+	PostFinanceCategoryArchive(w http.ResponseWriter, r *http.Request, id string)
 	// GetFinanceEntries List entries in the active school
 	// (GET /finance/entries)
 	GetFinanceEntries(w http.ResponseWriter, r *http.Request)
@@ -1125,6 +1397,9 @@ type ServerInterface interface {
 	// GetFinanceEntry Get an entry in the active school
 	// (GET /finance/entries/{entryId})
 	GetFinanceEntry(w http.ResponseWriter, r *http.Request, entryId string)
+	// PostFinanceEntryReversal Reverse an entry as any officer with MFA
+	// (POST /finance/entries/{entryId}/reversal)
+	PostFinanceEntryReversal(w http.ResponseWriter, r *http.Request, entryId string)
 	// GetHealth Liveness check
 	// (GET /health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
@@ -1706,6 +1981,20 @@ func (siw *ServerInterfaceWrapper) GetCurrentElection(w http.ResponseWriter, r *
 	handler.ServeHTTP(w, r)
 }
 
+// GetLatestElection operation middleware
+func (siw *ServerInterfaceWrapper) GetLatestElection(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetLatestElection(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetElection operation middleware
 func (siw *ServerInterfaceWrapper) GetElection(w http.ResponseWriter, r *http.Request) {
 
@@ -1749,6 +2038,32 @@ func (siw *ServerInterfaceWrapper) PutElection(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PutElection(w, r, electionId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostElectionAnnulment operation middleware
+func (siw *ServerInterfaceWrapper) PostElectionAnnulment(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "electionId" -------------
+	var electionId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "electionId", r.PathValue("electionId"), &electionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "electionId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostElectionAnnulment(w, r, electionId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1828,6 +2143,98 @@ func (siw *ServerInterfaceWrapper) GetFinanceCategories(w http.ResponseWriter, r
 	handler.ServeHTTP(w, r)
 }
 
+// PostFinanceCategories operation middleware
+func (siw *ServerInterfaceWrapper) PostFinanceCategories(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostFinanceCategories(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteFinanceCategory operation middleware
+func (siw *ServerInterfaceWrapper) DeleteFinanceCategory(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteFinanceCategory(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PatchFinanceCategory operation middleware
+func (siw *ServerInterfaceWrapper) PatchFinanceCategory(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PatchFinanceCategory(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostFinanceCategoryArchive operation middleware
+func (siw *ServerInterfaceWrapper) PostFinanceCategoryArchive(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostFinanceCategoryArchive(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetFinanceEntries operation middleware
 func (siw *ServerInterfaceWrapper) GetFinanceEntries(w http.ResponseWriter, r *http.Request) {
 
@@ -1873,6 +2280,32 @@ func (siw *ServerInterfaceWrapper) GetFinanceEntry(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetFinanceEntry(w, r, entryId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostFinanceEntryReversal operation middleware
+func (siw *ServerInterfaceWrapper) PostFinanceEntryReversal(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "entryId" -------------
+	var entryId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "entryId", r.PathValue("entryId"), &entryId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "entryId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostFinanceEntryReversal(w, r, entryId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2250,13 +2683,20 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/electoral-commission/candidates", wrapper.GetElectoralCommissionCandidates)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/elections", wrapper.PostElection)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/elections/current", wrapper.GetCurrentElection)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/elections/latest", wrapper.GetLatestElection)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/elections/{electionId}", wrapper.GetElection)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/elections/{electionId}", wrapper.PutElection)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/elections/{electionId}/annulment", wrapper.PostElectionAnnulment)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/categories", wrapper.GetFinanceCategories)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/finance/categories", wrapper.PostFinanceCategories)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/finance/categories/{id}", wrapper.DeleteFinanceCategory)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/finance/categories/{id}", wrapper.PatchFinanceCategory)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/finance/categories/{id}/archive", wrapper.PostFinanceCategoryArchive)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/balance", wrapper.GetFinanceBalance)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/entries", wrapper.GetFinanceEntries)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/finance/entries", wrapper.PostFinanceEntries)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/entries/{entryId}", wrapper.GetFinanceEntry)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/finance/entries/{entryId}/reversal", wrapper.PostFinanceEntryReversal)
 
 	return m
 }

@@ -31,8 +31,20 @@ func writeFinanceError(w http.ResponseWriter, err error) {
 		writeError(w, 422, "description_too_long")
 	case errors.Is(err, finance.ErrCategory):
 		writeError(w, 422, "invalid_category")
+	case errors.Is(err, finance.ErrCategoryName):
+		writeError(w, 422, "name_required")
+	case errors.Is(err, finance.ErrCategoryExists):
+		writeError(w, 409, "category_exists")
+	case errors.Is(err, finance.ErrCategoryInUse):
+		writeError(w, 409, "category_in_use")
+	case errors.Is(err, finance.ErrReservedCategory):
+		writeError(w, 409, "reserved_category")
 	case errors.Is(err, finance.ErrReserved):
 		writeError(w, 422, "reserved_category")
+	case errors.Is(err, finance.ErrAlreadyReversed):
+		writeError(w, 409, "already_reversed")
+	case errors.Is(err, finance.ErrReverseReversal):
+		writeError(w, 409, "cannot_reverse_reversal")
 	default:
 		// Database errors can contain submitted values; never write them to logs.
 		slog.Error("finance operation failed")
@@ -40,7 +52,14 @@ func writeFinanceError(w http.ResponseWriter, err error) {
 	}
 }
 func financeEntry(e finance.Entry) oapi.FinanceEntry {
-	return oapi.FinanceEntry{Id: e.ID, CategoryId: e.CategoryID, Direction: e.Direction, Date: e.Date, Description: e.Description, AmountCents: e.AmountCents, RecordedBy: e.RecordedBy, RecordedAt: e.RecordedAt}
+	optional := func(v string) *string {
+		if v == "" {
+			return nil
+		}
+		return &v
+	}
+	return oapi.FinanceEntry{Id: e.ID, CategoryId: e.CategoryID, Direction: e.Direction, Date: e.Date, Description: e.Description, AmountCents: e.AmountCents, RecordedBy: e.RecordedBy, RecordedAt: e.RecordedAt,
+		ReversesId: optional(e.ReversesID), ReversalId: optional(e.ReversalID), ReversedBy: optional(e.ReversedBy), ReversedOn: optional(e.ReversedOn)}
 }
 func (s *server) GetFinanceCategories(w http.ResponseWriter, r *http.Request) {
 	sess, ok := rosterSession(w, r)
@@ -125,6 +144,81 @@ func (s *server) PostFinanceEntries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	entry, err := s.finance.Create(r.Context(), sess, finance.NewEntry{CategoryID: req.CategoryID, Direction: req.Direction, Date: req.Date, AmountCents: amount, Description: req.Description})
+	if err != nil {
+		writeFinanceError(w, err)
+		return
+	}
+	writeJSON(w, 201, financeEntry(entry))
+}
+func categoryResponse(c finance.Category) oapi.FinanceCategory {
+	return oapi.FinanceCategory{Id: c.ID, Name: c.Name, Direction: c.Direction, Active: c.Active, Reserved: c.Reserved}
+}
+func (s *server) categoryWrite(w http.ResponseWriter, r *http.Request, id, operation string) {
+	sess, ok := rosterSession(w, r)
+	if !ok {
+		return
+	}
+	if err := s.finance.AuthorizeCategoryWrite(r.Context(), sess); err != nil {
+		writeFinanceError(w, err)
+		return
+	}
+	var req struct {
+		Name      string `json:"name"`
+		Direction string `json:"direction"`
+	}
+	if operation == "add" {
+		if !decodeStrict(w, r, &req) {
+			return
+		}
+	} else if operation == "rename" {
+		var rename struct {
+			Name string `json:"name"`
+		}
+		if !decodeStrict(w, r, &rename) {
+			return
+		}
+		req.Name = rename.Name
+	}
+	var cat finance.Category
+	var err error
+	if operation == "add" {
+		cat, err = s.finance.AddCategory(r.Context(), sess, req.Name, req.Direction)
+	} else {
+		cat, err = s.finance.ChangeCategory(r.Context(), sess, id, operation, req.Name)
+	}
+	if err != nil {
+		writeFinanceError(w, err)
+		return
+	}
+	if operation == "delete" {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	status := http.StatusOK
+	if operation == "add" {
+		status = http.StatusCreated
+	}
+	writeJSON(w, status, categoryResponse(cat))
+}
+func (s *server) PostFinanceCategories(w http.ResponseWriter, r *http.Request) {
+	s.categoryWrite(w, r, "", "add")
+}
+func (s *server) PatchFinanceCategory(w http.ResponseWriter, r *http.Request, id string) {
+	s.categoryWrite(w, r, id, "rename")
+}
+func (s *server) DeleteFinanceCategory(w http.ResponseWriter, r *http.Request, id string) {
+	s.categoryWrite(w, r, id, "delete")
+}
+func (s *server) PostFinanceCategoryArchive(w http.ResponseWriter, r *http.Request, id string) {
+	s.categoryWrite(w, r, id, "archive")
+}
+
+func (s *server) PostFinanceEntryReversal(w http.ResponseWriter, r *http.Request, entryID string) {
+	sess, ok := rosterSession(w, r)
+	if !ok {
+		return
+	}
+	entry, err := s.finance.Reverse(r.Context(), sess, entryID)
 	if err != nil {
 		writeFinanceError(w, err)
 		return
