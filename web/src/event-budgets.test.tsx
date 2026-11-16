@@ -46,7 +46,7 @@ test("invalid budget form focuses the first invalid field and blocks students", 
   unmount();
 
   mockApi({
-    "GET /auth/me": ok(me({ role: "student", mfa: "none" })),
+    "GET /auth/me": ok(me({ role: "student", mfa: "not_required" })),
   });
   render(<App />);
   expect((await screen.findByRole("alert")).textContent).toContain("No ten\u00e9s acceso");
