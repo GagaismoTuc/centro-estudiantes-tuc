@@ -15,14 +15,16 @@ var ErrForbidden = errors.New("elections: forbidden")
 
 // access is what the session user is in one tenant, read in the operation's own transaction.
 type access struct {
-	member       bool // has a membership in the tenant
-	designator   bool // may designate the commission: an officer, or the school admin when there are no officers
-	onCommission bool // their roster entry is on the current commission
+	member         bool   // has a membership in the tenant
+	designator     bool   // may designate the commission: an officer, or the school admin when there are no officers
+	onCommission   bool   // their roster entry is on the current commission
+	rosterMemberID string // the user's roster_member_id in the tenant, if any
 }
 
 func readAccess(ctx context.Context, tx pgx.Tx, tenant, user string) (access, error) {
 	var a access
 	var officer, admin, officersExist bool
+	var rosterID *string
 	err := tx.QueryRow(ctx, `
 		SELECT EXISTS (SELECT FROM memberships WHERE tenant_id = $1 AND user_id = $2),
 		       EXISTS (SELECT FROM memberships m WHERE m.tenant_id = $1 AND m.user_id = $2 AND (m.role = 'officer'
@@ -33,8 +35,13 @@ func readAccess(ctx context.Context, tx pgx.Tx, tenant, user string) (access, er
 		       EXISTS (SELECT FROM electoral_commission_members cm
 		               JOIN electoral_commissions c ON c.tenant_id = cm.tenant_id AND c.id = cm.commission_id AND c.ended_at IS NULL
 		               JOIN memberships ms ON ms.tenant_id = cm.tenant_id AND ms.roster_member_id = cm.roster_member_id
-		               WHERE cm.tenant_id = $1 AND ms.user_id = $2)`, tenant, user).
-		Scan(&a.member, &officer, &admin, &officersExist, &a.onCommission)
+		               WHERE cm.tenant_id = $1 AND ms.user_id = $2),
+		       (SELECT roster_member_id::text FROM memberships WHERE tenant_id = $1 AND user_id = $2 AND roster_member_id IS NOT NULL LIMIT 1)`,
+		tenant, user).
+		Scan(&a.member, &officer, &admin, &officersExist, &a.onCommission, &rosterID)
+	if rosterID != nil {
+		a.rosterMemberID = *rosterID
+	}
 	a.designator = officer || (admin && !officersExist)
 	return a, err
 }

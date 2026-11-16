@@ -47,8 +47,8 @@ var (
 	// ErrElectionPublished means the election's result is published (its voting ended), so it can no
 	// longer be annulled.
 	ErrElectionPublished = errors.New("elections: election published")
-	// ErrReasonRequired means an annulment reason is missing or blank.
-	ErrReasonRequired = errors.New("elections: annulment reason required")
+	// ErrReasonRequired means a required reason (annulment or list rejection) is missing or invalid.
+	ErrReasonRequired = errors.New("elections: reason required")
 	// ErrReasonTooLong means an annulment reason is longer than MaxReasonLength characters.
 	ErrReasonTooLong = errors.New("elections: annulment reason too long")
 )

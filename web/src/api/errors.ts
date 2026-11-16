@@ -64,11 +64,20 @@ const messages: Record<string, string> = {
   election_published: "La votación ya terminó y el resultado está publicado: no se puede anular.",
   reason_required: "Escribí el motivo antes de anular la elección.",
   reason_too_long: "El motivo puede tener hasta 500 caracteres.",
+  invalid_candidates: "Elegí un candidato distinto para cada cargo.",
+  candidate_in_commission: "Quienes integran el Centro de estudiantes no pueden ser candidatos.",
+  invalid_representative: "Elegí un alumno del padrón como apoderado.",
+  submission_closed: "El período de presentación de listas no está abierto.",
+  list_frozen: "Esta lista ya fue aprobada y no se puede cambiar.",
+  list_rejected: "Esta lista ya fue rechazada.",
+  list_name_taken: "Ya hay otra lista con ese nombre en esta elección.",
+  candidate_on_other_list: "Uno de los alumnos elegidos ya es candidato en otra lista.",
+  query_too_short: "Escribí al menos 3 letras para buscar.",
   network: "No pudimos conectarnos. Revisá tu conexión e intentá de nuevo.",
 };
 
 /** Where the error happened, when the same code needs different advice. */
-export type ErrorContext = "finance" | "access-code" | "change-password" | "mfa" | "mfa-recovery" | "reset" | "verify";
+export type ErrorContext = "finance" | "access-code" | "change-password" | "election-list" | "mfa" | "mfa-recovery" | "reset" | "verify";
 
 const contextual: Record<ErrorContext, Record<string, string>> = {
   finance: {
@@ -81,6 +90,10 @@ const contextual: Record<ErrorContext, Record<string, string>> = {
   },
   "change-password": {
     invalid_credentials: "La contraseña actual no es correcta.",
+  },
+  "election-list": {
+    invalid_name: "Escribí un nombre para la lista de hasta 80 caracteres.",
+    reason_required: "Escribí el motivo del rechazo (hasta 500 caracteres).",
   },
   mfa: {
     invalid_code: "El código no es correcto o ya se usó. Probá con el próximo que muestre tu app.",
@@ -123,6 +136,10 @@ const fieldsByCode: Record<string, string[]> = {
   invalid_submission_period: ["submissionStartsAt", "submissionEndsAt"],
   invalid_positions: ["position"],
   mode_not_supported: ["mode"],
+  list_name_taken: ["name"],
+  invalid_representative: ["representativeRosterMemberId"],
+  reason_required: ["reason"],
+  query_too_short: ["candidateQuery"],
 };
 
 export function errorFields(code: string): string[] {
