@@ -263,6 +263,30 @@ func (e RowErrorCode) Valid() bool {
 	}
 }
 
+// Defines values for ShareStatus.
+const (
+	ShareStatusApproved ShareStatus = "approved"
+	ShareStatusPending  ShareStatus = "pending"
+	ShareStatusRejected ShareStatus = "rejected"
+	ShareStatusRemoved  ShareStatus = "removed"
+)
+
+// Valid indicates whether the value is a known member of the ShareStatus enum.
+func (e ShareStatus) Valid() bool {
+	switch e {
+	case ShareStatusApproved:
+		return true
+	case ShareStatusPending:
+		return true
+	case ShareStatusRejected:
+		return true
+	case ShareStatusRemoved:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ElectionListConflictError.
 const (
 	ElectionListConflictErrorCandidateOnOtherList ElectionListConflictError = "candidate_on_other_list"
@@ -398,6 +422,21 @@ func (e InvalidElectionListError) Valid() bool {
 	case InvalidElectionListErrorInvalidCandidates:
 		return true
 	case InvalidElectionListErrorInvalidName:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostContactShare409JSONResponseBodyError.
+const (
+	AlreadyShared PostContactShare409JSONResponseBodyError = "already_shared"
+)
+
+// Valid indicates whether the value is a known member of the PostContactShare409JSONResponseBodyError enum.
+func (e PostContactShare409JSONResponseBodyError) Valid() bool {
+	switch e {
+	case AlreadyShared:
 		return true
 	default:
 		return false
@@ -1072,6 +1111,7 @@ type Contact struct {
 	Notes           string           `json:"notes"`
 	Phone           string           `json:"phone"`
 	ReferencePrices []ReferencePrice `json:"referencePrices"`
+	ShareStatus     *ShareStatus     `json:"shareStatus,omitempty"`
 	UpdatedAt       time.Time        `json:"updatedAt"`
 	Zone            string           `json:"zone"`
 }
@@ -1595,6 +1635,47 @@ type SchoolMember struct {
 	RosterMemberId *string `json:"rosterMemberId"`
 }
 
+// ShareStatus defines model for ShareStatus.
+type ShareStatus string
+
+// SharedContact defines model for SharedContact.
+type SharedContact struct {
+	CreatedAt       time.Time              `json:"createdAt"`
+	Email           string                 `json:"email"`
+	HeadingName     string                 `json:"headingName"`
+	Id              string                 `json:"id"`
+	Name            string                 `json:"name"`
+	Phone           string                 `json:"phone"`
+	ReferencePrices []SharedReferencePrice `json:"referencePrices"`
+	Zone            string                 `json:"zone"`
+}
+
+// SharedContactPage defines model for SharedContactPage.
+type SharedContactPage struct {
+	Headings   []string        `json:"headings"`
+	Items      []SharedContact `json:"items"`
+	Page       int             `json:"page"`
+	PageSize   int             `json:"pageSize"`
+	Total      int             `json:"total"`
+	TotalPages int             `json:"totalPages"`
+}
+
+// SharedContactShare defines model for SharedContactShare.
+type SharedContactShare struct {
+	CreatedAt time.Time   `json:"createdAt"`
+	Id        string      `json:"id"`
+	Status    ShareStatus `json:"status"`
+}
+
+// SharedReferencePrice defines model for SharedReferencePrice.
+type SharedReferencePrice struct {
+	AmountCents int64 `json:"amountCents"`
+
+	// Date Example: 2026-09-01
+	Date        string `json:"date"`
+	Description string `json:"description"`
+}
+
 // TokenRequest defines model for TokenRequest.
 type TokenRequest struct {
 	// Token The value after `#token=` in the emailed link.
@@ -1692,6 +1773,9 @@ type GetContactsParams struct {
 	HeadingId *string `form:"headingId,omitempty" json:"headingId,omitempty"`
 	Q         *string `form:"q,omitempty" json:"q,omitempty"`
 }
+
+// PostContactShare409JSONResponseBodyError defines parameters for PostContactShare.
+type PostContactShare409JSONResponseBodyError string
 
 // PostElection409JSONResponseBodyError defines parameters for PostElection.
 type PostElection409JSONResponseBodyError string
@@ -1802,6 +1886,13 @@ type PostMemberOfficer409JSONResponseBodyError string
 
 // PostMemberOfficer422JSONResponseBodyError defines parameters for PostMemberOfficer.
 type PostMemberOfficer422JSONResponseBodyError string
+
+// GetSharedContactsParams defines parameters for GetSharedContacts.
+type GetSharedContactsParams struct {
+	Heading *string `form:"heading,omitempty" json:"heading,omitempty"`
+	Zone    *string `form:"zone,omitempty" json:"zone,omitempty"`
+	Page    *int    `form:"page,omitempty" json:"page,omitempty"`
+}
 
 // PostAuthClaimJSONRequestBody defines body for PostAuthClaim for application/json ContentType.
 type PostAuthClaimJSONRequestBody = ClaimRequest
@@ -1985,6 +2076,9 @@ type ServerInterface interface {
 	// DeleteContactReferencePrice Delete a reference price from a contact
 	// (DELETE /contacts/{id}/reference-prices/{priceId})
 	DeleteContactReferencePrice(w http.ResponseWriter, r *http.Request, id string, priceId string)
+	// PostContactShare Share a contact with the platform-wide shared directory
+	// (POST /contacts/{id}/share)
+	PostContactShare(w http.ResponseWriter, r *http.Request, id string)
 	// PostElection Create the draft of an election
 	// (POST /elections)
 	PostElection(w http.ResponseWriter, r *http.Request)
@@ -2135,6 +2229,9 @@ type ServerInterface interface {
 	// PostRosterMemberAccessCode Issue an access code for one roster member
 	// (POST /roster/{memberId}/access-code)
 	PostRosterMemberAccessCode(w http.ResponseWriter, r *http.Request, memberId string)
+	// GetSharedContacts Search approved contacts in the shared directory
+	// (GET /shared-contacts)
+	GetSharedContacts(w http.ResponseWriter, r *http.Request, params GetSharedContactsParams)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -2626,6 +2723,32 @@ func (siw *ServerInterfaceWrapper) DeleteContactReferencePrice(w http.ResponseWr
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.DeleteContactReferencePrice(w, r, id, priceId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostContactShare operation middleware
+func (siw *ServerInterfaceWrapper) PostContactShare(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostContactShare(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3753,6 +3876,65 @@ func (siw *ServerInterfaceWrapper) PostRosterMemberAccessCode(w http.ResponseWri
 	handler.ServeHTTP(w, r)
 }
 
+// GetSharedContacts operation middleware
+func (siw *ServerInterfaceWrapper) GetSharedContacts(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetSharedContactsParams
+
+	// ------------- Optional query parameter "heading" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "heading", r.URL.Query(), &params.Heading, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "heading"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "heading", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "zone" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "zone", r.URL.Query(), &params.Zone, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "zone"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "zone", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "page" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page", r.URL.Query(), &params.Page, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "page"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetSharedContacts(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -3915,6 +4097,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/contacts/{id}", wrapper.PatchContact)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/contacts/{id}/reference-prices", wrapper.PostContactReferencePrice)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/contacts/{id}/reference-prices/{priceId}", wrapper.DeleteContactReferencePrice)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/contacts/{id}/share", wrapper.PostContactShare)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/shared-contacts", wrapper.GetSharedContacts)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/roster/access-codes", wrapper.PostRosterAccessCodes)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/electoral-commission", wrapper.GetElectoralCommission)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/electoral-commission", wrapper.PutElectoralCommission)

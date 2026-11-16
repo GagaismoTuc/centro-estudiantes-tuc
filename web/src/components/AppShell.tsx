@@ -75,12 +75,20 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
           )}
           {canReadContacts(me) && <li><Link to="/presupuestos" className="nav__item" onClick={onNavigate}><Icon name="calculator" />Presupuestos</Link></li>}
           {canReadContacts(me) && (
-            <li>
-              <Link to="/contactos" className="nav__item" onClick={onNavigate}>
-                <Icon name="contacts" />
-                Contactos
-              </Link>
-            </li>
+            <>
+              <li>
+                <Link to="/contactos" className="nav__item" onClick={onNavigate}>
+                  <Icon name="contacts" />
+                  Contactos
+                </Link>
+              </li>
+              <li>
+                <Link to="/contactos/compartido" className="nav__item" onClick={onNavigate}>
+                  <Icon name="contacts" />
+                  Directorio compartido
+                </Link>
+              </li>
+            </>
           )}
           <li><Link to="/caja" className="nav__item" onClick={onNavigate}><Icon name="wallet" />Caja</Link></li>
           {me.role !== null && (

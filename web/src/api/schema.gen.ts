@@ -663,6 +663,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/contacts/{id}/share": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Share a contact with the platform-wide shared directory
+         * @description Officers with a two-factor session only. Copies the shareable fields (excluding notes and source school) into a pending shared-directory entry for Platform admin approval.
+         */
+        post: operations["postContactShare"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/shared-contacts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search approved contacts in the shared directory
+         * @description Officers, school admins and veedors with a two-factor session. Returns only approved entries without notes or source school, paginated in pages of 50.
+         */
+        get: operations["getSharedContacts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/roster/access-codes": {
         parameters: {
             query?: never;
@@ -1632,10 +1672,45 @@ export interface components {
             zone: string;
             notes: string;
             referencePrices: components["schemas"]["ReferencePrice"][];
+            shareStatus?: components["schemas"]["ShareStatus"];
             /** Format: date-time */
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        /** @enum {string} */
+        ShareStatus: "pending" | "approved" | "rejected" | "removed";
+        SharedContactShare: {
+            id: string;
+            status: components["schemas"]["ShareStatus"];
+            /** Format: date-time */
+            createdAt: string;
+        };
+        SharedReferencePrice: {
+            description: string;
+            /** Format: int64 */
+            amountCents: number;
+            /** @example 2026-09-01 */
+            date: string;
+        };
+        SharedContact: {
+            id: string;
+            headingName: string;
+            name: string;
+            phone: string;
+            email: string;
+            zone: string;
+            referencePrices: components["schemas"]["SharedReferencePrice"][];
+            /** Format: date-time */
+            createdAt: string;
+        };
+        SharedContactPage: {
+            items: components["schemas"]["SharedContact"][];
+            headings: string[];
+            page: number;
+            pageSize: number;
+            total: number;
+            totalPages: number;
         };
         CreateContactRequest: {
             name: string;
@@ -3331,6 +3406,78 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+        };
+    };
+    postContactShare: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Share request created in `pending` state. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharedContactShare"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["DirectoryForbidden"];
+            /** @description Contact not found in the active school (`not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Contact already has a `pending` or `approved` share request (`already_shared`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "already_shared";
+                    };
+                };
+            };
+        };
+    };
+    getSharedContacts: {
+        parameters: {
+            query?: {
+                heading?: string;
+                zone?: string;
+                page?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of approved shared contacts ordered by name. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharedContactPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["DirectoryForbidden"];
         };
     };
     postRosterAccessCodes: {

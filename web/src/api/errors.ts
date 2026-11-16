@@ -47,6 +47,7 @@ const messages: Record<string, string> = {
   heading_in_use: "Ese rubro tiene contactos asociados. Archivalo en lugar de borrarlo.",
   reserved_heading: "El rubro «otros» es parte del sistema y no se puede editar, archivar ni borrar.",
   invalid_heading: "Elegí un rubro activo válido.",
+  already_shared: "Este contacto ya está compartido o pendiente de aprobación.",
   election_frozen: "La elección ya abrió: no se puede cambiar el Centro de estudiantes.",
   empty_commission: "Elegí al menos un integrante para el Centro de estudiantes.",
   no_account: "Ese alumno todavía no tiene cuenta. Pedile que la active antes de sumarlo al Centro de estudiantes.",

@@ -185,7 +185,7 @@ func TestFinanceMigration(t *testing.T) {
 			}
 		}
 	})
-	if _, err = p.Down(ctx); err != nil {
+	if _, err = p.DownTo(ctx, 13); err != nil {
 		t.Fatalf("down: %v", err)
 	}
 }

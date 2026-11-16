@@ -6,21 +6,23 @@ import type { components } from "../api/schema.gen.ts";
 import { canReadContacts, hasRole, useMe, useSession } from "../auth/session.tsx";
 import { ConfirmDialog } from "../components/ConfirmDialog.tsx";
 import { FormStatus, SubmitButton, type Status } from "../components/Form.tsx";
-import { Icon } from "../components/Icon.tsx";
 import { PageTitle, useDocumentTitle } from "../components/Page.tsx";
+import { formatPesos } from "../lib/money.ts";
 import { Link } from "../lib/router.tsx";
+import { ContactMeta, NoContactsAccess } from "./contactShared.tsx";
 
 type Heading = components["schemas"]["ContactHeading"];
 type Contact = components["schemas"]["Contact"];
+type ShareStatus = components["schemas"]["ShareStatus"];
+
+const shareStatusLabels: Record<ShareStatus, string> = {
+  pending: "Pendiente de aprobación",
+  approved: "Compartido",
+  rejected: "Rechazado",
+  removed: "Dado de baja",
+};
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-function formatPesos(cents: number): string {
-  const whole = Math.floor(cents / 100);
-  const rem = cents % 100;
-  const formattedWhole = whole.toLocaleString("es-AR");
-  return rem === 0 ? `$${formattedWhole}` : `$${formattedWhole},${String(rem).padStart(2, "0")}`;
-}
 
 function parsePesosToCents(raw: string): number | null {
   const cleaned = raw.trim().replace(/\s+/g, "").replace(",", ".");
@@ -507,6 +509,7 @@ export function Contacts() {
   const [addingPriceFor, setAddingPriceFor] = useState<string | null>(null);
   const [confirmDeleteContact, setConfirmDeleteContact] = useState<Contact | null>(null);
   const [confirmDeletePrice, setConfirmDeletePrice] = useState<{ contactId: string; priceId: string; description: string } | null>(null);
+  const [confirmShareContact, setConfirmShareContact] = useState<Contact | null>(null);
 
   const statusRef = useRef<HTMLDivElement>(null);
 
@@ -564,6 +567,27 @@ export function Contacts() {
     statusRef.current?.focus();
   }
 
+  async function shareContact(contact: Contact) {
+    setConfirmShareContact(null);
+    setStatus(null);
+    const res = await call(apiClient.POST("/contacts/{id}/share", { params: { path: { id: contact.id } } }));
+    if (res.ok) {
+      setContacts((prev) =>
+        prev.map((c) => (c.id === contact.id ? { ...c, shareStatus: res.data.status } : c)),
+      );
+      setStatus({
+        tone: "ok",
+        text: `Se envió a ${contact.name} para compartir. Quedará visible cuando lo aprueben.`,
+      });
+      // The "Compartir" button unmounts when status becomes pending; move focus to status instead of body.
+      requestAnimationFrame(() => statusRef.current?.focus());
+      return;
+    }
+    handleAuthError(res.code);
+    setStatus({ tone: "error", text: errorMessage(res.code) });
+    statusRef.current?.focus();
+  }
+
   async function deletePrice(target: { contactId: string; priceId: string; description: string }) {
     setConfirmDeletePrice(null);
     setStatus(null);
@@ -590,21 +614,11 @@ export function Contacts() {
 
   if (!canRead) {
     return (
-      <>
-        <header className="page-header">
-          <PageTitle eyebrow="Comisión directiva">Contactos</PageTitle>
-        </header>
-        <section className="banner" role="alert" aria-labelledby="no-access-title">
-          <Icon name="alert" />
-          <div className="banner__body">
-            <h2 id="no-access-title">No tenés acceso a esta sección</h2>
-            <p>Solo la comisión directiva, la escuela y el veedor pueden ver el directorio de contactos.</p>
-          </div>
-          <Link className="button button--secondary" to="/">
-            Volver al inicio
-          </Link>
-        </section>
-      </>
+      <NoContactsAccess
+        title="Contactos"
+        description="Solo la comisión directiva, la escuela y el veedor pueden ver el directorio de contactos."
+        headingId="no-access-title"
+      />
     );
   }
 
@@ -617,23 +631,28 @@ export function Contacts() {
             Directorio de contactos del centro. Se mantiene entre gestiones.
           </p>
         </div>
-        {canWrite && (
-          <div className="page-actions">
-            <Link className="button button--secondary" to="/contactos/rubros">
-              Manejar rubros
-            </Link>
-            <button
-              type="button"
-              className="button button--primary"
-              onClick={() => {
-                setEditingId(null);
-                setCreating((v) => !v);
-              }}
-            >
-              Nuevo contacto
-            </button>
-          </div>
-        )}
+        <div className="page-actions">
+          <Link className="button button--secondary" to="/contactos/compartido">
+            Directorio compartido
+          </Link>
+          {canWrite && (
+            <>
+              <Link className="button button--secondary" to="/contactos/rubros">
+                Manejar rubros
+              </Link>
+              <button
+                type="button"
+                className="button button--primary"
+                onClick={() => {
+                  setEditingId(null);
+                  setCreating((v) => !v);
+                }}
+              >
+                Nuevo contacto
+              </button>
+            </>
+          )}
+        </div>
       </header>
 
       <FormStatus status={status} ref={statusRef} />
@@ -728,9 +747,21 @@ export function Contacts() {
                     <span className="badge">
                       {contact.headingArchived ? `${contact.headingName} (archivado)` : contact.headingName}
                     </span>
+                    {contact.shareStatus && (
+                      <span className="badge">{shareStatusLabels[contact.shareStatus]}</span>
+                    )}
                   </div>
                   {canWrite && (
                     <div className="panel__actions">
+                      {contact.shareStatus !== "pending" && contact.shareStatus !== "approved" && (
+                        <button
+                          type="button"
+                          className="button button--secondary button--small"
+                          onClick={() => setConfirmShareContact(contact)}
+                        >
+                          Compartir
+                        </button>
+                      )}
                       <button
                         type="button"
                         className="button button--secondary button--small"
@@ -752,32 +783,7 @@ export function Contacts() {
                   )}
                 </div>
 
-                <dl className="contact-card__meta">
-                  {contact.phone && (
-                    <div>
-                      <dt>Teléfono / WhatsApp</dt>
-                      <dd>
-                        <bdi>{contact.phone}</bdi>
-                      </dd>
-                    </div>
-                  )}
-                  {contact.email && (
-                    <div>
-                      <dt>Mail</dt>
-                      <dd>
-                        <bdi>{contact.email}</bdi>
-                      </dd>
-                    </div>
-                  )}
-                  {contact.zone && (
-                    <div>
-                      <dt>Zona o ciudad</dt>
-                      <dd>
-                        <bdi>{contact.zone}</bdi>
-                      </dd>
-                    </div>
-                  )}
-                </dl>
+                <ContactMeta phone={contact.phone} email={contact.email} zone={contact.zone} />
 
                 {contact.notes && (
                   <p className="contact-card__notes">
@@ -878,6 +884,20 @@ export function Contacts() {
         >
           <p>
             ¿Querés borrar el precio de referencia <strong>{confirmDeletePrice.description}</strong>?
+          </p>
+        </ConfirmDialog>
+      )}
+
+      {confirmShareContact && (
+        <ConfirmDialog
+          title="Compartir contacto"
+          confirmLabel="Compartir"
+          onConfirm={() => void shareContact(confirmShareContact)}
+          onCancel={() => setConfirmShareContact(null)}
+        >
+          <p>
+            ¿Querés compartir a <strong>{confirmShareContact.name}</strong> con los centros de estudiantes de otras escuelas?
+            Se enviarán nombre, rubro, teléfono, mail, zona y precios de referencia para revisión. Nunca se comparten tus notas ni el nombre de tu escuela.
           </p>
         </ConfirmDialog>
       )}
