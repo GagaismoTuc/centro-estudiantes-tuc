@@ -399,24 +399,33 @@ func TestElectionListsMigrationIsReversible(t *testing.T) {
 			t.Fatalf("goose version = %d (err=%v), want %d", version, err, want)
 		}
 	}
-	// Simulate upgrading a database already at origin/main's 00022_election_annulment.sql.
-	if _, err := p.UpTo(ctx, 22); err != nil {
-		t.Fatalf("up to 22: %v", err)
+	var prevVersion int64
+	for _, src := range p.ListSources() {
+		if src.Version < 26 && src.Version > prevVersion {
+			prevVersion = src.Version
+		}
 	}
-	checkVersion(22)
+	if prevVersion == 0 {
+		t.Fatal("no migration found before 00026")
+	}
+	// Simulate upgrading from the latest pre-00026 migration without touching any later migrations.
+	if _, err := p.UpTo(ctx, prevVersion); err != nil {
+		t.Fatalf("up to %d: %v", prevVersion, err)
+	}
+	checkVersion(int(prevVersion))
 	checkTables(false)
-	if err := db.Migrate(ctx, dsn); err != nil {
-		t.Fatalf("migrate up from 22: %v", err)
+	if _, err := p.UpTo(ctx, 26); err != nil {
+		t.Fatalf("up to 26: %v", err)
 	}
 	checkVersion(26)
 	checkTables(true)
-	if _, err := p.DownTo(ctx, 25); err != nil {
+	if _, err := p.DownTo(ctx, prevVersion); err != nil {
 		t.Fatalf("down: %v", err)
 	}
-	checkVersion(22)
+	checkVersion(int(prevVersion))
 	checkTables(false)
-	if _, err := p.Up(ctx); err != nil {
-		t.Fatalf("up: %v", err)
+	if _, err := p.UpTo(ctx, 26); err != nil {
+		t.Fatalf("up again: %v", err)
 	}
 	checkVersion(26)
 	checkTables(true)
