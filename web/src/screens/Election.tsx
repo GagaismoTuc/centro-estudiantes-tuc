@@ -59,7 +59,7 @@ export function Election() {
         </section>
       )}
       {election && <ElectionDetails election={election} />}
-      {election === null && commission?.commission && (
+      {(election === null || election?.state === "annulled") && commission?.commission && (
         <section className="panel" aria-labelledby="commission-title">
           <h2 id="commission-title">Centro de estudiantes</h2>
           <MemberList members={commission.commission.members} />

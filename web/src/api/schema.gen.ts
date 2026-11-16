@@ -790,7 +790,7 @@ export interface components {
          */
         ElectionState: "draft" | "submission" | "scheduled" | "open" | "closed" | "annulled";
         AnnulmentRequest: {
-            /** @description Public: every member of the school sees it next to the election. Trimmed; 1 to 500 characters (`reason_required`, `reason_too_long`). The request body is capped at 4 KiB (`bad_request`). */
+            /** @description Public: every member of the school sees it next to the election. Trimmed; 1 to 500 characters once trimmed (`reason_required`, `reason_too_long`). The request body is capped at 4 KiB (`bad_request`). */
             reason: string;
         };
         Annulment: {

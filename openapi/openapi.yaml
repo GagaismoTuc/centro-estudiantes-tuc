@@ -1584,9 +1584,8 @@ components:
       properties:
         reason:
           type: string
-          maxLength: 500
           description: >
-            Public: every member of the school sees it next to the election. Trimmed; 1 to 500 characters
+            Public: every member of the school sees it next to the election. Trimmed; 1 to 500 characters once trimmed
             (`reason_required`, `reason_too_long`). The request body is capped at 4 KiB (`bad_request`).
     Annulment:
       type: object

@@ -24,6 +24,7 @@ export function CommissionPanel() {
   // undefined while loading, null when there is no election in progress.
   const [election, setElection] = useState<Election | null | undefined>(undefined);
   const [status, setStatus] = useState<Status>(null);
+  const statusRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
     const [c, e] = await Promise.all([loadCommissionStatus(), call(apiClient.GET("/elections/current"))]);
@@ -46,7 +47,7 @@ export function CommissionPanel() {
       <header className="page-header">
         <PageTitle eyebrow="Elección">Centro de estudiantes</PageTitle>
       </header>
-      <FormStatus status={status} />
+      <FormStatus status={status} ref={statusRef} />
       {commission && !commission.isMember && (
         <section className="panel">
           <p>Esta sección es para quienes integran el Centro de estudiantes.</p>
@@ -69,6 +70,8 @@ export function CommissionPanel() {
           onDone={async (next) => {
             setStatus(next);
             await load();
+            // The dialog and the section that opened it are gone: the outcome takes the focus.
+            statusRef.current?.focus();
           }}
         />
       )}

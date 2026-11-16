@@ -457,7 +457,7 @@ type Annulment struct {
 
 // AnnulmentRequest defines model for AnnulmentRequest.
 type AnnulmentRequest struct {
-	// Reason Public: every member of the school sees it next to the election. Trimmed; 1 to 500 characters (`reason_required`, `reason_too_long`). The request body is capped at 4 KiB (`bad_request`).
+	// Reason Public: every member of the school sees it next to the election. Trimmed; 1 to 500 characters once trimmed (`reason_required`, `reason_too_long`). The request body is capped at 4 KiB (`bad_request`).
 	Reason string `json:"reason"`
 }
 

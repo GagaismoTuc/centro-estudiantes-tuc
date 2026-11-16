@@ -234,6 +234,7 @@ test("R11: the commission annuls the election after confirming with a reason it 
   await waitFor(() => expect(sentTo(sent, "POST /elections/e1/annulment")).toHaveLength(1));
   expect(sentTo(sent, "POST /elections/e1/annulment")[0]!.body).toEqual({ reason });
   expect(await screen.findByText("Se anuló la elección. Todos van a ver el motivo.")).toBeTruthy();
+  await waitFor(() => expect(document.activeElement?.textContent).toBe("Se anuló la elección. Todos van a ver el motivo."));
   expect(screen.queryByRole("dialog")).toBeNull();
   expect(screen.queryByRole("button", { name: "Anular elección" })).toBeNull();
 });
@@ -241,7 +242,7 @@ test("R11: the commission annuls the election after confirming with a reason it 
 test("R11: every member sees the election as Anulada with its reason", async () => {
   mockApi({
     "GET /auth/me": ok(me({ role: "student", mfa: "not_required" })),
-    "GET /electoral-commission": status({ members: null }),
+    "GET /electoral-commission": status({ members: [beto] }),
     "GET /elections/latest": ok(annulled),
   });
   renderAt("/eleccion");
@@ -249,4 +250,8 @@ test("R11: every member sees the election as Anulada with its reason", async () 
   expect(screen.getByText((_, el) => el?.tagName === "P" && el.textContent === `Anulada: ${reason}`)).toBeTruthy();
   expect(screen.getByText("Anulada")).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Anular elección" })).toBeNull();
+  // The commission the Officers designate next shows next to the annulled election.
+  expect(screen.getByRole("heading", { level: 2, name: "Centro de estudiantes" })).toBeTruthy();
+  const lists = screen.getAllByRole("list", { name: "Integrantes del Centro de estudiantes" });
+  expect(lists.map((l) => within(l).getAllByRole("listitem").map((li) => li.textContent))).toEqual([["Ana Ficticia", "Beto Ficticio"], ["Beto Ficticio"]]);
 });
