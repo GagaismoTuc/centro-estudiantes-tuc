@@ -138,7 +138,7 @@ func (s *Store) Create(ctx context.Context, sess auth.Session, in NewEntry) (out
 		}
 		var direction string
 		var active, reserved bool
-		e = tx.QueryRow(ctx, `SELECT direction,active,reserved FROM finance_categories WHERE tenant_id=$1 AND id=$2`, sess.TenantID, in.CategoryID).Scan(&direction, &active, &reserved)
+		e = tx.QueryRow(ctx, `SELECT direction,active,reserved FROM finance_categories WHERE tenant_id=$1 AND id=$2 FOR KEY SHARE`, sess.TenantID, in.CategoryID).Scan(&direction, &active, &reserved)
 		if errors.Is(e, pgx.ErrNoRows) {
 			return ErrNotFound
 		}

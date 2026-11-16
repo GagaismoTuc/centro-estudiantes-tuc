@@ -41,6 +41,8 @@ const messages: Record<string, string> = {
   invalid_rows: "El archivo tiene filas con errores. No se cargó nada.",
   too_many_rows: "El archivo tiene más de 5000 filas. Dividilo en partes.",
   name_required: "Escribí un nombre.",
+  category_exists: "Ya existe una categor\u00eda con ese nombre y sentido.",
+  category_in_use: "La categor\u00eda tiene movimientos. Archivala en lugar de borrarla.",
   heading_exists: "Ya existe un rubro con ese nombre.",
   heading_in_use: "Ese rubro tiene contactos asociados. Archivalo en lugar de borrarlo.",
   reserved_heading: "El rubro «otros» es parte del sistema y no se puede editar, archivar ni borrar.",
@@ -55,6 +57,10 @@ const messages: Record<string, string> = {
   invalid_submission_period: "Revisá la presentación de listas: tiene que terminar antes de que empiece la votación.",
   invalid_positions: "Revisá los cargos: tiene que haber al menos uno, sin nombres vacíos ni repetidos.",
   mode_not_supported: "Por ahora solo se puede votar con voto secreto.",
+  election_annulled: "La elección fue anulada: ya no se puede cambiar.",
+  election_published: "La votación ya terminó y el resultado está publicado: no se puede anular.",
+  reason_required: "Escribí el motivo antes de anular la elección.",
+  reason_too_long: "El motivo puede tener hasta 500 caracteres.",
   network: "No pudimos conectarnos. Revisá tu conexión e intentá de nuevo.",
 };
 
@@ -106,6 +112,7 @@ const fieldsByCode: Record<string, string[]> = {
   same_password: ["newPassword"],
   invalid_code: ["code", "recoveryCode"],
   name_required: ["name"],
+  category_exists: ["name"],
   heading_exists: ["name"],
   invalid_heading: ["headingId"],
   invalid_name: ["name"],

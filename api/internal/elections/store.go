@@ -42,7 +42,19 @@ var (
 	ErrInvalidPositions = errors.New("elections: invalid positions")
 	// ErrNotDraft means the election is no longer a draft and cannot be edited.
 	ErrNotDraft = errors.New("elections: not a draft")
+	// ErrElectionAnnulled means the election was annulled: it accepts no change and never reopens.
+	ErrElectionAnnulled = errors.New("elections: election annulled")
+	// ErrElectionPublished means the election's result is published (its voting ended), so it can no
+	// longer be annulled.
+	ErrElectionPublished = errors.New("elections: election published")
+	// ErrReasonRequired means an annulment reason is missing or blank.
+	ErrReasonRequired = errors.New("elections: annulment reason required")
+	// ErrReasonTooLong means an annulment reason is longer than MaxReasonLength characters.
+	ErrReasonTooLong = errors.New("elections: annulment reason too long")
 )
+
+// MaxReasonLength is the longest annulment reason, in characters, once trimmed.
+const MaxReasonLength = 500
 
 var uuidPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
@@ -68,8 +80,10 @@ type Election struct {
 	ID, CommissionID, Name, Mode                           string
 	SubmissionStartsAt, SubmissionEndsAt, StartsAt, EndsAt time.Time
 	PublishedAt, AnnulledAt                                *time.Time
-	CreatedAt, UpdatedAt                                   time.Time
-	Positions                                              []string
+	// AnnulmentReason is the public reason of an annulled election; nil exactly when AnnulledAt is.
+	AnnulmentReason      *string
+	CreatedAt, UpdatedAt time.Time
+	Positions            []string
 	// Commission lists the members of the election's commission, ordered by name.
 	Commission []CommissionMember
 }
@@ -280,8 +294,8 @@ func (s *Store) createElection(ctx context.Context, tx pgx.Tx, tenant string, d 
 }
 
 // UpdateDraft replaces the name, mode, dates and positions of a draft election, after checkDraft.
-// Errors: ErrNotFound, ErrNotDraft (published, annulled or past StatusDraft at the store's clock)
-// and those of checkDraft. It does no authorization: Edit is the entry point for requests.
+// Errors: ErrNotFound, ErrElectionAnnulled, ErrNotDraft (published or past StatusDraft at the store's
+// clock) and those of checkDraft. It does no authorization: Edit is the entry point for requests.
 func (s *Store) UpdateDraft(ctx context.Context, tenant, id string, d Draft) (Election, error) {
 	var out Election
 	err := db.WithTenant(ctx, s.pool, tenant, func(tx pgx.Tx) error {
@@ -300,7 +314,10 @@ func (s *Store) updateDraft(ctx context.Context, tx pgx.Tx, tenant, id string, d
 	if err != nil {
 		return Election{}, err
 	}
-	if cur.PublishedAt != nil || cur.AnnulledAt != nil || State(s.now(), cur) != StatusDraft {
+	if cur.AnnulledAt != nil {
+		return Election{}, ErrElectionAnnulled
+	}
+	if cur.PublishedAt != nil || State(s.now(), cur) != StatusDraft {
 		return Election{}, ErrNotDraft
 	}
 	if d, err = checkDraft(s.now(), d); err != nil {
@@ -365,11 +382,11 @@ func getElection(ctx context.Context, tx pgx.Tx, where string, args ...any) (Ele
 	var e Election
 	err := tx.QueryRow(ctx, `
 		SELECT e.id::text, e.commission_id::text, e.name, e.mode, e.submission_starts_at, e.submission_ends_at,
-		       e.starts_at, e.ends_at, e.published_at, e.annulled_at, e.created_at, e.updated_at,
+		       e.starts_at, e.ends_at, e.published_at, e.annulled_at, e.annulment_reason, e.created_at, e.updated_at,
 		       ARRAY(SELECT p.name FROM election_positions p WHERE p.tenant_id = e.tenant_id AND p.election_id = e.id ORDER BY p.position_order)
 		FROM elections e WHERE e.tenant_id = $1 AND `+where, args...).
 		Scan(&e.ID, &e.CommissionID, &e.Name, &e.Mode, &e.SubmissionStartsAt, &e.SubmissionEndsAt,
-			&e.StartsAt, &e.EndsAt, &e.PublishedAt, &e.AnnulledAt, &e.CreatedAt, &e.UpdatedAt, &e.Positions)
+			&e.StartsAt, &e.EndsAt, &e.PublishedAt, &e.AnnulledAt, &e.AnnulmentReason, &e.CreatedAt, &e.UpdatedAt, &e.Positions)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return e, ErrNotFound
 	}

@@ -34,7 +34,8 @@ export function Election() {
   );
 
   const load = useCallback(async () => {
-    const [c, e] = await Promise.all([loadCommissionStatus(), call(apiClient.GET("/elections/current"))]);
+    // The latest election, so an annulled one stays visible with its reason.
+    const [c, e] = await Promise.all([loadCommissionStatus(), call(apiClient.GET("/elections/latest"))]);
     if (c.ok) setCommission(c.data);
     else failed(c.code);
     if (e.ok) setElection(e.data);
@@ -58,7 +59,7 @@ export function Election() {
         </section>
       )}
       {election && <ElectionDetails election={election} />}
-      {election === null && commission?.commission && (
+      {(election === null || election?.state === "annulled") && commission?.commission && (
         <section className="panel" aria-labelledby="commission-title">
           <h2 id="commission-title">Centro de estudiantes</h2>
           <MemberList members={commission.commission.members} />
@@ -91,6 +92,11 @@ function ElectionDetails({ election }: { election: ElectionData }) {
       <h2 id={`${id}-name`}>
         <bdi>{election.name}</bdi>
       </h2>
+      {election.annulment && (
+        <p>
+          <strong>Anulada:</strong> <bdi>{election.annulment.reason}</bdi>
+        </p>
+      )}
       <dl className="details">
         <div>
           <dt>Estado</dt>
