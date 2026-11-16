@@ -259,3 +259,38 @@ test("CS-9/CS-11: list_name_taken focuses list name and list grid uses minmax(0,
   expect(rule(".election-lists")).toContain("minmax(0, 1fr)");
   expect(rule(".list-card__title")).toContain("overflow-wrap: anywhere");
 });
+
+test("CS-9: CommissionPanel moves focus to FormStatus when approve fails", async () => {
+  const pending = {
+    id: "l1",
+    electionId: "e1",
+    name: "Lista Azul",
+    status: "pending",
+    rejectionReason: null,
+    representativeRosterMemberId: "r-ciro",
+    representativeFullName: "Ciro Inventado",
+    candidates: [
+      { position: "Presidente", rosterMemberId: "r-ciro", fullName: "Ciro Inventado" },
+      { position: "Vicepresidente", rosterMemberId: "r-dana", fullName: "Dana Ejemplo" },
+      { position: "Secretario", rosterMemberId: "r-eli", fullName: "Eli Supuesto" },
+      { position: "Tesorero", rosterMemberId: "r-fito", fullName: "Fito Cuarto" },
+    ],
+    reviewedAt: null,
+    createdAt: "2027-03-01T12:00:00Z",
+    updatedAt: "2027-03-01T12:00:00Z",
+  };
+  mockApi({
+    "GET /auth/me": ok(me({ role: "student", mfa: "satisfied" })),
+    "GET /electoral-commission": ok({ commission: { id: "c1", createdAt: "2026-11-01T12:00:00Z", members: [ana, beto] }, isMember: true, canDesignate: false }),
+    "GET /elections/current": ok(submissionElection),
+    "GET /elections/e1/candidates": ok(allCandidates),
+    "GET /elections/e1/lists": ok({ rosterMemberId: "r-ana", lists: [pending] }),
+    "POST /elections/e1/lists/l1/approve": fail(409, "submission_closed"),
+  });
+
+  renderAt("/centro-de-estudiantes");
+  fireEvent.click(await screen.findByRole("button", { name: "Aprobar Lista Azul" }));
+  const msg = await screen.findByText("El período de presentación de listas no está abierto.");
+  const statusRegion = msg.closest("[tabindex='-1']");
+  await waitFor(() => expect(document.activeElement).toBe(statusRegion));
+});

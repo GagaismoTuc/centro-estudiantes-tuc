@@ -289,14 +289,46 @@ func TestSubmitListValidationAndConcurrency(t *testing.T) {
 	if !slices.Equal(statuses, []int{http.StatusCreated, http.StatusConflict}) {
 		t.Fatalf("concurrent statuses = %v, want [201 409]", statuses)
 	}
+	var winnerID string
 	for _, rec := range recs {
-		if rec.Code == http.StatusConflict {
+		switch rec.Code {
+		case http.StatusCreated:
+			winnerID = decodeList(t, rec, http.StatusCreated).ID
+		case http.StatusConflict:
 			wantResponse(t, rec, http.StatusConflict, `{"error":"candidate_on_other_list"}`)
 		}
 	}
 	if ls.countLists(t, ctx) != 1 {
 		t.Fatalf("lists = %d, want 1", ls.countLists(t, ctx))
 	}
+
+	// R3: duplicate name ignoring case against non-rejected list -> 409 list_name_taken.
+	winner := decodeList(t, ls.do(http.MethodGet, ls.listPath(winnerID), "", electionIP, ls.commTok, nil), http.StatusOK)
+	dupName := strings.ToLower(winner.Name)
+	var freeCand1, freeCand2, freeCand3, freeCand4 string
+	if winner.Name == "Lista Uno" {
+		freeCand1, freeCand2, freeCand3, freeCand4 = ls.danaID, ls.gabiID, ls.hugoID, ls.ana
+	} else {
+		freeCand1, freeCand2, freeCand3, freeCand4 = ls.betoID, ls.eliID, ls.fitoID, ls.ana
+	}
+	wantResponse(t, ls.do(http.MethodPost, ls.listsPath(), listBody(dupName, candidatesPayload(freeCand1, freeCand2, freeCand3, ls.commID)), electionIP, ls.danaTok, nil),
+		http.StatusUnprocessableEntity, `{"error":"candidate_in_commission"}`)
+	// Add one more roster member so R3 duplicate-name check hits list_name_taken with 4 clean candidates.
+	extraID := seedMember(t, ctx, ls.tenant, "Ivan Extra", "30222109")
+	wantResponse(t, ls.do(http.MethodPost, ls.listsPath(), listBody(dupName, candidatesPayload(freeCand1, freeCand2, freeCand3, extraID)), electionIP, ls.danaTok, nil),
+		http.StatusConflict, `{"error":"list_name_taken"}`)
+
+	// R5 sequential blocking: reusing ls.ciroID while winner is pending -> 409 candidate_on_other_list, nothing saved.
+	wantResponse(t, ls.do(http.MethodPost, ls.listsPath(), listBody("Lista Tres", candidatesPayload(freeCand1, ls.ciroID, freeCand2, freeCand3)), electionIP, ls.danaTok, nil),
+		http.StatusConflict, `{"error":"candidate_on_other_list"}`)
+	if ls.countLists(t, ctx) != 1 {
+		t.Fatalf("lists after sequential candidate conflict = %d, want 1", ls.countLists(t, ctx))
+	}
+
+	// R5 post-rejection freedom: rejecting winner frees ls.ciroID and winner's name for a new list.
+	decodeList(t, ls.do(http.MethodPost, ls.listPath(winnerID)+"/reject", `{"reason":"Rehacer"}`, electionIP, ls.commTok, nil), http.StatusOK)
+	_ = decodeList(t, ls.do(http.MethodPost, ls.listsPath(), listBody(winner.Name, candidatesPayload(freeCand1, ls.ciroID, freeCand2, freeCand3)), electionIP, ls.danaTok, nil), http.StatusCreated)
+	_ = freeCand4
 }
 
 // R7, R8, R9, R10, R11, R12: approval, rejection with reason, freeze, edit permissions, clock window,
@@ -350,6 +382,10 @@ func TestApproveRejectEditVisibilityAndPeriod(t *testing.T) {
 	if len(betoView.Lists) != 1 || betoView.Lists[0].ID != l1.ID {
 		t.Fatalf("beto view = %+v", betoView)
 	}
+	commView := decodeListsResponse(t, ls.do(http.MethodGet, ls.listsPath(), "", electionIP, ls.commTok, nil), http.StatusOK)
+	if len(commView.Lists) != 1 || commView.Lists[0].ID != l1.ID {
+		t.Fatalf("commission view pending = %+v", commView)
+	}
 
 	// R8: reject validation (missing, blank, >500 chars -> 422 reason_required).
 	for _, rBody := range []string{`{}`, `{"reason":null}`, `{"reason":"   "}`, fmt.Sprintf(`{"reason":%q}`, strings.Repeat("r", 501))} {
@@ -362,13 +398,22 @@ func TestApproveRejectEditVisibilityAndPeriod(t *testing.T) {
 	}
 	wantResponse(t, ls.do(http.MethodPut, ls.listPath(l1.ID), b1, electionIP, ls.betoTok, nil), http.StatusConflict, `{"error":"list_rejected"}`)
 	wantResponse(t, ls.do(http.MethodGet, ls.listPath(l1.ID), "", electionIP, ls.danaTok, nil), http.StatusNotFound, `{"error":"not_found"}`)
+	commRejView := decodeListsResponse(t, ls.do(http.MethodGet, ls.listsPath(), "", electionIP, ls.commTok, nil), http.StatusOK)
+	if len(commRejView.Lists) != 1 || commRejView.Lists[0].RejectionReason == nil {
+		t.Fatalf("commission view rejected = %+v", commRejView)
+	}
 
-	// Beto presents a new list reusing same name & candidates (R5, R9), edits it (R9), commission approves it.
+	// Beto presents a new list reusing same name & candidates (R5, R9), edited by rep and by commission (R9), commission approves it.
 	l2 := decodeList(t, ls.do(http.MethodPost, ls.listsPath(), b1, electionIP, ls.betoTok, nil), http.StatusCreated)
 	editedBody := listBody("Lista Azul Editada", candidatesPayload(ls.betoID, ls.eliID, ls.ciroID, ls.fitoID))
 	l2 = decodeList(t, ls.do(http.MethodPut, ls.listPath(l2.ID), editedBody, electionIP, ls.betoTok, nil), http.StatusOK)
 	if l2.Name != "Lista Azul Editada" {
 		t.Fatalf("edited name = %q", l2.Name)
+	}
+	commEditedBody := listBody("Lista Azul Comision", candidatesPayload(ls.betoID, ls.eliID, ls.ciroID, ls.fitoID))
+	l2 = decodeList(t, ls.do(http.MethodPut, ls.listPath(l2.ID), commEditedBody, electionIP, ls.commTok, nil), http.StatusOK)
+	if l2.Name != "Lista Azul Comision" {
+		t.Fatalf("commission edited name = %q", l2.Name)
 	}
 
 	// Commission approves l2 -> frozen (R9), visible to Dana (R11).
@@ -386,10 +431,12 @@ func TestApproveRejectEditVisibilityAndPeriod(t *testing.T) {
 	}
 	_ = decodeList(t, ls.do(http.MethodGet, ls.listPath(l2.ID), "", electionIP, ls.danaTok, nil), http.StatusOK)
 
-	// R7: after submission ends, approve/reject/edit/submit return 409 submission_closed.
+	// R7: after submission ends, submit/edit/approve/reject all return 409 submission_closed.
 	ls.clk.t = ls.subEnd
 	wantResponse(t, ls.do(http.MethodPost, ls.listsPath(), listBody("Tarde", candidatesPayload(ls.danaID, ls.gabiID, ls.hugoID, ls.ciroID)), electionIP, ls.danaTok, nil), http.StatusConflict, `{"error":"submission_closed"}`)
+	wantResponse(t, ls.do(http.MethodPut, ls.listPath(l2.ID), editedBody, electionIP, ls.betoTok, nil), http.StatusConflict, `{"error":"submission_closed"}`)
 	wantResponse(t, ls.do(http.MethodPost, ls.listPath(l2.ID)+"/approve", "", electionIP, ls.commTok, nil), http.StatusConflict, `{"error":"submission_closed"}`)
+	wantResponse(t, ls.do(http.MethodPost, ls.listPath(l2.ID)+"/reject", `{"reason":"Tarde"}`, electionIP, ls.commTok, nil), http.StatusConflict, `{"error":"submission_closed"}`)
 
 	// R12: another school receives 404 not_found on election, lists, list, and candidates.
 	other := newSchool(t, ctx)

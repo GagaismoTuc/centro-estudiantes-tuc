@@ -171,6 +171,19 @@ func (s *Store) AuthorizeEditList(ctx context.Context, sess auth.Session, electi
 	})
 }
 
+func checkEditorAccess(a access, isRep bool, status ListStatus) error {
+	if isRep {
+		return nil
+	}
+	if !a.onCommission {
+		if status != ListApproved {
+			return ErrNotFound
+		}
+		return ErrForbidden
+	}
+	return nil
+}
+
 func (s *Store) authorizeListEditor(ctx context.Context, tx pgx.Tx, sess auth.Session, electionID, listID string, lock bool) (access, error) {
 	a, err := readAccess(ctx, tx, sess.TenantID, sess.UserID)
 	if err != nil {
@@ -182,26 +195,25 @@ func (s *Store) authorizeListEditor(ctx context.Context, tx pgx.Tx, sess auth.Se
 	if !uuidPattern.MatchString(electionID) || !uuidPattern.MatchString(listID) {
 		return a, ErrNotFound
 	}
-	var repID, status string
+	var repID string
+	var rawStatus string
 	err = tx.QueryRow(ctx, `
 		SELECT representative_id::text, status FROM election_lists
 		WHERE tenant_id = $1 AND election_id = $2 AND id = $3`,
-		sess.TenantID, electionID, listID).Scan(&repID, &status)
+		sess.TenantID, electionID, listID).Scan(&repID, &rawStatus)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return a, ErrNotFound
 	}
 	if err != nil {
 		return a, err
 	}
+	status := ListStatus(rawStatus)
 	isRep := a.rosterMemberID != "" && strings.EqualFold(a.rosterMemberID, repID)
+	if err := checkEditorAccess(a, isRep, status); err != nil {
+		return a, err
+	}
 	if isRep {
 		return a, nil
-	}
-	if !a.onCommission {
-		if status != string(ListApproved) {
-			return a, ErrNotFound
-		}
-		return a, ErrForbidden
 	}
 	if lock {
 		if err := lockCommission(ctx, tx, sess.TenantID); err != nil {
@@ -211,11 +223,8 @@ func (s *Store) authorizeListEditor(ctx context.Context, tx pgx.Tx, sess auth.Se
 		if err != nil {
 			return a, err
 		}
-		if !a.onCommission {
-			if status != string(ListApproved) {
-				return a, ErrNotFound
-			}
-			return a, ErrForbidden
+		if err := checkEditorAccess(a, false, status); err != nil {
+			return a, err
 		}
 	}
 	if err := auth.RequireMFA(sess); err != nil {
@@ -603,42 +612,23 @@ func isOnElectionCommission(ctx context.Context, tx pgx.Tx, tenant, commissionID
 }
 
 func getList(ctx context.Context, tx pgx.Tx, tenant, electionID, listID string) (ElectionList, error) {
-	var l ElectionList
-	var status string
-	err := tx.QueryRow(ctx, `
-		SELECT l.id::text, l.election_id::text, l.name, l.status, l.rejection_reason,
-		       l.representative_id::text, rep.full_name, l.reviewed_at, l.created_at, l.updated_at
-		FROM election_lists l
-		JOIN roster_members rep ON rep.tenant_id = l.tenant_id AND rep.id = l.representative_id
-		WHERE l.tenant_id = $1 AND l.election_id = $2 AND l.id = $3`,
-		tenant, electionID, listID).
-		Scan(&l.ID, &l.ElectionID, &l.Name, &status, &l.RejectionReason,
-			&l.RepresentativeRosterMemberID, &l.RepresentativeFullName, &l.ReviewedAt, &l.CreatedAt, &l.UpdatedAt)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return l, ErrNotFound
-	}
+	lists, err := queryLists(ctx, tx, tenant, electionID, "", true, listID)
 	if err != nil {
-		return l, err
+		return ElectionList{}, err
 	}
-	l.Status = ListStatus(status)
-	rows, err := tx.Query(ctx, `
-		SELECT p.name, m.id::text, m.full_name
-		FROM election_list_candidates c
-		JOIN election_positions p ON p.tenant_id = c.tenant_id AND p.election_id = c.election_id AND p.position_order = c.position_order
-		JOIN roster_members m ON m.tenant_id = c.tenant_id AND m.id = c.candidate_id
-		WHERE c.tenant_id = $1 AND c.list_id = $2
-		ORDER BY c.position_order`, tenant, listID)
-	if err != nil {
-		return l, err
+	if len(lists) == 0 {
+		return ElectionList{}, ErrNotFound
 	}
-	l.Candidates, err = pgx.CollectRows(rows, pgx.RowToStructByPos[ListCandidate])
-	return l, err
+	return lists[0], nil
 }
 
-func queryLists(ctx context.Context, tx pgx.Tx, tenant, electionID, rosterMemberID string, includeAll bool) ([]ElectionList, error) {
-	var repParam *string
+func queryLists(ctx context.Context, tx pgx.Tx, tenant, electionID, rosterMemberID string, includeAll bool, onlyListID ...string) ([]ElectionList, error) {
+	var repParam, listParam *string
 	if rosterMemberID != "" {
 		repParam = &rosterMemberID
+	}
+	if len(onlyListID) > 0 && onlyListID[0] != "" {
+		listParam = &onlyListID[0]
 	}
 	rows, err := tx.Query(ctx, `
 		SELECT l.id::text, l.election_id::text, l.name, l.status, l.rejection_reason,
@@ -646,8 +636,9 @@ func queryLists(ctx context.Context, tx pgx.Tx, tenant, electionID, rosterMember
 		FROM election_lists l
 		JOIN roster_members rep ON rep.tenant_id = l.tenant_id AND rep.id = l.representative_id
 		WHERE l.tenant_id = $1 AND l.election_id = $2
+		  AND ($5::uuid IS NULL OR l.id = $5::uuid)
 		  AND (l.status = 'approved' OR $3::boolean OR l.representative_id = $4::uuid)
-		ORDER BY l.created_at, l.id`, tenant, electionID, includeAll, repParam)
+		ORDER BY l.created_at, l.id`, tenant, electionID, includeAll, repParam, listParam)
 	if err != nil {
 		return nil, err
 	}

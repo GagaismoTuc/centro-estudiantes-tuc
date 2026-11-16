@@ -31,6 +31,15 @@ export function CommissionPanel() {
   const [editingList, setEditingList] = useState<ElectionList | null>(null);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<Status>(null);
+  const statusRef = useRef<HTMLDivElement>(null);
+  const focusStatus = useRef(false);
+
+  useEffect(() => {
+    if (focusStatus.current && status?.tone === "error") {
+      statusRef.current?.focus();
+      focusStatus.current = false;
+    }
+  }, [status]);
 
   const load = useCallback(async () => {
     const [c, e] = await Promise.all([loadCommissionStatus(), call(apiClient.GET("/elections/current"))]);
@@ -85,6 +94,7 @@ export function CommissionPanel() {
       return;
     }
     if (result.code === "mfa_required" || result.code === "unauthenticated") void refresh();
+    focusStatus.current = true;
     setStatus({ tone: "error", text: errorMessage(result.code, "election-list") });
   }
 
@@ -93,7 +103,7 @@ export function CommissionPanel() {
       <header className="page-header">
         <PageTitle eyebrow="Elección">Centro de estudiantes</PageTitle>
       </header>
-      <FormStatus status={status} />
+      <FormStatus status={status} ref={statusRef} />
       {commission && !commission.isMember && (
         <section className="panel">
           <p>Esta sección es para quienes integran el Centro de estudiantes.</p>
