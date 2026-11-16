@@ -16,14 +16,14 @@ import (
 
 type listSchool struct {
 	school
-	dana, eli, fito string
+	dana, eli, fito  string
 	gabi, hugo, iris string
-	betoUser        string
-	danaUser        string
-	commUser        string
-	commRoster      string
-	adminUser       string
-	electionID      string
+	betoUser         string
+	danaUser         string
+	commUser         string
+	commRoster       string
+	adminUser        string
+	electionID       string
 }
 
 // setupListSchool creates a school with:
