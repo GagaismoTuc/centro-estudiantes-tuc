@@ -8,6 +8,7 @@ import { hasRole, useMe, useSession } from "../auth/session.tsx";
 import { ConfirmDialog } from "../components/ConfirmDialog.tsx";
 import { Field, FormStatus, useFormErrors, type Status } from "../components/Form.tsx";
 import { PageTitle, useDocumentTitle } from "../components/Page.tsx";
+import { FinanceCategories } from "./FinanceCategories.tsx";
 
 type Category = components["schemas"]["FinanceCategory"];
 type Entry = Omit<components["schemas"]["FinanceEntry"], "amountCents"> & { amountCents: string };
@@ -33,6 +34,7 @@ export function Finance() {
   const [balance, setBalance] = useState<string | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [open, setOpen] = useState(false);
+  const [showCategories, setShowCategories] = useState(false);
   const [direction, setDirection] = useState("income");
   const [category, setCategory] = useState("");
   const [date, setDate] = useState(today);
@@ -90,6 +92,8 @@ export function Finance() {
   return <>
     <header className="page-header"><PageTitle>Caja</PageTitle></header>
     <FormStatus status={status} {...form.statusProps} />
+    <button type="button" className="button button--secondary" onClick={() => setShowCategories(!showCategories)}>{"Categor\u00edas"}</button>
+    {showCategories && <FinanceCategories categories={categories} used={entries === null ? null : new Set(entries.map((e) => e.categoryId))} officer={hasRole(me, "officer")} reload={load} authError={(code) => { if (code === "mfa_required" || code === "unauthenticated") void refresh(); }} />}
     <section className="panel"><h2>Saldo</h2><p>{balance === null ? "Cargando..." : pesos(balance)}</p></section>
     {hasRole(me, "officer") && <section className="panel">
       {!open ? <button type="button" className="button button--primary" onClick={() => setOpen(true)}>Nuevo movimiento</button> : <>

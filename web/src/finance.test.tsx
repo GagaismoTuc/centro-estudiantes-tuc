@@ -104,6 +104,93 @@ test("R15 invalid form fields are announced and focused", async () => {
   expect(document.getElementById(amount.getAttribute("aria-describedby") ?? "")?.textContent).toContain("monto positivo");
 });
 
+test("R8 officers manage categories by direction and see only permitted actions", async () => {
+  const sent = mockApi({ "GET /auth/me": ok(me({ role: "officer", mfa: "satisfied" })), ...reads,
+    "POST /finance/categories": ok({ id: "c4", name: "Buzos", direction: "expense", active: true, reserved: false }, 201),
+    "PATCH /finance/categories/c1": ok({ ...categories[0], name: "Kiosco" }),
+    "POST /finance/categories/c1/archive": ok({ ...categories[0], active: false }),
+    "DELETE /finance/categories/c3": new Response(null, { status: 204 }),
+  });
+  window.history.replaceState(null, "", "/caja"); render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Categor\u00edas" }));
+  expect(await screen.findByText("Reservada para los pagos de cuotas")).toBeTruthy();
+  const reserved = screen.getByText("Reservada para los pagos de cuotas").closest("li")!;
+  expect(reserved.querySelector("button")).toBeNull();
+  const used = screen.getByText("Ventas", { selector: "strong" }).closest("li")!;
+  const unused = screen.getByText("Viajes", { selector: "strong" }).closest("li")!;
+  expect(within(used).getByRole("button", { name: "Archivar" })).toBeTruthy();
+  expect(within(used).queryByRole("button", { name: "Borrar" })).toBeNull();
+  expect(within(unused).getByRole("button", { name: "Borrar" })).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Agregar categor\u00eda" }));
+  const name = screen.getByLabelText("Nombre de la categor\u00eda");
+  await waitFor(() => expect(name.getAttribute("aria-invalid")).toBe("true"));
+  expect(document.activeElement).toBe(name);
+  fireEvent.change(screen.getByLabelText("Nombre de la categor\u00eda"), { target: { value: "Buzos" } });
+  fireEvent.change(screen.getByLabelText("Sentido"), { target: { value: "expense" } });
+  fireEvent.click(screen.getByRole("button", { name: "Agregar categor\u00eda" }));
+  await waitFor(() => expect(sentTo(sent, "POST /finance/categories")).toHaveLength(1));
+  fireEvent.click(within(used).getByRole("button", { name: "Renombrar" }));
+  fireEvent.change(screen.getByLabelText("Nuevo nombre"), { target: { value: "Kiosco" } });
+  fireEvent.click(screen.getByRole("button", { name: "Guardar nombre" }));
+  await waitFor(() => expect(sentTo(sent, "PATCH /finance/categories/c1")).toHaveLength(1));
+  fireEvent.click(within(used).getByRole("button", { name: "Archivar" }));
+  fireEvent.click(screen.getByRole("button", { name: "Confirmar archivo" }));
+  await waitFor(() => expect(sentTo(sent, "POST /finance/categories/c1/archive")).toHaveLength(1));
+  fireEvent.click(within(unused).getByRole("button", { name: "Borrar" }));
+  fireEvent.click(screen.getByRole("button", { name: "Confirmar borrado" }));
+  await waitFor(() => expect(sentTo(sent, "DELETE /finance/categories/c3")).toHaveLength(1));
+});
+
+test("R1 created expense appears in the movement form", async () => {
+  const added = { id: "c4", name: "Buzos", direction: "expense", active: true, reserved: false };
+  mockApi({ "GET /auth/me": ok(me({ role: "officer", mfa: "satisfied" })), ...reads,
+    "GET /finance/categories": [ok(categories), ok([...categories, added])],
+    "POST /finance/categories": ok(added, 201),
+  });
+  window.history.replaceState(null, "", "/caja"); render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Categor\u00edas" }));
+  await screen.findByText("Reservada para los pagos de cuotas");
+  fireEvent.change(screen.getByLabelText("Nombre de la categor\u00eda"), { target: { value: "Buzos" } });
+  fireEvent.change(screen.getByLabelText("Sentido"), { target: { value: "expense" } });
+  fireEvent.click(screen.getByRole("button", { name: "Agregar categor\u00eda" }));
+  await screen.findByText("Buzos", { selector: "strong" });
+  fireEvent.click(screen.getByRole("button", { name: "Nuevo movimiento" }));
+  fireEvent.change(screen.getByLabelText("Tipo"), { target: { value: "expense" } });
+  expect(await screen.findByRole("option", { name: "Buzos" })).toBeTruthy();
+});
+
+test("R2 renaming changes the category shown on historical movements", async () => {
+  const renamed = [{ ...categories[0]!, name: "Kiosco" }, ...categories.slice(1)];
+  mockApi({ "GET /auth/me": ok(me({ role: "officer", mfa: "satisfied" })), ...reads,
+    "GET /finance/categories": [ok(categories), ok(renamed)],
+    "PATCH /finance/categories/c1": ok(renamed[0]),
+  });
+  window.history.replaceState(null, "", "/caja"); render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Categor\u00edas" }));
+  const used = (await screen.findByText("Ventas", { selector: "strong" })).closest("li")!;
+  fireEvent.click(within(used).getByRole("button", { name: "Renombrar" }));
+  fireEvent.change(screen.getByLabelText("Nuevo nombre"), { target: { value: "Kiosco" } });
+  fireEvent.click(screen.getByRole("button", { name: "Guardar nombre" }));
+  expect(await screen.findByText(/Kiosco.*2026-11-10/)).toBeTruthy();
+});
+
+test("R3 archived categories disappear from entry choices but remain on historical movements", async () => {
+  const archived = [{ ...categories[0]!, active: false }, ...categories.slice(1)];
+  mockApi({ "GET /auth/me": ok(me({ role: "officer", mfa: "satisfied" })), ...reads,
+    "GET /finance/categories": [ok(categories), ok(archived)],
+    "POST /finance/categories/c1/archive": ok(archived[0]),
+  });
+  window.history.replaceState(null, "", "/caja"); render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Categor\u00edas" }));
+  const used = (await screen.findByText("Ventas", { selector: "strong" })).closest("li")!;
+  fireEvent.click(within(used).getByRole("button", { name: "Archivar" }));
+  fireEvent.click(screen.getByRole("button", { name: "Confirmar archivo" }));
+  await screen.findByText("(Archivada)", { exact: false });
+  expect(screen.getByText(/Ventas.*2026-11-10/)).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Nuevo movimiento" }));
+  expect(screen.queryByRole("option", { name: "Ventas" })).toBeNull();
+});
+
 const reversedOriginal = { ...entry, reversalId: "e2", reversedBy: "Beto Ficticio", reversedOn: "2026-11-14" };
 const reversal = { ...entry, id: "e2", direction: "expense", date: "2026-11-14", description: "Reversión: Venta de tortas", recordedBy: "Beto Ficticio", reversesId: "e1" };
 
