@@ -1251,6 +1251,35 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/NotFoundError"
+  /elections/latest:
+    get:
+      operationId: getLatestElection
+      summary: Read the active school's election in progress, or else its most recently created one
+      description: >
+        Any member of the active school. The election in progress when there is one (the same as
+        `GET /elections/current`); otherwise the most recently created election, so everyone still sees an annulled
+        election and its reason. Responses carry `Cache-Control: no-store`.
+      responses:
+        "200":
+          description: The election.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Election"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          description: The account has no membership in the active school (`forbidden`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForbiddenError"
+        "404":
+          description: The school has no election (`not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotFoundError"
   /elections/{electionId}:
     parameters:
       - name: electionId
@@ -1320,7 +1349,8 @@ paths:
               schema:
                 $ref: "#/components/schemas/NotFoundError"
         "409":
-          description: The election is no longer a draft (`election_not_draft`).
+          description: >
+            The election was annulled (`election_annulled`), or it is no longer a draft (`election_not_draft`).
           content:
             application/json:
               schema:
@@ -1329,9 +1359,83 @@ paths:
                 properties:
                   error:
                     type: string
-                    enum: [election_not_draft]
+                    enum: [election_annulled, election_not_draft]
         "422":
           $ref: "#/components/responses/InvalidElectionDraft"
+  /elections/{electionId}/annulment:
+    parameters:
+      - name: electionId
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      operationId: postElectionAnnulment
+      summary: Annul an election before its result is published
+      description: >
+        Members of the election's Electoral commission only, with a verified second factor. Checks, in order and
+        before the body is read: `forbidden` (no membership in the active school), `not_found` (no such election
+        in it, whether or not it exists in another), `forbidden` (not on the election's commission: students,
+        officers and school admins who are not on it), `mfa_required`. Then the reason (422) and the election's
+        state (409). Annulling is irreversible: the election publishes no result, accepts no change and never
+        reopens; the commission's mandate ends, so the school can organize another election once the officers
+        designate a new commission. Of two simultaneous requests exactly one annuls. Every error writes nothing.
+        Responses carry `Cache-Control: no-store`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnnulmentRequest"
+      responses:
+        "200":
+          description: The election as stored, with state `annulled` and its `annulment`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Election"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          description: "`forbidden` (not on the election's Electoral commission) or `mfa_required`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForbiddenError"
+        "404":
+          description: No such election in the active school (`not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotFoundError"
+        "409":
+          description: >
+            The election was already annulled (`election_annulled`; the original reason stays) or its result is
+            published: the voting ended (state `closed`) (`election_published`).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [election_annulled, election_published]
+        "422":
+          description: >
+            Nothing was written. `reason_required`: `reason` missing, null, empty or only spaces.
+            `reason_too_long`: more than 500 characters once trimmed.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [reason_required, reason_too_long]
 components:
   responses:
     InvalidElectionDraft:
@@ -1467,11 +1571,32 @@ components:
       description: Only "Voto secreto"; any other value is 422 `mode_not_supported`.
     ElectionState:
       type: string
-      enum: [draft, submission, scheduled, open, closed]
+      enum: [draft, submission, scheduled, open, closed, annulled]
       description: >
-        Computed from the server clock against the dates; every window includes its start and excludes its end.
+        `annulled` once the election was annulled, whatever the clock says. Otherwise computed from the server
+        clock against the dates; every window includes its start and excludes its end.
         `draft` before `submissionStartsAt`, `submission` until `submissionEndsAt`, `scheduled` until `startsAt`,
         `open` until `endsAt`, `closed` from `endsAt` on.
+    AnnulmentRequest:
+      type: object
+      additionalProperties: false
+      required: [reason]
+      properties:
+        reason:
+          type: string
+          maxLength: 500
+          description: >
+            Public: every member of the school sees it next to the election. Trimmed; 1 to 500 characters
+            (`reason_required`, `reason_too_long`). The request body is capped at 4 KiB (`bad_request`).
+    Annulment:
+      type: object
+      required: [reason, annulledAt]
+      properties:
+        reason:
+          type: string
+        annulledAt:
+          type: string
+          format: date-time
     ElectionDraftRequest:
       type: object
       additionalProperties: false
@@ -1542,6 +1667,12 @@ components:
             type: string
         state:
           $ref: "#/components/schemas/ElectionState"
+        annulment:
+          allOf:
+            - $ref: "#/components/schemas/Annulment"
+          description: >
+            Present only when the election was annulled: its public reason. An annulled election carries no vote
+            counts.
         commission:
           type: array
           description: Members of the election's Electoral commission, ordered by name.

@@ -45,6 +45,10 @@ const messages: Record<string, string> = {
   invalid_submission_period: "Revisá la presentación de listas: tiene que terminar antes de que empiece la votación.",
   invalid_positions: "Revisá los cargos: tiene que haber al menos uno, sin nombres vacíos ni repetidos.",
   mode_not_supported: "Por ahora solo se puede votar con voto secreto.",
+  election_annulled: "La elección fue anulada: ya no se puede cambiar.",
+  election_published: "La votación ya terminó y el resultado está publicado: no se puede anular.",
+  reason_required: "Escribí el motivo; lo van a ver todos.",
+  reason_too_long: "El motivo puede tener hasta 500 caracteres.",
   network: "No pudimos conectarnos. Revisá tu conexión e intentá de nuevo.",
 };
 
