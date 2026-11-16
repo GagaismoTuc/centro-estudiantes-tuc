@@ -835,6 +835,149 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/elections/{electionId}/candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                electionId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Search roster members by name for an election list
+         * @description List builders only (a student with a roster link, or an Electoral commission member with a verified two-factor session). Searches roster members of the active school by name with at least 3 letters and returns at most 20 results (names and ids only, never document numbers). Responses carry `Cache-Control: no-store`.
+         */
+        get: operations["getElectionCandidates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/elections/{electionId}/lists": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                electionId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * List election lists visible to the caller
+         * @description Any member of the active school. Returns approved lists to all members; pending and rejected lists (with `rejectionReason`) are included only for the election's Electoral commission and each list's representative ("Apoderado"). Also returns `rosterMemberId` of the caller, if linked to the roster. Responses carry `Cache-Control: no-store`.
+         */
+        get: operations["getElectionLists"];
+        put?: never;
+        /**
+         * Present a list as a student representative
+         * @description Any member of the active school linked to a roster entry presents a list during the submission period and becomes its representative ("Apoderado"). School admins without a roster entry and accounts without membership receive `forbidden` before the body is read. Does not require a second factor beyond the session. Responses carry `Cache-Control: no-store`.
+         */
+        post: operations["postElectionList"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/elections/{electionId}/commission/lists": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                electionId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Load a list as the Electoral commission on behalf of a representative
+         * @description Members of the current Electoral commission with a verified second factor (`forbidden` first, then `mfa_required`, both before the body is read). Names a roster member of the active school as the representative ("Apoderado"). Responses carry `Cache-Control: no-store`.
+         */
+        post: operations["postCommissionElectionList"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/elections/{electionId}/lists/{listId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                electionId: string;
+                listId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Read one election list
+         * @description Approved lists are visible to any member of the active school. Pending and rejected lists are visible only to the election's Electoral commission and the list's representative; another student requesting a pending or rejected list receives `not_found`. Responses carry `Cache-Control: no-store`.
+         */
+        get: operations["getElectionList"];
+        /**
+         * Edit a pending election list
+         * @description The list's representative (no second factor beyond the session) or a member of the current Electoral commission (verified second factor required) during the submission period. Approved lists return `list_frozen`, rejected lists return `list_rejected`. Responses carry `Cache-Control: no-store`.
+         */
+        put: operations["putElectionList"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/elections/{electionId}/lists/{listId}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                electionId: string;
+                listId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve a pending election list
+         * @description Members of the current Electoral commission with a verified second factor (`forbidden` first, then `mfa_required`), during the submission period. Responses carry `Cache-Control: no-store`.
+         */
+        post: operations["postApproveElectionList"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/elections/{electionId}/lists/{listId}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                electionId: string;
+                listId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject a pending election list with a reason
+         * @description Members of the current Electoral commission with a verified second factor (`forbidden` first, then `mfa_required`, both before the body is read), during the submission period. Requires a non-empty reason of up to 500 characters. Rejecting frees the list's candidates and name. Responses carry `Cache-Control: no-store`.
+         */
+        post: operations["postRejectElectionList"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/finance/categories": {
         parameters: {
             query?: never;
@@ -1294,6 +1437,50 @@ export interface components {
             /** @description Members of the election's Electoral commission, ordered by name. */
             commission: components["schemas"]["CommissionMember"][];
         };
+        /** @enum {string} */
+        ElectionListStatus: "pending" | "approved" | "rejected";
+        ListCandidateInput: {
+            position: string;
+            rosterMemberId: string;
+        };
+        ElectionListRequest: {
+            name: string;
+            candidates: components["schemas"]["ListCandidateInput"][];
+        };
+        CommissionElectionListRequest: {
+            name: string;
+            representativeRosterMemberId: string;
+            candidates: components["schemas"]["ListCandidateInput"][];
+        };
+        RejectListRequest: {
+            reason: string;
+        };
+        ListCandidate: {
+            position: string;
+            rosterMemberId: string;
+            fullName: string;
+        };
+        ElectionList: {
+            id: string;
+            electionId: string;
+            name: string;
+            status: components["schemas"]["ElectionListStatus"];
+            rejectionReason: string | null;
+            representativeRosterMemberId: string;
+            representativeFullName: string;
+            /** @description Ordered by the election's positions. */
+            candidates: components["schemas"]["ListCandidate"][];
+            /** Format: date-time */
+            reviewedAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        ElectionListsResponse: {
+            rosterMemberId: string | null;
+            lists: components["schemas"]["ElectionList"][];
+        };
         Health: {
             /** @enum {string} */
             status: "ok";
@@ -1475,6 +1662,66 @@ export interface components {
         };
     };
     responses: {
+        /** @description Nothing was written. `invalid_name`: list name missing, null, blank or longer than 80 characters. `invalid_candidates`: missing position, unknown position, duplicate position or duplicate candidate. `candidate_in_commission`: a candidate sits on the Electoral commission. */
+        InvalidElectionList: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    error: "invalid_name" | "invalid_candidates" | "candidate_in_commission";
+                };
+            };
+        };
+        /** @description Nothing was written. Same validation as `InvalidElectionList`, plus `invalid_representative` when `representativeRosterMemberId` is missing, null or blank. */
+        InvalidCommissionElectionList: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    error: "invalid_name" | "invalid_candidates" | "candidate_in_commission" | "invalid_representative";
+                };
+            };
+        };
+        /** @description Nothing was written. `submission_closed` (outside the submission period), `list_name_taken` (another non-rejected list in the election has that name), or `candidate_on_other_list` (a candidate is already on a pending or approved list in the election). */
+        ElectionListConflict: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    error: "submission_closed" | "list_name_taken" | "candidate_on_other_list";
+                };
+            };
+        };
+        /** @description Nothing was written. Same conflicts as `ElectionListConflict`, plus `list_frozen` (approved) or `list_rejected` (rejected). */
+        ElectionListEditConflict: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    error: "submission_closed" | "list_frozen" | "list_rejected" | "list_name_taken" | "candidate_on_other_list";
+                };
+            };
+        };
+        /** @description Nothing was written. `submission_closed` (outside the submission period), `list_frozen` (already approved), or `list_rejected` (already rejected). */
+        ElectionListReviewConflict: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    error: "submission_closed" | "list_frozen" | "list_rejected";
+                };
+            };
+        };
         /** @description Nothing was written. `invalid_name`: name missing, null, blank or longer than 120 characters. `invalid_window`: `startsAt` or `endsAt` missing, null, not an RFC 3339 date-time or not a whole minute, `endsAt` not after `startsAt`, or `startsAt` in the past. `invalid_submission_period`: `submissionStartsAt` or `submissionEndsAt` missing, null, not an RFC 3339 date-time or not a whole minute, `submissionEndsAt` not after `submissionStartsAt`, or `submissionEndsAt` not before `startsAt`. `invalid_positions`: `positions` null or empty, or a name blank, longer than 120 characters or repeated (case-insensitive). `mode_not_supported`: `mode` null or other than `secret`. */
         InvalidElectionDraft: {
             headers: {
@@ -3528,6 +3775,393 @@ export interface operations {
                     "application/json": {
                         /** @enum {string} */
                         error: "reason_required" | "reason_too_long";
+                    };
+                };
+            };
+        };
+    };
+    getElectionCandidates: {
+        parameters: {
+            query?: {
+                /** @description Name search query (at least 3 letters). */
+                q?: string;
+            };
+            header?: never;
+            path: {
+                electionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Up to 20 matching roster members ordered by name. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommissionMember"][];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description Caller may not build a list (`forbidden` for school admins, officers without a roster link, or accounts without membership) or is on the Electoral commission without a verified second factor (`mfa_required`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForbiddenError"];
+                };
+            };
+            /** @description No such election in the active school (`not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotFoundError"];
+                };
+            };
+            /** @description Missing, blank, or shorter than 3 letters search query (`query_too_short`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "query_too_short";
+                    };
+                };
+            };
+        };
+    };
+    getElectionLists: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                electionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Lists visible to the caller. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ElectionListsResponse"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description The account has no membership in the active school (`forbidden`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForbiddenError"];
+                };
+            };
+            /** @description No such election in the active school (`not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotFoundError"];
+                };
+            };
+        };
+    };
+    postElectionList: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                electionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ElectionListRequest"];
+            };
+        };
+        responses: {
+            /** @description List submitted. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ElectionList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            /** @description Not a roster member of the active school (`forbidden`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForbiddenError"];
+                };
+            };
+            /** @description Election or candidate roster member not found in the active school (`not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotFoundError"];
+                };
+            };
+            409: components["responses"]["ElectionListConflict"];
+            422: components["responses"]["InvalidElectionList"];
+        };
+    };
+    postCommissionElectionList: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                electionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CommissionElectionListRequest"];
+            };
+        };
+        responses: {
+            /** @description List loaded. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ElectionList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            /** @description `forbidden` (not on the current Electoral commission) or `mfa_required`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForbiddenError"];
+                };
+            };
+            /** @description Election, representative, or candidate not found in the active school (`not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotFoundError"];
+                };
+            };
+            409: components["responses"]["ElectionListConflict"];
+            422: components["responses"]["InvalidCommissionElectionList"];
+        };
+    };
+    getElectionList: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                electionId: string;
+                listId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The list. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ElectionList"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description The account has no membership in the active school (`forbidden`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForbiddenError"];
+                };
+            };
+            /** @description Election or list not found or not visible to the caller (`not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotFoundError"];
+                };
+            };
+        };
+    };
+    putElectionList: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                electionId: string;
+                listId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ElectionListRequest"];
+            };
+        };
+        responses: {
+            /** @description The updated list. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ElectionList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            /** @description `forbidden` or `mfa_required`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForbiddenError"];
+                };
+            };
+            /** @description Election, list (including non-approved lists for unrelated members), or candidate not found (`not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotFoundError"];
+                };
+            };
+            409: components["responses"]["ElectionListEditConflict"];
+            422: components["responses"]["InvalidElectionList"];
+        };
+    };
+    postApproveElectionList: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                electionId: string;
+                listId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The approved list. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ElectionList"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description `forbidden` (not on the current Electoral commission) or `mfa_required`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForbiddenError"];
+                };
+            };
+            /** @description Election or list not found in the active school (`not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotFoundError"];
+                };
+            };
+            409: components["responses"]["ElectionListReviewConflict"];
+        };
+    };
+    postRejectElectionList: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                electionId: string;
+                listId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RejectListRequest"];
+            };
+        };
+        responses: {
+            /** @description The rejected list. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ElectionList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            /** @description `forbidden` (not on the current Electoral commission) or `mfa_required`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForbiddenError"];
+                };
+            };
+            /** @description Election or list not found in the active school (`not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotFoundError"];
+                };
+            };
+            409: components["responses"]["ElectionListReviewConflict"];
+            /** @description Reason missing, null, blank or longer than 500 characters (`reason_required`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "reason_required";
                     };
                 };
             };

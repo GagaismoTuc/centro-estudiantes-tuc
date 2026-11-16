@@ -14,6 +14,27 @@ import (
 	"github.com/oapi-codegen/runtime"
 )
 
+// Defines values for ElectionListStatus.
+const (
+	ElectionListStatusApproved ElectionListStatus = "approved"
+	ElectionListStatusPending  ElectionListStatus = "pending"
+	ElectionListStatusRejected ElectionListStatus = "rejected"
+)
+
+// Valid indicates whether the value is a known member of the ElectionListStatus enum.
+func (e ElectionListStatus) Valid() bool {
+	switch e {
+	case ElectionListStatusApproved:
+		return true
+	case ElectionListStatusPending:
+		return true
+	case ElectionListStatusRejected:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ElectionMode.
 const (
 	Secret ElectionMode = "secret"
@@ -115,22 +136,22 @@ func (e HealthStatus) Valid() bool {
 
 // Defines values for MfaState.
 const (
-	EnrollmentRequired MfaState = "enrollment_required"
-	NotRequired        MfaState = "not_required"
-	Pending            MfaState = "pending"
-	Satisfied          MfaState = "satisfied"
+	MfaStateEnrollmentRequired MfaState = "enrollment_required"
+	MfaStateNotRequired        MfaState = "not_required"
+	MfaStatePending            MfaState = "pending"
+	MfaStateSatisfied          MfaState = "satisfied"
 )
 
 // Valid indicates whether the value is a known member of the MfaState enum.
 func (e MfaState) Valid() bool {
 	switch e {
-	case EnrollmentRequired:
+	case MfaStateEnrollmentRequired:
 		return true
-	case NotRequired:
+	case MfaStateNotRequired:
 		return true
-	case Pending:
+	case MfaStatePending:
 		return true
-	case Satisfied:
+	case MfaStateSatisfied:
 		return true
 	default:
 		return false
@@ -242,6 +263,99 @@ func (e RowErrorCode) Valid() bool {
 	}
 }
 
+// Defines values for ElectionListConflictError.
+const (
+	ElectionListConflictErrorCandidateOnOtherList ElectionListConflictError = "candidate_on_other_list"
+	ElectionListConflictErrorListNameTaken        ElectionListConflictError = "list_name_taken"
+	ElectionListConflictErrorSubmissionClosed     ElectionListConflictError = "submission_closed"
+)
+
+// Valid indicates whether the value is a known member of the ElectionListConflictError enum.
+func (e ElectionListConflictError) Valid() bool {
+	switch e {
+	case ElectionListConflictErrorCandidateOnOtherList:
+		return true
+	case ElectionListConflictErrorListNameTaken:
+		return true
+	case ElectionListConflictErrorSubmissionClosed:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ElectionListEditConflictError.
+const (
+	ElectionListEditConflictErrorCandidateOnOtherList ElectionListEditConflictError = "candidate_on_other_list"
+	ElectionListEditConflictErrorListFrozen           ElectionListEditConflictError = "list_frozen"
+	ElectionListEditConflictErrorListNameTaken        ElectionListEditConflictError = "list_name_taken"
+	ElectionListEditConflictErrorListRejected         ElectionListEditConflictError = "list_rejected"
+	ElectionListEditConflictErrorSubmissionClosed     ElectionListEditConflictError = "submission_closed"
+)
+
+// Valid indicates whether the value is a known member of the ElectionListEditConflictError enum.
+func (e ElectionListEditConflictError) Valid() bool {
+	switch e {
+	case ElectionListEditConflictErrorCandidateOnOtherList:
+		return true
+	case ElectionListEditConflictErrorListFrozen:
+		return true
+	case ElectionListEditConflictErrorListNameTaken:
+		return true
+	case ElectionListEditConflictErrorListRejected:
+		return true
+	case ElectionListEditConflictErrorSubmissionClosed:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ElectionListReviewConflictError.
+const (
+	ElectionListReviewConflictErrorListFrozen       ElectionListReviewConflictError = "list_frozen"
+	ElectionListReviewConflictErrorListRejected     ElectionListReviewConflictError = "list_rejected"
+	ElectionListReviewConflictErrorSubmissionClosed ElectionListReviewConflictError = "submission_closed"
+)
+
+// Valid indicates whether the value is a known member of the ElectionListReviewConflictError enum.
+func (e ElectionListReviewConflictError) Valid() bool {
+	switch e {
+	case ElectionListReviewConflictErrorListFrozen:
+		return true
+	case ElectionListReviewConflictErrorListRejected:
+		return true
+	case ElectionListReviewConflictErrorSubmissionClosed:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InvalidCommissionElectionListError.
+const (
+	InvalidCommissionElectionListErrorCandidateInCommission InvalidCommissionElectionListError = "candidate_in_commission"
+	InvalidCommissionElectionListErrorInvalidCandidates     InvalidCommissionElectionListError = "invalid_candidates"
+	InvalidCommissionElectionListErrorInvalidName           InvalidCommissionElectionListError = "invalid_name"
+	InvalidCommissionElectionListErrorInvalidRepresentative InvalidCommissionElectionListError = "invalid_representative"
+)
+
+// Valid indicates whether the value is a known member of the InvalidCommissionElectionListError enum.
+func (e InvalidCommissionElectionListError) Valid() bool {
+	switch e {
+	case InvalidCommissionElectionListErrorCandidateInCommission:
+		return true
+	case InvalidCommissionElectionListErrorInvalidCandidates:
+		return true
+	case InvalidCommissionElectionListErrorInvalidName:
+		return true
+	case InvalidCommissionElectionListErrorInvalidRepresentative:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for InvalidElectionDraftError.
 const (
 	InvalidElectionDraftErrorInvalidName             InvalidElectionDraftError = "invalid_name"
@@ -263,6 +377,27 @@ func (e InvalidElectionDraftError) Valid() bool {
 	case InvalidElectionDraftErrorInvalidWindow:
 		return true
 	case InvalidElectionDraftErrorModeNotSupported:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InvalidElectionListError.
+const (
+	InvalidElectionListErrorCandidateInCommission InvalidElectionListError = "candidate_in_commission"
+	InvalidElectionListErrorInvalidCandidates     InvalidElectionListError = "invalid_candidates"
+	InvalidElectionListErrorInvalidName           InvalidElectionListError = "invalid_name"
+)
+
+// Valid indicates whether the value is a known member of the InvalidElectionListError enum.
+func (e InvalidElectionListError) Valid() bool {
+	switch e {
+	case InvalidElectionListErrorCandidateInCommission:
+		return true
+	case InvalidElectionListErrorInvalidCandidates:
+		return true
+	case InvalidElectionListErrorInvalidName:
 		return true
 	default:
 		return false
@@ -376,16 +511,223 @@ func (e PostElectionAnnulment409JSONResponseBodyError) Valid() bool {
 
 // Defines values for PostElectionAnnulment422JSONResponseBodyError.
 const (
-	ReasonRequired PostElectionAnnulment422JSONResponseBodyError = "reason_required"
-	ReasonTooLong  PostElectionAnnulment422JSONResponseBodyError = "reason_too_long"
+	PostElectionAnnulment422JSONResponseBodyErrorReasonRequired PostElectionAnnulment422JSONResponseBodyError = "reason_required"
+	PostElectionAnnulment422JSONResponseBodyErrorReasonTooLong  PostElectionAnnulment422JSONResponseBodyError = "reason_too_long"
 )
 
 // Valid indicates whether the value is a known member of the PostElectionAnnulment422JSONResponseBodyError enum.
 func (e PostElectionAnnulment422JSONResponseBodyError) Valid() bool {
 	switch e {
-	case ReasonRequired:
+	case PostElectionAnnulment422JSONResponseBodyErrorReasonRequired:
 		return true
-	case ReasonTooLong:
+	case PostElectionAnnulment422JSONResponseBodyErrorReasonTooLong:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetElectionCandidates422JSONResponseBodyError.
+const (
+	QueryTooShort GetElectionCandidates422JSONResponseBodyError = "query_too_short"
+)
+
+// Valid indicates whether the value is a known member of the GetElectionCandidates422JSONResponseBodyError enum.
+func (e GetElectionCandidates422JSONResponseBodyError) Valid() bool {
+	switch e {
+	case QueryTooShort:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostCommissionElectionList409JSONResponseBodyError.
+const (
+	PostCommissionElectionList409JSONResponseBodyErrorCandidateOnOtherList PostCommissionElectionList409JSONResponseBodyError = "candidate_on_other_list"
+	PostCommissionElectionList409JSONResponseBodyErrorListNameTaken        PostCommissionElectionList409JSONResponseBodyError = "list_name_taken"
+	PostCommissionElectionList409JSONResponseBodyErrorSubmissionClosed     PostCommissionElectionList409JSONResponseBodyError = "submission_closed"
+)
+
+// Valid indicates whether the value is a known member of the PostCommissionElectionList409JSONResponseBodyError enum.
+func (e PostCommissionElectionList409JSONResponseBodyError) Valid() bool {
+	switch e {
+	case PostCommissionElectionList409JSONResponseBodyErrorCandidateOnOtherList:
+		return true
+	case PostCommissionElectionList409JSONResponseBodyErrorListNameTaken:
+		return true
+	case PostCommissionElectionList409JSONResponseBodyErrorSubmissionClosed:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostCommissionElectionList422JSONResponseBodyError.
+const (
+	PostCommissionElectionList422JSONResponseBodyErrorCandidateInCommission PostCommissionElectionList422JSONResponseBodyError = "candidate_in_commission"
+	PostCommissionElectionList422JSONResponseBodyErrorInvalidCandidates     PostCommissionElectionList422JSONResponseBodyError = "invalid_candidates"
+	PostCommissionElectionList422JSONResponseBodyErrorInvalidName           PostCommissionElectionList422JSONResponseBodyError = "invalid_name"
+	PostCommissionElectionList422JSONResponseBodyErrorInvalidRepresentative PostCommissionElectionList422JSONResponseBodyError = "invalid_representative"
+)
+
+// Valid indicates whether the value is a known member of the PostCommissionElectionList422JSONResponseBodyError enum.
+func (e PostCommissionElectionList422JSONResponseBodyError) Valid() bool {
+	switch e {
+	case PostCommissionElectionList422JSONResponseBodyErrorCandidateInCommission:
+		return true
+	case PostCommissionElectionList422JSONResponseBodyErrorInvalidCandidates:
+		return true
+	case PostCommissionElectionList422JSONResponseBodyErrorInvalidName:
+		return true
+	case PostCommissionElectionList422JSONResponseBodyErrorInvalidRepresentative:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostElectionList409JSONResponseBodyError.
+const (
+	PostElectionList409JSONResponseBodyErrorCandidateOnOtherList PostElectionList409JSONResponseBodyError = "candidate_on_other_list"
+	PostElectionList409JSONResponseBodyErrorListNameTaken        PostElectionList409JSONResponseBodyError = "list_name_taken"
+	PostElectionList409JSONResponseBodyErrorSubmissionClosed     PostElectionList409JSONResponseBodyError = "submission_closed"
+)
+
+// Valid indicates whether the value is a known member of the PostElectionList409JSONResponseBodyError enum.
+func (e PostElectionList409JSONResponseBodyError) Valid() bool {
+	switch e {
+	case PostElectionList409JSONResponseBodyErrorCandidateOnOtherList:
+		return true
+	case PostElectionList409JSONResponseBodyErrorListNameTaken:
+		return true
+	case PostElectionList409JSONResponseBodyErrorSubmissionClosed:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostElectionList422JSONResponseBodyError.
+const (
+	PostElectionList422JSONResponseBodyErrorCandidateInCommission PostElectionList422JSONResponseBodyError = "candidate_in_commission"
+	PostElectionList422JSONResponseBodyErrorInvalidCandidates     PostElectionList422JSONResponseBodyError = "invalid_candidates"
+	PostElectionList422JSONResponseBodyErrorInvalidName           PostElectionList422JSONResponseBodyError = "invalid_name"
+)
+
+// Valid indicates whether the value is a known member of the PostElectionList422JSONResponseBodyError enum.
+func (e PostElectionList422JSONResponseBodyError) Valid() bool {
+	switch e {
+	case PostElectionList422JSONResponseBodyErrorCandidateInCommission:
+		return true
+	case PostElectionList422JSONResponseBodyErrorInvalidCandidates:
+		return true
+	case PostElectionList422JSONResponseBodyErrorInvalidName:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PutElectionList409JSONResponseBodyError.
+const (
+	PutElectionList409JSONResponseBodyErrorCandidateOnOtherList PutElectionList409JSONResponseBodyError = "candidate_on_other_list"
+	PutElectionList409JSONResponseBodyErrorListFrozen           PutElectionList409JSONResponseBodyError = "list_frozen"
+	PutElectionList409JSONResponseBodyErrorListNameTaken        PutElectionList409JSONResponseBodyError = "list_name_taken"
+	PutElectionList409JSONResponseBodyErrorListRejected         PutElectionList409JSONResponseBodyError = "list_rejected"
+	PutElectionList409JSONResponseBodyErrorSubmissionClosed     PutElectionList409JSONResponseBodyError = "submission_closed"
+)
+
+// Valid indicates whether the value is a known member of the PutElectionList409JSONResponseBodyError enum.
+func (e PutElectionList409JSONResponseBodyError) Valid() bool {
+	switch e {
+	case PutElectionList409JSONResponseBodyErrorCandidateOnOtherList:
+		return true
+	case PutElectionList409JSONResponseBodyErrorListFrozen:
+		return true
+	case PutElectionList409JSONResponseBodyErrorListNameTaken:
+		return true
+	case PutElectionList409JSONResponseBodyErrorListRejected:
+		return true
+	case PutElectionList409JSONResponseBodyErrorSubmissionClosed:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PutElectionList422JSONResponseBodyError.
+const (
+	PutElectionList422JSONResponseBodyErrorCandidateInCommission PutElectionList422JSONResponseBodyError = "candidate_in_commission"
+	PutElectionList422JSONResponseBodyErrorInvalidCandidates     PutElectionList422JSONResponseBodyError = "invalid_candidates"
+	PutElectionList422JSONResponseBodyErrorInvalidName           PutElectionList422JSONResponseBodyError = "invalid_name"
+)
+
+// Valid indicates whether the value is a known member of the PutElectionList422JSONResponseBodyError enum.
+func (e PutElectionList422JSONResponseBodyError) Valid() bool {
+	switch e {
+	case PutElectionList422JSONResponseBodyErrorCandidateInCommission:
+		return true
+	case PutElectionList422JSONResponseBodyErrorInvalidCandidates:
+		return true
+	case PutElectionList422JSONResponseBodyErrorInvalidName:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostApproveElectionList409JSONResponseBodyError.
+const (
+	PostApproveElectionList409JSONResponseBodyErrorListFrozen       PostApproveElectionList409JSONResponseBodyError = "list_frozen"
+	PostApproveElectionList409JSONResponseBodyErrorListRejected     PostApproveElectionList409JSONResponseBodyError = "list_rejected"
+	PostApproveElectionList409JSONResponseBodyErrorSubmissionClosed PostApproveElectionList409JSONResponseBodyError = "submission_closed"
+)
+
+// Valid indicates whether the value is a known member of the PostApproveElectionList409JSONResponseBodyError enum.
+func (e PostApproveElectionList409JSONResponseBodyError) Valid() bool {
+	switch e {
+	case PostApproveElectionList409JSONResponseBodyErrorListFrozen:
+		return true
+	case PostApproveElectionList409JSONResponseBodyErrorListRejected:
+		return true
+	case PostApproveElectionList409JSONResponseBodyErrorSubmissionClosed:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostRejectElectionList409JSONResponseBodyError.
+const (
+	PostRejectElectionList409JSONResponseBodyErrorListFrozen       PostRejectElectionList409JSONResponseBodyError = "list_frozen"
+	PostRejectElectionList409JSONResponseBodyErrorListRejected     PostRejectElectionList409JSONResponseBodyError = "list_rejected"
+	PostRejectElectionList409JSONResponseBodyErrorSubmissionClosed PostRejectElectionList409JSONResponseBodyError = "submission_closed"
+)
+
+// Valid indicates whether the value is a known member of the PostRejectElectionList409JSONResponseBodyError enum.
+func (e PostRejectElectionList409JSONResponseBodyError) Valid() bool {
+	switch e {
+	case PostRejectElectionList409JSONResponseBodyErrorListFrozen:
+		return true
+	case PostRejectElectionList409JSONResponseBodyErrorListRejected:
+		return true
+	case PostRejectElectionList409JSONResponseBodyErrorSubmissionClosed:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostRejectElectionList422JSONResponseBodyError.
+const (
+	PostRejectElectionList422JSONResponseBodyErrorReasonRequired PostRejectElectionList422JSONResponseBodyError = "reason_required"
+)
+
+// Valid indicates whether the value is a known member of the PostRejectElectionList422JSONResponseBodyError enum.
+func (e PostRejectElectionList422JSONResponseBodyError) Valid() bool {
+	switch e {
+	case PostRejectElectionList422JSONResponseBodyErrorReasonRequired:
 		return true
 	default:
 		return false
@@ -705,6 +1047,13 @@ type CommissionDesignation struct {
 	RosterMemberIds *[]string `json:"rosterMemberIds,omitempty"`
 }
 
+// CommissionElectionListRequest defines model for CommissionElectionListRequest.
+type CommissionElectionListRequest struct {
+	Candidates                   []ListCandidateInput `json:"candidates"`
+	Name                         string               `json:"name"`
+	RepresentativeRosterMemberId string               `json:"representativeRosterMemberId"`
+}
+
 // CommissionMember defines model for CommissionMember.
 type CommissionMember struct {
 	FullName       string `json:"fullName"`
@@ -798,6 +1147,37 @@ type ElectionDraftRequest struct {
 
 	// SubmissionStartsAt Whole minutes (no seconds); otherwise `invalid_submission_period`.
 	SubmissionStartsAt time.Time `json:"submissionStartsAt"`
+}
+
+// ElectionList defines model for ElectionList.
+type ElectionList struct {
+	// Candidates Ordered by the election's positions.
+	Candidates                   []ListCandidate    `json:"candidates"`
+	CreatedAt                    time.Time          `json:"createdAt"`
+	ElectionId                   string             `json:"electionId"`
+	Id                           string             `json:"id"`
+	Name                         string             `json:"name"`
+	RejectionReason              *string            `json:"rejectionReason"`
+	RepresentativeFullName       string             `json:"representativeFullName"`
+	RepresentativeRosterMemberId string             `json:"representativeRosterMemberId"`
+	ReviewedAt                   *time.Time         `json:"reviewedAt"`
+	Status                       ElectionListStatus `json:"status"`
+	UpdatedAt                    time.Time          `json:"updatedAt"`
+}
+
+// ElectionListRequest defines model for ElectionListRequest.
+type ElectionListRequest struct {
+	Candidates []ListCandidateInput `json:"candidates"`
+	Name       string               `json:"name"`
+}
+
+// ElectionListStatus defines model for ElectionListStatus.
+type ElectionListStatus string
+
+// ElectionListsResponse defines model for ElectionListsResponse.
+type ElectionListsResponse struct {
+	Lists          []ElectionList `json:"lists"`
+	RosterMemberId *string        `json:"rosterMemberId"`
 }
 
 // ElectionMode Only "Voto secreto"; any other value is 422 `mode_not_supported`.
@@ -1025,6 +1405,19 @@ type IssuedMemberCode struct {
 	MemberId       string    `json:"memberId"`
 }
 
+// ListCandidate defines model for ListCandidate.
+type ListCandidate struct {
+	FullName       string `json:"fullName"`
+	Position       string `json:"position"`
+	RosterMemberId string `json:"rosterMemberId"`
+}
+
+// ListCandidateInput defines model for ListCandidateInput.
+type ListCandidateInput struct {
+	Position       string `json:"position"`
+	RosterMemberId string `json:"rosterMemberId"`
+}
+
 // LoginRequest defines model for LoginRequest.
 type LoginRequest struct {
 	Email    string `json:"email"`
@@ -1151,6 +1544,11 @@ type ReferencePrice struct {
 	Id          string `json:"id"`
 }
 
+// RejectListRequest defines model for RejectListRequest.
+type RejectListRequest struct {
+	Reason string `json:"reason"`
+}
+
 // RenameFinanceCategory defines model for RenameFinanceCategory.
 type RenameFinanceCategory struct {
 	Name string `json:"name"`
@@ -1226,8 +1624,40 @@ type BadRequest = Error
 // DirectoryForbidden defines model for DirectoryForbidden.
 type DirectoryForbidden = Error
 
+// ElectionListConflict defines model for ElectionListConflict.
+type ElectionListConflict struct {
+	Error ElectionListConflictError `json:"error"`
+}
+
+// ElectionListConflictError defines model for ElectionListConflict.Error.
+type ElectionListConflictError string
+
+// ElectionListEditConflict defines model for ElectionListEditConflict.
+type ElectionListEditConflict struct {
+	Error ElectionListEditConflictError `json:"error"`
+}
+
+// ElectionListEditConflictError defines model for ElectionListEditConflict.Error.
+type ElectionListEditConflictError string
+
+// ElectionListReviewConflict defines model for ElectionListReviewConflict.
+type ElectionListReviewConflict struct {
+	Error ElectionListReviewConflictError `json:"error"`
+}
+
+// ElectionListReviewConflictError defines model for ElectionListReviewConflict.Error.
+type ElectionListReviewConflictError string
+
 // Forbidden defines model for Forbidden.
 type Forbidden = Error
+
+// InvalidCommissionElectionList defines model for InvalidCommissionElectionList.
+type InvalidCommissionElectionList struct {
+	Error InvalidCommissionElectionListError `json:"error"`
+}
+
+// InvalidCommissionElectionListError defines model for InvalidCommissionElectionList.Error.
+type InvalidCommissionElectionListError string
 
 // InvalidElectionDraft defines model for InvalidElectionDraft.
 type InvalidElectionDraft struct {
@@ -1236,6 +1666,14 @@ type InvalidElectionDraft struct {
 
 // InvalidElectionDraftError defines model for InvalidElectionDraft.Error.
 type InvalidElectionDraftError string
+
+// InvalidElectionList defines model for InvalidElectionList.
+type InvalidElectionList struct {
+	Error InvalidElectionListError `json:"error"`
+}
+
+// InvalidElectionListError defines model for InvalidElectionList.Error.
+type InvalidElectionListError string
 
 // InvalidMfaCode defines model for InvalidMfaCode.
 type InvalidMfaCode = Error
@@ -1272,6 +1710,42 @@ type PostElectionAnnulment409JSONResponseBodyError string
 
 // PostElectionAnnulment422JSONResponseBodyError defines parameters for PostElectionAnnulment.
 type PostElectionAnnulment422JSONResponseBodyError string
+
+// GetElectionCandidatesParams defines parameters for GetElectionCandidates.
+type GetElectionCandidatesParams struct {
+	// Q Name search query (at least 3 letters).
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+}
+
+// GetElectionCandidates422JSONResponseBodyError defines parameters for GetElectionCandidates.
+type GetElectionCandidates422JSONResponseBodyError string
+
+// PostCommissionElectionList409JSONResponseBodyError defines parameters for PostCommissionElectionList.
+type PostCommissionElectionList409JSONResponseBodyError string
+
+// PostCommissionElectionList422JSONResponseBodyError defines parameters for PostCommissionElectionList.
+type PostCommissionElectionList422JSONResponseBodyError string
+
+// PostElectionList409JSONResponseBodyError defines parameters for PostElectionList.
+type PostElectionList409JSONResponseBodyError string
+
+// PostElectionList422JSONResponseBodyError defines parameters for PostElectionList.
+type PostElectionList422JSONResponseBodyError string
+
+// PutElectionList409JSONResponseBodyError defines parameters for PutElectionList.
+type PutElectionList409JSONResponseBodyError string
+
+// PutElectionList422JSONResponseBodyError defines parameters for PutElectionList.
+type PutElectionList422JSONResponseBodyError string
+
+// PostApproveElectionList409JSONResponseBodyError defines parameters for PostApproveElectionList.
+type PostApproveElectionList409JSONResponseBodyError string
+
+// PostRejectElectionList409JSONResponseBodyError defines parameters for PostRejectElectionList.
+type PostRejectElectionList409JSONResponseBodyError string
+
+// PostRejectElectionList422JSONResponseBodyError defines parameters for PostRejectElectionList.
+type PostRejectElectionList422JSONResponseBodyError string
 
 // PutElectoralCommission409JSONResponseBodyError defines parameters for PutElectoralCommission.
 type PutElectoralCommission409JSONResponseBodyError string
@@ -1385,6 +1859,18 @@ type PutElectionJSONRequestBody = ElectionDraftRequest
 
 // PostElectionAnnulmentJSONRequestBody defines body for PostElectionAnnulment for application/json ContentType.
 type PostElectionAnnulmentJSONRequestBody = AnnulmentRequest
+
+// PostCommissionElectionListJSONRequestBody defines body for PostCommissionElectionList for application/json ContentType.
+type PostCommissionElectionListJSONRequestBody = CommissionElectionListRequest
+
+// PostElectionListJSONRequestBody defines body for PostElectionList for application/json ContentType.
+type PostElectionListJSONRequestBody = ElectionListRequest
+
+// PutElectionListJSONRequestBody defines body for PutElectionList for application/json ContentType.
+type PutElectionListJSONRequestBody = ElectionListRequest
+
+// PostRejectElectionListJSONRequestBody defines body for PostRejectElectionList for application/json ContentType.
+type PostRejectElectionListJSONRequestBody = RejectListRequest
 
 // PutElectoralCommissionJSONRequestBody defines body for PutElectoralCommission for application/json ContentType.
 type PutElectoralCommissionJSONRequestBody = CommissionDesignation
@@ -1517,6 +2003,30 @@ type ServerInterface interface {
 	// PostElectionAnnulment Annul an election before its result is published
 	// (POST /elections/{electionId}/annulment)
 	PostElectionAnnulment(w http.ResponseWriter, r *http.Request, electionId string)
+	// GetElectionCandidates Search roster members by name for an election list
+	// (GET /elections/{electionId}/candidates)
+	GetElectionCandidates(w http.ResponseWriter, r *http.Request, electionId string, params GetElectionCandidatesParams)
+	// PostCommissionElectionList Load a list as the Electoral commission on behalf of a representative
+	// (POST /elections/{electionId}/commission/lists)
+	PostCommissionElectionList(w http.ResponseWriter, r *http.Request, electionId string)
+	// GetElectionLists List election lists visible to the caller
+	// (GET /elections/{electionId}/lists)
+	GetElectionLists(w http.ResponseWriter, r *http.Request, electionId string)
+	// PostElectionList Present a list as a student representative
+	// (POST /elections/{electionId}/lists)
+	PostElectionList(w http.ResponseWriter, r *http.Request, electionId string)
+	// GetElectionList Read one election list
+	// (GET /elections/{electionId}/lists/{listId})
+	GetElectionList(w http.ResponseWriter, r *http.Request, electionId string, listId string)
+	// PutElectionList Edit a pending election list
+	// (PUT /elections/{electionId}/lists/{listId})
+	PutElectionList(w http.ResponseWriter, r *http.Request, electionId string, listId string)
+	// PostApproveElectionList Approve a pending election list
+	// (POST /elections/{electionId}/lists/{listId}/approve)
+	PostApproveElectionList(w http.ResponseWriter, r *http.Request, electionId string, listId string)
+	// PostRejectElectionList Reject a pending election list with a reason
+	// (POST /elections/{electionId}/lists/{listId}/reject)
+	PostRejectElectionList(w http.ResponseWriter, r *http.Request, electionId string, listId string)
 	// GetElectoralCommission Read the active school's current Electoral commission
 	// (GET /electoral-commission)
 	GetElectoralCommission(w http.ResponseWriter, r *http.Request)
@@ -2236,6 +2746,266 @@ func (siw *ServerInterfaceWrapper) PostElectionAnnulment(w http.ResponseWriter, 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostElectionAnnulment(w, r, electionId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetElectionCandidates operation middleware
+func (siw *ServerInterfaceWrapper) GetElectionCandidates(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "electionId" -------------
+	var electionId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "electionId", r.PathValue("electionId"), &electionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "electionId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetElectionCandidatesParams
+
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetElectionCandidates(w, r, electionId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostCommissionElectionList operation middleware
+func (siw *ServerInterfaceWrapper) PostCommissionElectionList(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "electionId" -------------
+	var electionId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "electionId", r.PathValue("electionId"), &electionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "electionId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostCommissionElectionList(w, r, electionId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetElectionLists operation middleware
+func (siw *ServerInterfaceWrapper) GetElectionLists(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "electionId" -------------
+	var electionId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "electionId", r.PathValue("electionId"), &electionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "electionId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetElectionLists(w, r, electionId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostElectionList operation middleware
+func (siw *ServerInterfaceWrapper) PostElectionList(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "electionId" -------------
+	var electionId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "electionId", r.PathValue("electionId"), &electionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "electionId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostElectionList(w, r, electionId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetElectionList operation middleware
+func (siw *ServerInterfaceWrapper) GetElectionList(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "electionId" -------------
+	var electionId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "electionId", r.PathValue("electionId"), &electionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "electionId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "listId" -------------
+	var listId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "listId", r.PathValue("listId"), &listId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "listId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetElectionList(w, r, electionId, listId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutElectionList operation middleware
+func (siw *ServerInterfaceWrapper) PutElectionList(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "electionId" -------------
+	var electionId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "electionId", r.PathValue("electionId"), &electionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "electionId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "listId" -------------
+	var listId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "listId", r.PathValue("listId"), &listId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "listId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutElectionList(w, r, electionId, listId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostApproveElectionList operation middleware
+func (siw *ServerInterfaceWrapper) PostApproveElectionList(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "electionId" -------------
+	var electionId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "electionId", r.PathValue("electionId"), &electionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "electionId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "listId" -------------
+	var listId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "listId", r.PathValue("listId"), &listId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "listId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostApproveElectionList(w, r, electionId, listId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostRejectElectionList operation middleware
+func (siw *ServerInterfaceWrapper) PostRejectElectionList(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "electionId" -------------
+	var electionId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "electionId", r.PathValue("electionId"), &electionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "electionId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "listId" -------------
+	var listId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "listId", r.PathValue("listId"), &listId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "listId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostRejectElectionList(w, r, electionId, listId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3155,6 +3925,14 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/elections/{electionId}", wrapper.GetElection)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/elections/{electionId}", wrapper.PutElection)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/elections/{electionId}/annulment", wrapper.PostElectionAnnulment)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/elections/{electionId}/candidates", wrapper.GetElectionCandidates)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/elections/{electionId}/lists", wrapper.GetElectionLists)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/elections/{electionId}/lists", wrapper.PostElectionList)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/elections/{electionId}/commission/lists", wrapper.PostCommissionElectionList)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/elections/{electionId}/lists/{listId}", wrapper.GetElectionList)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/elections/{electionId}/lists/{listId}", wrapper.PutElectionList)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/elections/{electionId}/lists/{listId}/approve", wrapper.PostApproveElectionList)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/elections/{electionId}/lists/{listId}/reject", wrapper.PostRejectElectionList)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/categories", wrapper.GetFinanceCategories)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/finance/categories", wrapper.PostFinanceCategories)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/finance/categories/{id}", wrapper.DeleteFinanceCategory)

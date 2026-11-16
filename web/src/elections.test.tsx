@@ -173,6 +173,7 @@ test("a student sees the election with its Spanish state, dates, positions and c
     "GET /auth/me": ok(me({ role: "student", mfa: "not_required" })),
     "GET /electoral-commission": status({ members: [ana, beto] }),
     "GET /elections/latest": ok(election),
+    "GET /elections/e1/lists": ok({ rosterMemberId: null, lists: [] }),
   });
   renderAt("/");
   await screen.findAllByRole("navigation", { name: "Principal" });

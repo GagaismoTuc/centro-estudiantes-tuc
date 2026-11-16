@@ -930,6 +930,11 @@ code {
   background: var(--ok-bg);
   color: var(--ok);
 }
+.badge[data-tone="error"] {
+  border-color: transparent;
+  background: var(--danger-bg);
+  color: var(--danger);
+}
 
 .field--inline {
   inline-size: min(100%, 18rem);
@@ -1449,10 +1454,51 @@ select[aria-invalid="true"] {
   padding: 0;
   list-style: none;
 }
-.positions__row {
+.positions__row,
+.search-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: end;
+  gap: 0.5rem;
+}
+.election-lists {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.875rem;
+}
+.list-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.list-card__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.list-card__title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.list-card__reason {
+  padding: 0.625rem 0.75rem;
+  border-radius: var(--radius-sm);
+  background: var(--danger-bg);
+  color: var(--danger);
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+.list-card__actions {
+  display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
 }
 
