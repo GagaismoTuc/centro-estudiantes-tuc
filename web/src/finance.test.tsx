@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { App } from "./App.tsx";
 import { fail, me, mockApi, ok, sentTo } from "./test/api.ts";
@@ -102,4 +102,41 @@ test("R15 invalid form fields are announced and focused", async () => {
   await waitFor(() => expect(amount.getAttribute("aria-invalid")).toBe("true"));
   expect(document.activeElement).toBe(amount);
   expect(document.getElementById(amount.getAttribute("aria-describedby") ?? "")?.textContent).toContain("monto positivo");
+});
+
+test("R8 officers manage categories by direction and see only permitted actions", async () => {
+  const sent = mockApi({ "GET /auth/me": ok(me({ role: "officer", mfa: "satisfied" })), ...reads,
+    "POST /finance/categories": ok({ id: "c4", name: "Buzos", direction: "expense", active: true, reserved: false }, 201),
+    "PATCH /finance/categories/c1": ok({ ...categories[0], name: "Kiosco" }),
+    "POST /finance/categories/c1/archive": ok({ ...categories[0], active: false }),
+    "DELETE /finance/categories/c3": new Response(null, { status: 204 }),
+  });
+  window.history.replaceState(null, "", "/caja"); render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Categor\u00edas" }));
+  expect(await screen.findByText("Reservada para los pagos de cuotas")).toBeTruthy();
+  const reserved = screen.getByText("Reservada para los pagos de cuotas").closest("li")!;
+  expect(reserved.querySelector("button")).toBeNull();
+  const used = screen.getByText("Ventas", { selector: "strong" }).closest("li")!;
+  const unused = screen.getByText("Viajes", { selector: "strong" }).closest("li")!;
+  expect(within(used).getByRole("button", { name: "Archivar" })).toBeTruthy();
+  expect(within(used).queryByRole("button", { name: "Borrar" })).toBeNull();
+  expect(within(unused).getByRole("button", { name: "Borrar" })).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Agregar categor\u00eda" }));
+  const name = screen.getByLabelText("Nombre de la categor\u00eda");
+  await waitFor(() => expect(name.getAttribute("aria-invalid")).toBe("true"));
+  expect(document.activeElement).toBe(name);
+  fireEvent.change(screen.getByLabelText("Nombre de la categor\u00eda"), { target: { value: "Buzos" } });
+  fireEvent.change(screen.getByLabelText("Sentido"), { target: { value: "expense" } });
+  fireEvent.click(screen.getByRole("button", { name: "Agregar categor\u00eda" }));
+  await waitFor(() => expect(sentTo(sent, "POST /finance/categories")).toHaveLength(1));
+  fireEvent.click(within(used).getByRole("button", { name: "Renombrar" }));
+  fireEvent.change(screen.getByLabelText("Nuevo nombre"), { target: { value: "Kiosco" } });
+  fireEvent.click(screen.getByRole("button", { name: "Guardar nombre" }));
+  await waitFor(() => expect(sentTo(sent, "PATCH /finance/categories/c1")).toHaveLength(1));
+  fireEvent.click(within(used).getByRole("button", { name: "Archivar" }));
+  fireEvent.click(screen.getByRole("button", { name: "Confirmar archivo" }));
+  await waitFor(() => expect(sentTo(sent, "POST /finance/categories/c1/archive")).toHaveLength(1));
+  fireEvent.click(within(unused).getByRole("button", { name: "Borrar" }));
+  fireEvent.click(screen.getByRole("button", { name: "Confirmar borrado" }));
+  await waitFor(() => expect(sentTo(sent, "DELETE /finance/categories/c3")).toHaveLength(1));
 });

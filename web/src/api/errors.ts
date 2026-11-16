@@ -34,6 +34,8 @@ const messages: Record<string, string> = {
   invalid_rows: "El archivo tiene filas con errores. No se cargó nada.",
   too_many_rows: "El archivo tiene más de 5000 filas. Dividilo en partes.",
   name_required: "Escribí un nombre.",
+  category_exists: "Ya existe una categor\u00eda con ese nombre y sentido.",
+  category_in_use: "La categor\u00eda tiene movimientos. Archivala en lugar de borrarla.",
   heading_exists: "Ya existe un rubro con ese nombre.",
   heading_in_use: "Ese rubro tiene contactos asociados. Archivalo en lugar de borrarlo.",
   reserved_heading: "El rubro «otros» es parte del sistema y no se puede editar, archivar ni borrar.",
