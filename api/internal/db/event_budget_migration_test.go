@@ -95,13 +95,13 @@ func TestEventBudgetMigrationUpAndDown(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.UpTo(ctx, 19); err != nil {
+	if _, err := p.UpTo(ctx, 22); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := p.UpTo(ctx, 23); err != nil {
 		t.Fatalf("up: %v", err)
 	}
-	if _, err := p.DownTo(ctx, 19); err != nil {
+	if _, err := p.DownTo(ctx, 22); err != nil {
 		t.Fatalf("down: %v", err)
 	}
 	var budgets, lines bool
