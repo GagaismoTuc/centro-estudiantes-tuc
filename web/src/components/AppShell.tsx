@@ -75,12 +75,20 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
             </li>
           )}
           {canReadContacts(me) && (
-            <li>
-              <Link to="/contactos" className="nav__item" onClick={onNavigate}>
-                <Icon name="contacts" />
-                Contactos
-              </Link>
-            </li>
+            <>
+              <li>
+                <Link to="/contactos" className="nav__item" onClick={onNavigate}>
+                  <Icon name="contacts" />
+                  Contactos
+                </Link>
+              </li>
+              <li>
+                <Link to="/contactos/compartido" className="nav__item" onClick={onNavigate}>
+                  <Icon name="contacts" />
+                  Directorio compartido
+                </Link>
+              </li>
+            </>
           )}
           {upcoming.map((item) => (
             <li key={item.label}>

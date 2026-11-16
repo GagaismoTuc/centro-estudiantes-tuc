@@ -8,19 +8,21 @@ import { ConfirmDialog } from "../components/ConfirmDialog.tsx";
 import { FormStatus, SubmitButton, type Status } from "../components/Form.tsx";
 import { Icon } from "../components/Icon.tsx";
 import { PageTitle, useDocumentTitle } from "../components/Page.tsx";
+import { formatPesos } from "../lib/money.ts";
 import { Link } from "../lib/router.tsx";
 
 type Heading = components["schemas"]["ContactHeading"];
 type Contact = components["schemas"]["Contact"];
+type ShareStatus = components["schemas"]["ShareStatus"];
+
+const shareStatusLabels: Record<ShareStatus, string> = {
+  pending: "Pendiente de aprobación",
+  approved: "Compartido",
+  rejected: "Rechazado",
+  removed: "Dado de baja",
+};
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-function formatPesos(cents: number): string {
-  const whole = Math.floor(cents / 100);
-  const rem = cents % 100;
-  const formattedWhole = whole.toLocaleString("es-AR");
-  return rem === 0 ? `$${formattedWhole}` : `$${formattedWhole},${String(rem).padStart(2, "0")}`;
-}
 
 function parsePesosToCents(raw: string): number | null {
   const cleaned = raw.trim().replace(/\s+/g, "").replace(",", ".");
@@ -507,6 +509,7 @@ export function Contacts() {
   const [addingPriceFor, setAddingPriceFor] = useState<string | null>(null);
   const [confirmDeleteContact, setConfirmDeleteContact] = useState<Contact | null>(null);
   const [confirmDeletePrice, setConfirmDeletePrice] = useState<{ contactId: string; priceId: string; description: string } | null>(null);
+  const [confirmShareContact, setConfirmShareContact] = useState<Contact | null>(null);
 
   const statusRef = useRef<HTMLDivElement>(null);
 
@@ -557,6 +560,25 @@ export function Contacts() {
     if (res.ok) {
       setContacts((prev) => prev.filter((c) => c.id !== contact.id));
       setStatus({ tone: "ok", text: `Se borró a ${contact.name}.` });
+      return;
+    }
+    handleAuthError(res.code);
+    setStatus({ tone: "error", text: errorMessage(res.code) });
+    statusRef.current?.focus();
+  }
+
+  async function shareContact(contact: Contact) {
+    setConfirmShareContact(null);
+    setStatus(null);
+    const res = await call(apiClient.POST("/contacts/{id}/share", { params: { path: { id: contact.id } } }));
+    if (res.ok) {
+      setContacts((prev) =>
+        prev.map((c) => (c.id === contact.id ? { ...c, shareStatus: res.data.status } : c)),
+      );
+      setStatus({
+        tone: "ok",
+        text: `Se envió a ${contact.name} para compartir. Quedará visible cuando lo aprueben.`,
+      });
       return;
     }
     handleAuthError(res.code);
@@ -617,23 +639,28 @@ export function Contacts() {
             Directorio de contactos del centro. Se mantiene entre gestiones.
           </p>
         </div>
-        {canWrite && (
-          <div className="page-actions">
-            <Link className="button button--secondary" to="/contactos/rubros">
-              Manejar rubros
-            </Link>
-            <button
-              type="button"
-              className="button button--primary"
-              onClick={() => {
-                setEditingId(null);
-                setCreating((v) => !v);
-              }}
-            >
-              Nuevo contacto
-            </button>
-          </div>
-        )}
+        <div className="page-actions">
+          <Link className="button button--secondary" to="/contactos/compartido">
+            Directorio compartido
+          </Link>
+          {canWrite && (
+            <>
+              <Link className="button button--secondary" to="/contactos/rubros">
+                Manejar rubros
+              </Link>
+              <button
+                type="button"
+                className="button button--primary"
+                onClick={() => {
+                  setEditingId(null);
+                  setCreating((v) => !v);
+                }}
+              >
+                Nuevo contacto
+              </button>
+            </>
+          )}
+        </div>
       </header>
 
       <FormStatus status={status} ref={statusRef} />
@@ -728,9 +755,21 @@ export function Contacts() {
                     <span className="badge">
                       {contact.headingArchived ? `${contact.headingName} (archivado)` : contact.headingName}
                     </span>
+                    {contact.shareStatus && (
+                      <span className="badge">{shareStatusLabels[contact.shareStatus]}</span>
+                    )}
                   </div>
                   {canWrite && (
                     <div className="panel__actions">
+                      {contact.shareStatus !== "pending" && contact.shareStatus !== "approved" && (
+                        <button
+                          type="button"
+                          className="button button--secondary button--small"
+                          onClick={() => setConfirmShareContact(contact)}
+                        >
+                          Compartir
+                        </button>
+                      )}
                       <button
                         type="button"
                         className="button button--secondary button--small"
@@ -878,6 +917,20 @@ export function Contacts() {
         >
           <p>
             ¿Querés borrar el precio de referencia <strong>{confirmDeletePrice.description}</strong>?
+          </p>
+        </ConfirmDialog>
+      )}
+
+      {confirmShareContact && (
+        <ConfirmDialog
+          title="Compartir contacto"
+          confirmLabel="Compartir"
+          onConfirm={() => void shareContact(confirmShareContact)}
+          onCancel={() => setConfirmShareContact(null)}
+        >
+          <p>
+            ¿Querés compartir a <strong>{confirmShareContact.name}</strong> con los centros de estudiantes de otras escuelas?
+            Se enviarán nombre, rubro, teléfono, mail, zona y precios de referencia para revisión. Nunca se comparten tus notas ni el nombre de tu escuela.
           </p>
         </ConfirmDialog>
       )}

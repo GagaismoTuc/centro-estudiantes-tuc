@@ -35,6 +35,7 @@ const messages: Record<string, string> = {
   invalid_amount: "Ingresá un monto mayor a cero.",
   future_date: "La fecha no puede ser futura.",
   invalid_date: "Ingresá una fecha válida.",
+  already_shared: "Este contacto ya está compartido o pendiente de aprobación.",
   election_frozen: "La elección ya abrió: no se puede cambiar el Centro de estudiantes.",
   empty_commission: "Elegí al menos un integrante para el Centro de estudiantes.",
   no_account: "Ese alumno todavía no tiene cuenta. Pedile que la active antes de sumarlo al Centro de estudiantes.",
