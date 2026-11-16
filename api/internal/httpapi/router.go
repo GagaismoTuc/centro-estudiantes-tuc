@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/auth"
+	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/budgets"
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/contacts"
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/elections"
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/finance"
@@ -52,6 +53,7 @@ type server struct {
 	roster       *roster.Store
 	finance      *finance.Store
 	contacts     *contacts.Store
+	budgets      *budgets.Store
 	elections    *elections.Store
 	// mailLimiter counts emailed-link requests per client IP and per email.
 	mailLimiter *auth.Limiter
@@ -101,6 +103,7 @@ func NewRouter(d Deps) http.Handler {
 		limiter:  auth.NewLimiter(loginMaxFailures, loginWindow, d.Now).WithMax("ip:", perIPMax),
 		roster:   roster.NewStore(d.Pool, d.AccessCodeKey, d.Now),
 		contacts: contacts.NewStore(d.Pool, d.Now),
+		budgets:  budgets.NewStore(d.Pool),
 		finance:  finance.NewStore(d.Pool, d.Now),
 		// The same clock decides election states, so tests move time by moving Deps.Now.
 		elections: elections.NewStore(d.Pool, d.Now),

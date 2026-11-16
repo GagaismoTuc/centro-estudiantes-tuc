@@ -670,6 +670,255 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /event-budgets:
+    get:
+      operationId: getEventBudgets
+      summary: List event budgets
+      responses:
+        "200":
+          description: Budgets of the active school.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/EventBudget"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/DirectoryForbidden"}
+    post:
+      operationId: postEventBudget
+      summary: Create an event budget
+      description: Officers with a verified second factor only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventBudgetInput"
+      responses:
+        "201":
+          description: Budget created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventBudget"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/DirectoryForbidden"
+        "422":
+          description: name_required or invalid_range.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /event-budgets/{id}:
+    get:
+      operationId: getEventBudget
+      summary: Get an event budget and calculated totals
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string}
+      responses:
+        "200":
+          description: Budget with lines and totals by day and overall.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/EventBudgetDetail"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/DirectoryForbidden"}
+        "404":
+          description: Budget not found.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+    put:
+      operationId: putEventBudget
+      summary: Update an event budget
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/EventBudgetInput"}
+      responses:
+        "200":
+          description: Budget updated.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/EventBudget"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/DirectoryForbidden"}
+        "404":
+          description: Budget not found.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "409":
+          description: Budget archived.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "422":
+          description: Invalid name or range.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+    delete:
+      operationId: deleteEventBudget
+      summary: Delete an event budget without linked entries
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string}
+      responses:
+        "204": {description: Budget and lines deleted.}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/DirectoryForbidden"}
+        "404":
+          description: Budget not found.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+  /event-budgets/{id}/archive:
+    post:
+      operationId: postEventBudgetArchive
+      summary: Archive an event budget
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string}
+      responses:
+        "200":
+          description: Budget archived.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/EventBudget"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/DirectoryForbidden"}
+        "404":
+          description: Budget not found.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+  /event-budgets/{id}/lines:
+    post:
+      operationId: postEventBudgetLine
+      summary: Add a budget line
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventBudgetLineInput"
+      responses:
+        "201":
+          description: Line created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventBudgetLine"
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/DirectoryForbidden"}
+        "404":
+          description: Budget, heading or contact not found.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "409":
+          description: Budget archived.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "422":
+          description: Invalid line.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+  /event-budgets/{id}/lines/{lineId}:
+    put:
+      operationId: putEventBudgetLine
+      summary: Replace a budget line
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string}
+        - name: lineId
+          in: path
+          required: true
+          schema: {type: string}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/EventBudgetLineInput"}
+      responses:
+        "200":
+          description: Line updated.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/EventBudgetLine"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/DirectoryForbidden"}
+        "404":
+          description: Budget or line not found.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "409":
+          description: Budget archived.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "422":
+          description: Invalid line.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+    delete:
+      operationId: deleteEventBudgetLine
+      summary: Delete a budget line
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string}
+        - name: lineId
+          in: path
+          required: true
+          schema: {type: string}
+      responses:
+        "204": {description: Line deleted.}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/DirectoryForbidden"}
+        "404":
+          description: Budget or line not found.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "409":
+          description: Budget archived.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
   /contacts/headings:
     get:
       operationId: getContactHeadings
@@ -1859,6 +2108,78 @@ components:
           schema:
             $ref: "#/components/schemas/Error"
   schemas:
+    EventBudgetTotals:
+      type: object
+      required: [costCents, incomeCents, resultCents, breakEvenCents]
+      properties:
+        costCents: {type: integer, format: int64}
+        incomeCents: {type: integer, format: int64}
+        resultCents: {type: integer, format: int64}
+        breakEvenCents: {type: integer, format: int64, nullable: true}
+    EventBudgetDay:
+      type: object
+      required: [day, totals]
+      properties:
+        day: {type: string}
+        totals: {$ref: "#/components/schemas/EventBudgetTotals"}
+    EventBudgetDetail:
+      type: object
+      required: [id, name, startsOn, endsOn, archived, lines, totals, days]
+      properties:
+        id: {type: string}
+        name: {type: string}
+        startsOn: {type: string}
+        endsOn: {type: string}
+        archived: {type: boolean}
+        lines:
+          type: array
+          items: {$ref: "#/components/schemas/EventBudgetLine"}
+        totals: {$ref: "#/components/schemas/EventBudgetTotals"}
+        days:
+          type: array
+          items: {$ref: "#/components/schemas/EventBudgetDay"}
+    EventBudgetLineInput:
+      type: object
+      additionalProperties: false
+      required: [kind, description]
+      properties:
+        kind: {type: string, description: "cost, ticket, foodtruck, sponsor or due"}
+        description: {type: string}
+        headingId: {type: string}
+        contactId: {type: string}
+        referencePriceId: {type: string}
+        quantity: {type: integer, format: int64}
+        unitAmountCents: {type: integer, format: int64}
+        day: {type: string}
+    EventBudgetLine:
+      type: object
+      required: [id, kind, description]
+      properties:
+        id: {type: string}
+        kind: {type: string}
+        description: {type: string}
+        headingId: {type: string}
+        contactId: {type: string}
+        quantity: {type: integer, format: int64}
+        unitAmountCents: {type: integer, format: int64}
+        day: {type: string}
+    EventBudgetInput:
+      type: object
+      additionalProperties: false
+      required: [name, startsOn, endsOn]
+      properties:
+        name: {type: string}
+        startsOn: {type: string}
+        endsOn: {type: string}
+    EventBudget:
+      type: object
+      required: [id, name, startsOn, endsOn, archived]
+      properties:
+        id: {type: string}
+        name: {type: string}
+        startsOn: {type: string}
+        endsOn: {type: string}
+        archived: {type: boolean}
     NewFinanceCategory:
       type: object
       additionalProperties: false

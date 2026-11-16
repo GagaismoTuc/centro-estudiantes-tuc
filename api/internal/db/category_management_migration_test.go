@@ -68,7 +68,8 @@ func TestCategoryManagementMigration00020(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = p.Down(ctx); err != nil {
+	// DownTo/UpTo, not Down/Up: later migrations must not move the version this test rolls back.
+	if _, err = p.DownTo(ctx, 19); err != nil {
 		t.Fatalf("down: %v", err)
 	}
 	if err = insert(a, "  kiosco ", "income"); err != nil {
@@ -83,7 +84,7 @@ func TestCategoryManagementMigration00020(t *testing.T) {
 	if _, err = env.Super.Exec(ctx, `DELETE FROM finance_categories WHERE tenant_id=$1 AND name='  kiosco '`, a); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = p.Up(ctx); err != nil {
+	if _, err = p.UpTo(ctx, 20); err != nil {
 		t.Fatalf("reapply: %v", err)
 	}
 }

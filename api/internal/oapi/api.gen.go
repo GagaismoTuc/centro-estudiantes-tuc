@@ -781,6 +781,74 @@ type Error struct {
 	Error string `json:"error"`
 }
 
+// EventBudget defines model for EventBudget.
+type EventBudget struct {
+	Archived bool   `json:"archived"`
+	EndsOn   string `json:"endsOn"`
+	Id       string `json:"id"`
+	Name     string `json:"name"`
+	StartsOn string `json:"startsOn"`
+}
+
+// EventBudgetDay defines model for EventBudgetDay.
+type EventBudgetDay struct {
+	Day    string            `json:"day"`
+	Totals EventBudgetTotals `json:"totals"`
+}
+
+// EventBudgetDetail defines model for EventBudgetDetail.
+type EventBudgetDetail struct {
+	Archived bool              `json:"archived"`
+	Days     []EventBudgetDay  `json:"days"`
+	EndsOn   string            `json:"endsOn"`
+	Id       string            `json:"id"`
+	Lines    []EventBudgetLine `json:"lines"`
+	Name     string            `json:"name"`
+	StartsOn string            `json:"startsOn"`
+	Totals   EventBudgetTotals `json:"totals"`
+}
+
+// EventBudgetInput defines model for EventBudgetInput.
+type EventBudgetInput struct {
+	EndsOn   string `json:"endsOn"`
+	Name     string `json:"name"`
+	StartsOn string `json:"startsOn"`
+}
+
+// EventBudgetLine defines model for EventBudgetLine.
+type EventBudgetLine struct {
+	ContactId       *string `json:"contactId,omitempty"`
+	Day             *string `json:"day,omitempty"`
+	Description     string  `json:"description"`
+	HeadingId       *string `json:"headingId,omitempty"`
+	Id              string  `json:"id"`
+	Kind            string  `json:"kind"`
+	Quantity        *int64  `json:"quantity,omitempty"`
+	UnitAmountCents *int64  `json:"unitAmountCents,omitempty"`
+}
+
+// EventBudgetLineInput defines model for EventBudgetLineInput.
+type EventBudgetLineInput struct {
+	ContactId   *string `json:"contactId,omitempty"`
+	Day         *string `json:"day,omitempty"`
+	Description string  `json:"description"`
+	HeadingId   *string `json:"headingId,omitempty"`
+
+	// Kind cost, ticket, foodtruck, sponsor or due
+	Kind             string  `json:"kind"`
+	Quantity         *int64  `json:"quantity,omitempty"`
+	ReferencePriceId *string `json:"referencePriceId,omitempty"`
+	UnitAmountCents  *int64  `json:"unitAmountCents,omitempty"`
+}
+
+// EventBudgetTotals defines model for EventBudgetTotals.
+type EventBudgetTotals struct {
+	BreakEvenCents *int64 `json:"breakEvenCents"`
+	CostCents      int64  `json:"costCents"`
+	IncomeCents    int64  `json:"incomeCents"`
+	ResultCents    int64  `json:"resultCents"`
+}
+
 // FinanceBalance defines model for FinanceBalance.
 type FinanceBalance struct {
 	// BalanceCents The exact sum; may exceed int64.
@@ -1248,6 +1316,18 @@ type PostElectionAnnulmentJSONRequestBody = AnnulmentRequest
 // PutElectoralCommissionJSONRequestBody defines body for PutElectoralCommission for application/json ContentType.
 type PutElectoralCommissionJSONRequestBody = CommissionDesignation
 
+// PostEventBudgetJSONRequestBody defines body for PostEventBudget for application/json ContentType.
+type PostEventBudgetJSONRequestBody = EventBudgetInput
+
+// PutEventBudgetJSONRequestBody defines body for PutEventBudget for application/json ContentType.
+type PutEventBudgetJSONRequestBody = EventBudgetInput
+
+// PostEventBudgetLineJSONRequestBody defines body for PostEventBudgetLine for application/json ContentType.
+type PostEventBudgetLineJSONRequestBody = EventBudgetLineInput
+
+// PutEventBudgetLineJSONRequestBody defines body for PutEventBudgetLine for application/json ContentType.
+type PutEventBudgetLineJSONRequestBody = EventBudgetLineInput
+
 // PostFinanceCategoriesJSONRequestBody defines body for PostFinanceCategories for application/json ContentType.
 type PostFinanceCategoriesJSONRequestBody = NewFinanceCategory
 
@@ -1370,6 +1450,33 @@ type ServerInterface interface {
 	// GetElectoralCommissionCandidates List the roster members who can sit on the Electoral commission
 	// (GET /electoral-commission/candidates)
 	GetElectoralCommissionCandidates(w http.ResponseWriter, r *http.Request)
+	// GetEventBudgets List event budgets
+	// (GET /event-budgets)
+	GetEventBudgets(w http.ResponseWriter, r *http.Request)
+	// PostEventBudget Create an event budget
+	// (POST /event-budgets)
+	PostEventBudget(w http.ResponseWriter, r *http.Request)
+	// DeleteEventBudget Delete an event budget without linked entries
+	// (DELETE /event-budgets/{id})
+	DeleteEventBudget(w http.ResponseWriter, r *http.Request, id string)
+	// GetEventBudget Get an event budget and calculated totals
+	// (GET /event-budgets/{id})
+	GetEventBudget(w http.ResponseWriter, r *http.Request, id string)
+	// PutEventBudget Update an event budget
+	// (PUT /event-budgets/{id})
+	PutEventBudget(w http.ResponseWriter, r *http.Request, id string)
+	// PostEventBudgetArchive Archive an event budget
+	// (POST /event-budgets/{id}/archive)
+	PostEventBudgetArchive(w http.ResponseWriter, r *http.Request, id string)
+	// PostEventBudgetLine Add a budget line
+	// (POST /event-budgets/{id}/lines)
+	PostEventBudgetLine(w http.ResponseWriter, r *http.Request, id string)
+	// DeleteEventBudgetLine Delete a budget line
+	// (DELETE /event-budgets/{id}/lines/{lineId})
+	DeleteEventBudgetLine(w http.ResponseWriter, r *http.Request, id string, lineId string)
+	// PutEventBudgetLine Replace a budget line
+	// (PUT /event-budgets/{id}/lines/{lineId})
+	PutEventBudgetLine(w http.ResponseWriter, r *http.Request, id string, lineId string)
 	// GetFinanceBalance Fund balance in cents
 	// (GET /finance/balance)
 	GetFinanceBalance(w http.ResponseWriter, r *http.Request)
@@ -2115,6 +2222,234 @@ func (siw *ServerInterfaceWrapper) GetElectoralCommissionCandidates(w http.Respo
 	handler.ServeHTTP(w, r)
 }
 
+// GetEventBudgets operation middleware
+func (siw *ServerInterfaceWrapper) GetEventBudgets(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetEventBudgets(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostEventBudget operation middleware
+func (siw *ServerInterfaceWrapper) PostEventBudget(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostEventBudget(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteEventBudget operation middleware
+func (siw *ServerInterfaceWrapper) DeleteEventBudget(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteEventBudget(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetEventBudget operation middleware
+func (siw *ServerInterfaceWrapper) GetEventBudget(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetEventBudget(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutEventBudget operation middleware
+func (siw *ServerInterfaceWrapper) PutEventBudget(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutEventBudget(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostEventBudgetArchive operation middleware
+func (siw *ServerInterfaceWrapper) PostEventBudgetArchive(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostEventBudgetArchive(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostEventBudgetLine operation middleware
+func (siw *ServerInterfaceWrapper) PostEventBudgetLine(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostEventBudgetLine(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteEventBudgetLine operation middleware
+func (siw *ServerInterfaceWrapper) DeleteEventBudgetLine(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "lineId" -------------
+	var lineId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "lineId", r.PathValue("lineId"), &lineId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "lineId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteEventBudgetLine(w, r, id, lineId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutEventBudgetLine operation middleware
+func (siw *ServerInterfaceWrapper) PutEventBudgetLine(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "lineId" -------------
+	var lineId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "lineId", r.PathValue("lineId"), &lineId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "lineId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutEventBudgetLine(w, r, id, lineId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetFinanceBalance operation middleware
 func (siw *ServerInterfaceWrapper) GetFinanceBalance(w http.ResponseWriter, r *http.Request) {
 
@@ -2664,6 +2999,15 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/roster", wrapper.GetRoster)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/roster/import", wrapper.PostRosterImport)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/roster/{memberId}/access-code", wrapper.PostRosterMemberAccessCode)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/event-budgets", wrapper.GetEventBudgets)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/event-budgets", wrapper.PostEventBudget)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/event-budgets/{id}", wrapper.DeleteEventBudget)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/event-budgets/{id}", wrapper.GetEventBudget)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/event-budgets/{id}", wrapper.PutEventBudget)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/event-budgets/{id}/archive", wrapper.PostEventBudgetArchive)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/event-budgets/{id}/lines", wrapper.PostEventBudgetLine)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/event-budgets/{id}/lines/{lineId}", wrapper.DeleteEventBudgetLine)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/event-budgets/{id}/lines/{lineId}", wrapper.PutEventBudgetLine)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/contacts/headings", wrapper.GetContactHeadings)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/contacts/headings", wrapper.PostContactHeading)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/contacts/headings/{id}", wrapper.DeleteContactHeading)

@@ -370,6 +370,7 @@ export function Calculator() {
           </p>
         </div>
       </header>
+      <p><Link to="/presupuestos">Presupuestos de evento</Link></p>
       <div className="calc-grid">
         <PricePerPersonCard />
         <RaffleCard />
