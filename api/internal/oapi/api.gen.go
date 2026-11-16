@@ -344,6 +344,24 @@ func (e PutElectoralCommission422JSONResponseBodyError) Valid() bool {
 	}
 }
 
+// Defines values for PostFinanceEntryReversal409JSONResponseBodyError.
+const (
+	AlreadyReversed       PostFinanceEntryReversal409JSONResponseBodyError = "already_reversed"
+	CannotReverseReversal PostFinanceEntryReversal409JSONResponseBodyError = "cannot_reverse_reversal"
+)
+
+// Valid indicates whether the value is a known member of the PostFinanceEntryReversal409JSONResponseBodyError enum.
+func (e PostFinanceEntryReversal409JSONResponseBodyError) Valid() bool {
+	switch e {
+	case AlreadyReversed:
+		return true
+	case CannotReverseReversal:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for DeleteMemberOfficer404JSONResponseBodyError.
 const (
 	DeleteMemberOfficer404JSONResponseBodyErrorNotFound DeleteMemberOfficer404JSONResponseBodyError = "not_found"
@@ -574,6 +592,18 @@ type FinanceEntry struct {
 	Id          string    `json:"id"`
 	RecordedAt  time.Time `json:"recordedAt"`
 	RecordedBy  string    `json:"recordedBy"`
+
+	// ReversalId Present when this entry was reversed; the id of its Reversal.
+	ReversalId *string `json:"reversalId,omitempty"`
+
+	// ReversedBy Present when this entry was reversed; the Roster name of the officer who reversed it.
+	ReversedBy *string `json:"reversedBy,omitempty"`
+
+	// ReversedOn Present when this entry was reversed; the Reversal's date (YYYY-MM-DD, Argentina).
+	ReversedOn *string `json:"reversedOn,omitempty"`
+
+	// ReversesId Present when this entry is a Reversal; the id of the entry it reverses.
+	ReversesId *string `json:"reversesId,omitempty"`
 }
 
 // ForbiddenError defines model for ForbiddenError.
@@ -835,6 +865,9 @@ type PutElectoralCommission409JSONResponseBodyError string
 // PutElectoralCommission422JSONResponseBodyError defines parameters for PutElectoralCommission.
 type PutElectoralCommission422JSONResponseBodyError string
 
+// PostFinanceEntryReversal409JSONResponseBodyError defines parameters for PostFinanceEntryReversal.
+type PostFinanceEntryReversal409JSONResponseBodyError string
+
 // DeleteMemberOfficer404JSONResponseBodyError defines parameters for DeleteMemberOfficer.
 type DeleteMemberOfficer404JSONResponseBodyError string
 
@@ -1031,6 +1064,9 @@ type ServerInterface interface {
 	// GetFinanceEntry Get an entry in the active school
 	// (GET /finance/entries/{entryId})
 	GetFinanceEntry(w http.ResponseWriter, r *http.Request, entryId string)
+	// PostFinanceEntryReversal Reverse an entry as any officer with MFA
+	// (POST /finance/entries/{entryId}/reversal)
+	PostFinanceEntryReversal(w http.ResponseWriter, r *http.Request, entryId string)
 	// GetHealth Liveness check
 	// (GET /health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
@@ -1759,6 +1795,32 @@ func (siw *ServerInterfaceWrapper) GetFinanceEntry(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// PostFinanceEntryReversal operation middleware
+func (siw *ServerInterfaceWrapper) PostFinanceEntryReversal(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "entryId" -------------
+	var entryId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "entryId", r.PathValue("entryId"), &entryId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "entryId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostFinanceEntryReversal(w, r, entryId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetHealth operation middleware
 func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Request) {
 
@@ -2073,6 +2135,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/entries", wrapper.GetFinanceEntries)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/finance/entries", wrapper.PostFinanceEntries)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/entries/{entryId}", wrapper.GetFinanceEntry)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/finance/entries/{entryId}/reversal", wrapper.PostFinanceEntryReversal)
 
 	return m
 }
