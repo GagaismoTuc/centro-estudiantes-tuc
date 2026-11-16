@@ -81,7 +81,7 @@ func TestFinanceMigration(t *testing.T) {
 	if err = conn.QueryRowContext(ctx, `INSERT INTO organizations (kind,name) VALUES ('school','School B') RETURNING id::text`).Scan(&b); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = p.Up(ctx); err != nil {
+	if _, err = p.UpTo(ctx, 14); err != nil {
 		t.Fatal(err)
 	}
 	if err = conn.QueryRowContext(ctx, `SELECT max(version_id) FROM goose_db_version WHERE is_applied`).Scan(&version); err != nil || version != 14 {
