@@ -53,6 +53,10 @@ var (
 	ErrFutureDate = errors.New("contacts: future date")
 	// ErrInvalidDate means the reference price date is not a valid YYYY-MM-DD calendar date.
 	ErrInvalidDate = errors.New("contacts: invalid date")
+	// ErrAlreadyShared means the contact already has a pending or approved share request.
+	ErrAlreadyShared = errors.New("contacts: already shared")
+	// ErrInvalidPage means the requested page number is less than 1.
+	ErrInvalidPage = errors.New("contacts: invalid page")
 )
 
 // Heading is a contact heading owned by a school.
@@ -84,6 +88,7 @@ type Contact struct {
 	Zone            string
 	Notes           string
 	ReferencePrices []ReferencePrice
+	ShareStatus     string
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
 }
@@ -374,9 +379,17 @@ func (s *Store) ListContacts(ctx context.Context, sess auth.Session, headingID, 
 
 		sql := `
 			SELECT c.id::text, c.heading_id::text, h.name, h.archived_at IS NOT NULL,
-			       c.name, c.phone, c.email, c.zone, c.notes, c.created_at, c.updated_at
+			       c.name, c.phone, c.email, c.zone, c.notes, COALESCE(sh.status, ''), c.created_at, c.updated_at
 			FROM contacts c
 			JOIN contact_headings h ON h.tenant_id = c.tenant_id AND h.id = c.heading_id
+			LEFT JOIN LATERAL (
+				SELECT sc.status
+				FROM shared_contact_links l
+				JOIN shared_contacts sc ON sc.id = l.shared_contact_id
+				WHERE l.tenant_id = c.tenant_id AND l.contact_id = c.id
+				ORDER BY l.created_at DESC, l.id DESC
+				LIMIT 1
+			) sh ON true
 			WHERE ` + strings.Join(where, " AND ") + `
 			ORDER BY lower(c.name), c.id`
 
@@ -391,7 +404,7 @@ func (s *Store) ListContacts(ctx context.Context, sess auth.Session, headingID, 
 			var c Contact
 			if err := rows.Scan(
 				&c.ID, &c.HeadingID, &c.HeadingName, &c.HeadingArchived,
-				&c.Name, &c.Phone, &c.Email, &c.Zone, &c.Notes, &c.CreatedAt, &c.UpdatedAt,
+				&c.Name, &c.Phone, &c.Email, &c.Zone, &c.Notes, &c.ShareStatus, &c.CreatedAt, &c.UpdatedAt,
 			); err != nil {
 				return err
 			}
@@ -653,14 +666,22 @@ func loadContact(ctx context.Context, tx pgx.Tx, tenantID, id string) (Contact, 
 	var c Contact
 	err := tx.QueryRow(ctx, `
 		SELECT c.id::text, c.heading_id::text, h.name, h.archived_at IS NOT NULL,
-		       c.name, c.phone, c.email, c.zone, c.notes, c.created_at, c.updated_at
+		       c.name, c.phone, c.email, c.zone, c.notes, COALESCE(sh.status, ''), c.created_at, c.updated_at
 		FROM contacts c
 		JOIN contact_headings h ON h.tenant_id = c.tenant_id AND h.id = c.heading_id
+		LEFT JOIN LATERAL (
+			SELECT sc.status
+			FROM shared_contact_links l
+			JOIN shared_contacts sc ON sc.id = l.shared_contact_id
+			WHERE l.tenant_id = c.tenant_id AND l.contact_id = c.id
+			ORDER BY l.created_at DESC, l.id DESC
+			LIMIT 1
+		) sh ON true
 		WHERE c.tenant_id = $1 AND c.id = $2`,
 		tenantID, id,
 	).Scan(
 		&c.ID, &c.HeadingID, &c.HeadingName, &c.HeadingArchived,
-		&c.Name, &c.Phone, &c.Email, &c.Zone, &c.Notes, &c.CreatedAt, &c.UpdatedAt,
+		&c.Name, &c.Phone, &c.Email, &c.Zone, &c.Notes, &c.ShareStatus, &c.CreatedAt, &c.UpdatedAt,
 	)
 	if err != nil {
 		return Contact{}, err

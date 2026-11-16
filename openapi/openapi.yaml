@@ -1040,6 +1040,84 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /contacts/{id}/share:
+    post:
+      operationId: postContactShare
+      summary: Share a contact with the platform-wide shared directory
+      description: >
+        Officers with a two-factor session only. Copies the shareable fields (excluding notes and
+        source school) into a pending shared-directory entry for Platform admin approval.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "201":
+          description: Share request created in `pending` state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SharedContactShare"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/DirectoryForbidden"
+        "404":
+          description: Contact not found in the active school (`not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Contact already has a `pending` or `approved` share request (`already_shared`).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [already_shared]
+  /shared-contacts:
+    get:
+      operationId: getSharedContacts
+      summary: Search approved contacts in the shared directory
+      description: >
+        Officers, school admins and veedors with a two-factor session. Returns only approved entries
+        without notes or source school, paginated in pages of 50.
+      parameters:
+        - name: heading
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: zone
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          description: One page of approved shared contacts ordered by name.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SharedContactPage"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/DirectoryForbidden"
   /roster/access-codes:
     post:
       operationId: postRosterAccessCodes
@@ -1879,12 +1957,83 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ReferencePrice"
+        shareStatus:
+          $ref: "#/components/schemas/ShareStatus"
         createdAt:
           type: string
           format: date-time
         updatedAt:
           type: string
           format: date-time
+    ShareStatus:
+      type: string
+      enum: [pending, approved, rejected, removed]
+    SharedContactShare:
+      type: object
+      required: [id, status, createdAt]
+      properties:
+        id:
+          type: string
+        status:
+          $ref: "#/components/schemas/ShareStatus"
+        createdAt:
+          type: string
+          format: date-time
+    SharedReferencePrice:
+      type: object
+      required: [description, amountCents, date]
+      properties:
+        description:
+          type: string
+        amountCents:
+          type: integer
+          format: int64
+        date:
+          type: string
+          example: "2026-09-01"
+    SharedContact:
+      type: object
+      required: [id, headingName, name, phone, email, zone, referencePrices, createdAt]
+      properties:
+        id:
+          type: string
+        headingName:
+          type: string
+        name:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+        zone:
+          type: string
+        referencePrices:
+          type: array
+          items:
+            $ref: "#/components/schemas/SharedReferencePrice"
+        createdAt:
+          type: string
+          format: date-time
+    SharedContactPage:
+      type: object
+      required: [items, headings, page, pageSize, total, totalPages]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/SharedContact"
+        headings:
+          type: array
+          items:
+            type: string
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        total:
+          type: integer
+        totalPages:
+          type: integer
     CreateContactRequest:
       type: object
       required: [name, headingId]

@@ -216,6 +216,68 @@ func (s *server) DeleteContactReferencePrice(w http.ResponseWriter, r *http.Requ
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (s *server) PostContactShare(w http.ResponseWriter, r *http.Request, id string) {
+	sess, ok := rosterSession(w, r)
+	if !ok {
+		return
+	}
+	res, err := s.contacts.ShareContact(r.Context(), sess, id)
+	if err != nil {
+		writeContactsError(w, "share contact", err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, oapi.SharedContactShare{
+		Id:        res.ID,
+		Status:    oapi.ShareStatus(res.Status),
+		CreatedAt: res.CreatedAt,
+	})
+}
+
+func (s *server) GetSharedContacts(w http.ResponseWriter, r *http.Request, params oapi.GetSharedContactsParams) {
+	sess, ok := rosterSession(w, r)
+	if !ok {
+		return
+	}
+	page := 1
+	if params.Page != nil {
+		page = *params.Page
+	}
+	res, err := s.contacts.ListSharedContacts(r.Context(), sess, derefString(params.Heading), derefString(params.Zone), page)
+	if err != nil {
+		writeContactsError(w, "list shared contacts", err)
+		return
+	}
+	items := make([]oapi.SharedContact, len(res.Items))
+	for i, item := range res.Items {
+		prices := make([]oapi.SharedReferencePrice, len(item.ReferencePrices))
+		for j, rp := range item.ReferencePrices {
+			prices[j] = oapi.SharedReferencePrice{
+				Description: rp.Description,
+				AmountCents: rp.AmountCents,
+				Date:        rp.Date,
+			}
+		}
+		items[i] = oapi.SharedContact{
+			Id:              item.ID,
+			HeadingName:     item.HeadingName,
+			Name:            item.Name,
+			Phone:           item.Phone,
+			Email:           item.Email,
+			Zone:            item.Zone,
+			ReferencePrices: prices,
+			CreatedAt:       item.CreatedAt,
+		}
+	}
+	writeJSON(w, http.StatusOK, oapi.SharedContactPage{
+		Items:      items,
+		Headings:   res.Headings,
+		Page:       res.Page,
+		PageSize:   res.PageSize,
+		Total:      res.Total,
+		TotalPages: res.TotalPages,
+	})
+}
+
 func writeContactsError(w http.ResponseWriter, op string, err error) {
 	switch {
 	case errors.Is(err, contacts.ErrForbidden):
@@ -224,6 +286,10 @@ func writeContactsError(w http.ResponseWriter, op string, err error) {
 		writeError(w, http.StatusForbidden, "mfa_required")
 	case errors.Is(err, contacts.ErrNotFound):
 		writeError(w, http.StatusNotFound, "not_found")
+	case errors.Is(err, contacts.ErrAlreadyShared):
+		writeError(w, http.StatusConflict, "already_shared")
+	case errors.Is(err, contacts.ErrInvalidPage):
+		writeError(w, http.StatusBadRequest, "bad_request")
 	case errors.Is(err, contacts.ErrHeadingExists):
 		writeError(w, http.StatusConflict, "heading_exists")
 	case errors.Is(err, contacts.ErrHeadingInUse):
@@ -274,6 +340,11 @@ func toContactDTO(c contacts.Contact) oapi.Contact {
 	for i, rp := range c.ReferencePrices {
 		prices[i] = toReferencePriceDTO(rp)
 	}
+	var shareStatus *oapi.ShareStatus
+	if c.ShareStatus != "" {
+		st := oapi.ShareStatus(c.ShareStatus)
+		shareStatus = &st
+	}
 	return oapi.Contact{
 		Id:              c.ID,
 		HeadingId:       c.HeadingID,
@@ -285,6 +356,7 @@ func toContactDTO(c contacts.Contact) oapi.Contact {
 		Zone:            c.Zone,
 		Notes:           c.Notes,
 		ReferencePrices: prices,
+		ShareStatus:     shareStatus,
 		CreatedAt:       c.CreatedAt,
 		UpdatedAt:       c.UpdatedAt,
 	}
