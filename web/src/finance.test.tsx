@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { App } from "./App.tsx";
 import { fail, me, mockApi, ok, sentTo } from "./test/api.ts";
@@ -102,4 +102,60 @@ test("R15 invalid form fields are announced and focused", async () => {
   await waitFor(() => expect(amount.getAttribute("aria-invalid")).toBe("true"));
   expect(document.activeElement).toBe(amount);
   expect(document.getElementById(amount.getAttribute("aria-describedby") ?? "")?.textContent).toContain("monto positivo");
+});
+
+const reversedOriginal = { ...entry, reversalId: "e2", reversedBy: "Beto Ficticio", reversedOn: "2026-11-14" };
+const reversal = { ...entry, id: "e2", direction: "expense", date: "2026-11-14", description: "Reversión: Venta de tortas", recordedBy: "Beto Ficticio", reversesId: "e1" };
+
+test("R9 officers revert a movement only after confirming, and cancelling sends nothing", async () => {
+  const sent = mockApi({
+    "GET /auth/me": ok(me({ role: "officer", mfa: "satisfied" })), ...reads,
+    "GET /finance/entries": [ok([entry]), ok([reversedOriginal, reversal])],
+    "GET /finance/balance": [ok({ balanceCents: 200000 }), ok({ balanceCents: 0 })],
+    "POST /finance/entries/e1/reversal": ok(reversal, 201),
+  });
+  window.history.replaceState(null, "", "/caja"); render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: /^Revertir/ }));
+  let dialog = screen.getByRole("dialog", { name: "Revertir movimiento" });
+  expect(dialog.textContent).toContain("¿Revertís este movimiento? Se va a cargar un movimiento opuesto con fecha de hoy.");
+  fireEvent.click(within(dialog).getByRole("button", { name: "Cancelar" }));
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(sentTo(sent, "POST /finance/entries/e1/reversal")).toHaveLength(0);
+  fireEvent.click(screen.getByRole("button", { name: /^Revertir/ }));
+  dialog = screen.getByRole("dialog", { name: "Revertir movimiento" });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Revertir" }));
+  expect(await screen.findByText("$ 0,00")).toBeTruthy();
+  expect(sentTo(sent, "POST /finance/entries/e1/reversal")).toHaveLength(1);
+  expect(screen.getByText("Revertido por Beto Ficticio el 14/11/2026")).toBeTruthy();
+});
+
+test("R9 Revertir is shown only to officers", async () => {
+  mockApi({ "GET /auth/me": ok(me()), ...reads });
+  window.history.replaceState(null, "", "/caja"); render(<App />);
+  expect(await screen.findByText("Venta de tortas")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: /^Revertir/ })).toBeNull();
+});
+
+test("R9 reversed movements and Reversals have no Revertir", async () => {
+  mockApi({ "GET /auth/me": ok(me({ role: "officer", mfa: "satisfied" })), ...reads, "GET /finance/entries": ok([reversedOriginal, reversal]) });
+  window.history.replaceState(null, "", "/caja"); render(<App />);
+  expect(await screen.findByText("Reversión: Venta de tortas")).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Nuevo movimiento" })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: /^Revertir/ })).toBeNull();
+});
+
+test("R1 a reversed original shows who reversed it and when", async () => {
+  mockApi({ "GET /auth/me": ok(me()), ...reads, "GET /finance/entries": ok([reversedOriginal, reversal]) });
+  window.history.replaceState(null, "", "/caja"); render(<App />);
+  expect(await screen.findByText("Revertido por Beto Ficticio el 14/11/2026")).toBeTruthy();
+  expect(screen.getAllByText(/^Revertido por/)).toHaveLength(1);
+});
+
+test("R9 a failed reversal moves focus to the message", async () => {
+  mockApi({ "GET /auth/me": ok(me({ role: "officer", mfa: "satisfied" })), ...reads, "POST /finance/entries/e1/reversal": fail(409, "already_reversed") });
+  window.history.replaceState(null, "", "/caja"); render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: /^Revertir/ }));
+  fireEvent.click(within(screen.getByRole("dialog", { name: "Revertir movimiento" })).getByRole("button", { name: "Revertir" }));
+  const message = await screen.findByText(/ya fue revertido/);
+  await waitFor(() => expect(document.activeElement?.contains(message)).toBe(true));
 });
