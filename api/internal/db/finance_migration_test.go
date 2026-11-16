@@ -81,7 +81,6 @@ func TestFinanceMigration(t *testing.T) {
 	if err = conn.QueryRowContext(ctx, `INSERT INTO organizations (kind,name) VALUES ('school','School B') RETURNING id::text`).Scan(&b); err != nil {
 		t.Fatal(err)
 	}
-	// UpTo, not Up: later migrations must not move the version this test checks and rolls back.
 	if _, err = p.UpTo(ctx, 14); err != nil {
 		t.Fatal(err)
 	}

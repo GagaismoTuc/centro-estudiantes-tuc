@@ -1530,6 +1530,46 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+  /finance/entries/{entryId}/reversal:
+    parameters:
+      - name: entryId
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      operationId: postFinanceEntryReversal
+      summary: Reverse an entry as any officer with MFA
+      description: >
+        Records, in one transaction, a Reversal: an entry with the same amount and category, the
+        opposite direction, today's date in Argentina and the description "Reversión: " followed by
+        the original's. Old entries may be reversed; the Reversal falls in the current period.
+      responses:
+        "201":
+          description: Reversal recorded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FinanceEntry"
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: Entry not found in the active school (`not_found`). Nothing is written.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotFoundError" }
+        "409":
+          description: >
+            Nothing is written. `already_reversed`: the entry already has its Reversal.
+            `cannot_reverse_reversal`: the entry is itself a Reversal; record a new entry instead.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [already_reversed, cannot_reverse_reversal]
 components:
   responses:
     InvalidElectionDraft:
@@ -1629,6 +1669,18 @@ components:
         description: { type: string }
         recordedBy: { type: string }
         recordedAt: { type: string, format: date-time }
+        reversesId:
+          type: string
+          description: Present when this entry is a Reversal; the id of the entry it reverses.
+        reversalId:
+          type: string
+          description: Present when this entry was reversed; the id of its Reversal.
+        reversedBy:
+          type: string
+          description: Present when this entry was reversed; the Roster name of the officer who reversed it.
+        reversedOn:
+          type: string
+          description: Present when this entry was reversed; the Reversal's date (YYYY-MM-DD, Argentina).
     FinanceBalance:
       type: object
       required: [balanceCents]
