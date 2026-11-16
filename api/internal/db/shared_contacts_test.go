@@ -35,10 +35,10 @@ func TestSharedContactsMigrationReverses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.UpTo(ctx, 23); err != nil {
+	if _, err := p.UpTo(ctx, 26); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.UpTo(ctx, 24); err != nil {
+	if _, err := p.UpTo(ctx, 27); err != nil {
 		t.Fatalf("up: %v", err)
 	}
 
@@ -50,7 +50,7 @@ func TestSharedContactsMigrationReverses(t *testing.T) {
 		t.Fatalf("after up: shared_contacts=%v shared_contact_links=%v, want both true", scExists, sclExists)
 	}
 
-	if _, err := p.DownTo(ctx, 23); err != nil {
+	if _, err := p.DownTo(ctx, 26); err != nil {
 		t.Fatalf("down: %v", err)
 	}
 	if err := sqlDB.QueryRowContext(ctx, `SELECT to_regclass('shared_contacts') IS NOT NULL, to_regclass('shared_contact_links') IS NOT NULL`).Scan(&scExists, &sclExists); err != nil {
