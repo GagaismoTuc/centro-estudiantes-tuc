@@ -12,8 +12,13 @@
 // signs in again with the password and, if their role requires it, enrolls a new authenticator.
 // Verify the person's identity out of band before running it.
 //
-// DATABASE_URL must connect as a member of ce_app (the application role); both commands refuse to
-// run otherwise (db.CheckAppRole).
+//	admin shared-contacts pending|approve|reject|remove
+//
+// moderates the platform-level shared contact directory using MIGRATE_DATABASE_URL (the table
+// owner connection; ce_app has no access to pending rows or status updates).
+//
+// DATABASE_URL must connect as a member of ce_app (the application role) for bootstrap and
+// reset-mfa; both commands refuse to run otherwise (db.CheckAppRole).
 package main
 
 import (
@@ -31,11 +36,14 @@ import (
 	"golang.org/x/term"
 
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/auth"
+	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/contacts"
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/db"
 )
 
 const usage = "usage: admin bootstrap --org-name NAME --email EMAIL (password on stdin)\n" +
-	"       admin reset-mfa --email EMAIL\n"
+	"       admin reset-mfa --email EMAIL\n" +
+	"       admin shared-contacts pending\n" +
+	"       admin shared-contacts approve|reject|remove ID\n"
 
 func main() {
 	os.Exit(run(context.Background(), os.Args[1:], os.Stdin, os.Stdout, os.Stderr, os.Getenv))
@@ -45,6 +53,9 @@ func main() {
 func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer, getenv func(string) string) int {
 	if len(args) > 0 && args[0] == "reset-mfa" {
 		return resetMFA(ctx, args[1:], stdout, stderr, getenv)
+	}
+	if len(args) > 0 && args[0] == "shared-contacts" {
+		return sharedContacts(ctx, args[1:], stdout, stderr, getenv)
 	}
 	if len(args) == 0 || args[0] != "bootstrap" {
 		fmt.Fprint(stderr, usage)
@@ -142,6 +153,111 @@ func connect(ctx context.Context, stderr io.Writer, getenv func(string) string) 
 		return nil, 1
 	}
 	return pool, 0
+}
+
+// connectModerator opens MIGRATE_DATABASE_URL and verifies that the connected role owns
+// shared_contacts (or is superuser), refusing ce_app because ce_app cannot list pending entries or
+// moderate their status.
+func connectModerator(ctx context.Context, stderr io.Writer, getenv func(string) string) (*pgxpool.Pool, int) {
+	dsn := getenv("MIGRATE_DATABASE_URL")
+	if dsn == "" {
+		fmt.Fprintln(stderr, "admin: MIGRATE_DATABASE_URL is not set")
+		return nil, 1
+	}
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		fmt.Fprintf(stderr, "admin: connect: %v\n", err)
+		return nil, 1
+	}
+	var isOwner bool
+	err = pool.QueryRow(ctx, `
+		SELECT rolsuper OR EXISTS (
+			SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+			WHERE n.nspname = 'public' AND c.relname = 'shared_contacts'
+			  AND pg_has_role(current_user, c.relowner, 'MEMBER')
+		)
+		FROM pg_roles WHERE rolname = current_user`).Scan(&isOwner)
+	if err != nil || !isOwner {
+		pool.Close()
+		if err != nil {
+			fmt.Fprintf(stderr, "admin: MIGRATE_DATABASE_URL check failed: %v\n", err)
+		} else {
+			fmt.Fprintln(stderr, "admin: MIGRATE_DATABASE_URL must connect as the table owner")
+		}
+		return nil, 1
+	}
+	return pool, 0
+}
+
+func sharedContacts(ctx context.Context, args []string, stdout, stderr io.Writer, getenv func(string) string) int {
+	if len(args) == 0 {
+		fmt.Fprint(stderr, usage)
+		return 2
+	}
+	switch args[0] {
+	case "pending":
+		if len(args) != 1 {
+			fmt.Fprint(stderr, usage)
+			return 2
+		}
+		pool, code := connectModerator(ctx, stderr, getenv)
+		if pool == nil {
+			return code
+		}
+		defer pool.Close()
+		items, err := contacts.ListPendingShared(ctx, pool)
+		if err != nil {
+			fmt.Fprintf(stderr, "admin: %v\n", err)
+			return 1
+		}
+		if len(items) == 0 {
+			fmt.Fprintln(stdout, "no pending shared contacts")
+			return 0
+		}
+		for _, item := range items {
+			fmt.Fprintf(stdout, "%s\t%s\t%s\t%s\t%s\n",
+				item.ID, sanitizeCLI(item.Name), sanitizeCLI(item.HeadingName), sanitizeCLI(item.Zone), item.CreatedAt.UTC().Format("2006-01-02"))
+		}
+		return 0
+	case "approve", "reject", "remove":
+		if len(args) != 2 || strings.TrimSpace(args[1]) == "" {
+			fmt.Fprint(stderr, usage)
+			return 2
+		}
+		pool, code := connectModerator(ctx, stderr, getenv)
+		if pool == nil {
+			return code
+		}
+		defer pool.Close()
+		id := strings.TrimSpace(args[1])
+		now := time.Now()
+		var err error
+		var verb string
+		switch args[0] {
+		case "approve":
+			verb = "approved"
+			err = contacts.ApproveShared(ctx, pool, id, now)
+		case "reject":
+			verb = "rejected"
+			err = contacts.RejectShared(ctx, pool, id, now)
+		case "remove":
+			verb = "removed"
+			err = contacts.RemoveShared(ctx, pool, id, now)
+		}
+		if err != nil {
+			fmt.Fprintf(stderr, "admin: %v\n", err)
+			return 1
+		}
+		fmt.Fprintf(stdout, "%s shared contact %s\n", verb, id)
+		return 0
+	default:
+		fmt.Fprint(stderr, usage)
+		return 2
+	}
+}
+
+func sanitizeCLI(s string) string {
+	return strings.NewReplacer("\r", " ", "\n", " ", "\t", " ").Replace(s)
 }
 
 // readPassword reads one line from stdin without echo when stdin is a terminal, and as plain text

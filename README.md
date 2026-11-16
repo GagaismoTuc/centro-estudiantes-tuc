@@ -53,7 +53,7 @@ Use separate database roles as described below, and generate fresh keys rather t
 | Variable | Purpose |
 |---|---|
 | `DATABASE_URL` | Application connection: a login role member of `ce_app`, without `SUPERUSER` or `BYPASSRLS` |
-| `MIGRATE_DATABASE_URL` | Table owner connection, used only to apply migrations at startup |
+| `MIGRATE_DATABASE_URL` | Table owner connection, used to apply migrations at startup and moderate shared contacts via `admin shared-contacts` |
 | `ACCESS_CODE_KEY` | Base64 HMAC key (at least 32 random bytes) for roster access codes; generate it with `openssl rand -base64 32`. The server refuses to start without it. Changing it invalidates every unused code |
 | `TOTP_ENC_KEY` | Base64 of exactly 32 random bytes: the AES-256-GCM key that encrypts two-factor (TOTP) seeds at rest, and (through HKDF-SHA256) the HMAC key of recovery codes; generate it with `openssl rand -base64 32` and keep it apart from database backups. The server refuses to start without it. Losing or changing it disables every enrolled authenticator and recovery code (each user then needs `admin reset-mfa`) |
 | `APP_BASE_URL` | Public origin of the web app used in emailed links, e.g. `https://ce.example.edu.ar` (`http://localhost:5173` is accepted for development). Required |
@@ -77,6 +77,8 @@ Run with `DATABASE_URL` set to the application role (`cd api && go run ./cmd/adm
 |---|---|
 | `admin bootstrap --org-name NAME --email EMAIL` | Creates a school and its first school admin; the password (10 to 128 characters) is read from stdin, without echo on a terminal |
 | `admin reset-mfa --email EMAIL` | Lost phone: deletes the user's TOTP and recovery codes and signs out every session. Confirm the person's identity out of band first; school admins and officers must enroll a new authenticator at their next sign-in. Migration 00008 deleted every recovery code stored before they became HMAC-keyed: an enrolled user who needs codes again goes through this command |
+| `admin shared-contacts pending` | Lists pending shared contacts (id, name, heading, zone, date; never source school or notes) using `MIGRATE_DATABASE_URL` |
+| `admin shared-contacts approve\|reject\|remove ID` | Approves or rejects a pending shared contact, or removes an approved entry from the shared directory on provider request, using `MIGRATE_DATABASE_URL` |
 
 ## Contract-first rule
 
