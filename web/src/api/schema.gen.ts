@@ -772,6 +772,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/finance/entries/{entryId}/reversal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entryId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reverse an entry as any officer with MFA
+         * @description Records, in one transaction, a Reversal: an entry with the same amount and category, the opposite direction, today's date in Argentina and the description "Reversión: " followed by the original's. Old entries may be reversed; the Reversal falls in the current period.
+         */
+        post: operations["postFinanceEntryReversal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -802,6 +824,14 @@ export interface components {
             recordedBy: string;
             /** Format: date-time */
             recordedAt: string;
+            /** @description Present when this entry is a Reversal; the id of the entry it reverses. */
+            reversesId?: string;
+            /** @description Present when this entry was reversed; the id of its Reversal. */
+            reversalId?: string;
+            /** @description Present when this entry was reversed; the Roster name of the officer who reversed it. */
+            reversedBy?: string;
+            /** @description Present when this entry was reversed; the Reversal's date (YYYY-MM-DD, Argentina). */
+            reversedOn?: string;
         };
         FinanceBalance: {
             /** @description The exact sum; may exceed int64. */
@@ -2800,6 +2830,51 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    postFinanceEntryReversal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entryId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Reversal recorded. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinanceEntry"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            /** @description Entry not found in the active school (`not_found`). Nothing is written. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotFoundError"];
+                };
+            };
+            /** @description Nothing is written. `already_reversed`: the entry already has its Reversal. `cannot_reverse_reversal`: the entry is itself a Reversal; record a new entry instead. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "already_reversed" | "cannot_reverse_reversal";
+                    };
                 };
             };
         };
