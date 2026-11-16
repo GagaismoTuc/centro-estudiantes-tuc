@@ -113,6 +113,24 @@ func (e MfaState) Valid() bool {
 	}
 }
 
+// Defines values for NewFinanceCategoryDirection.
+const (
+	Expense NewFinanceCategoryDirection = "expense"
+	Income  NewFinanceCategoryDirection = "income"
+)
+
+// Valid indicates whether the value is a known member of the NewFinanceCategoryDirection enum.
+func (e NewFinanceCategoryDirection) Valid() bool {
+	switch e {
+	case Expense:
+		return true
+	case Income:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for NotFoundErrorError.
 const (
 	NotFoundErrorErrorNotFound NotFoundErrorError = "not_found"
@@ -338,6 +356,105 @@ func (e PutElectoralCommission422JSONResponseBodyError) Valid() bool {
 	case EmptyCommission:
 		return true
 	case NoAccount:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostFinanceCategories409JSONResponseBodyError.
+const (
+	PostFinanceCategories409JSONResponseBodyErrorCategoryExists PostFinanceCategories409JSONResponseBodyError = "category_exists"
+)
+
+// Valid indicates whether the value is a known member of the PostFinanceCategories409JSONResponseBodyError enum.
+func (e PostFinanceCategories409JSONResponseBodyError) Valid() bool {
+	switch e {
+	case PostFinanceCategories409JSONResponseBodyErrorCategoryExists:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostFinanceCategories422JSONResponseBodyError.
+const (
+	PostFinanceCategories422JSONResponseBodyErrorInvalidCategory PostFinanceCategories422JSONResponseBodyError = "invalid_category"
+	PostFinanceCategories422JSONResponseBodyErrorNameRequired    PostFinanceCategories422JSONResponseBodyError = "name_required"
+)
+
+// Valid indicates whether the value is a known member of the PostFinanceCategories422JSONResponseBodyError enum.
+func (e PostFinanceCategories422JSONResponseBodyError) Valid() bool {
+	switch e {
+	case PostFinanceCategories422JSONResponseBodyErrorInvalidCategory:
+		return true
+	case PostFinanceCategories422JSONResponseBodyErrorNameRequired:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DeleteFinanceCategory409JSONResponseBodyError.
+const (
+	DeleteFinanceCategory409JSONResponseBodyErrorCategoryInUse    DeleteFinanceCategory409JSONResponseBodyError = "category_in_use"
+	DeleteFinanceCategory409JSONResponseBodyErrorReservedCategory DeleteFinanceCategory409JSONResponseBodyError = "reserved_category"
+)
+
+// Valid indicates whether the value is a known member of the DeleteFinanceCategory409JSONResponseBodyError enum.
+func (e DeleteFinanceCategory409JSONResponseBodyError) Valid() bool {
+	switch e {
+	case DeleteFinanceCategory409JSONResponseBodyErrorCategoryInUse:
+		return true
+	case DeleteFinanceCategory409JSONResponseBodyErrorReservedCategory:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatchFinanceCategory409JSONResponseBodyError.
+const (
+	PatchFinanceCategory409JSONResponseBodyErrorCategoryExists   PatchFinanceCategory409JSONResponseBodyError = "category_exists"
+	PatchFinanceCategory409JSONResponseBodyErrorReservedCategory PatchFinanceCategory409JSONResponseBodyError = "reserved_category"
+)
+
+// Valid indicates whether the value is a known member of the PatchFinanceCategory409JSONResponseBodyError enum.
+func (e PatchFinanceCategory409JSONResponseBodyError) Valid() bool {
+	switch e {
+	case PatchFinanceCategory409JSONResponseBodyErrorCategoryExists:
+		return true
+	case PatchFinanceCategory409JSONResponseBodyErrorReservedCategory:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatchFinanceCategory422JSONResponseBodyError.
+const (
+	PatchFinanceCategory422JSONResponseBodyErrorNameRequired PatchFinanceCategory422JSONResponseBodyError = "name_required"
+)
+
+// Valid indicates whether the value is a known member of the PatchFinanceCategory422JSONResponseBodyError enum.
+func (e PatchFinanceCategory422JSONResponseBodyError) Valid() bool {
+	switch e {
+	case PatchFinanceCategory422JSONResponseBodyErrorNameRequired:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostFinanceCategoryArchive409JSONResponseBodyError.
+const (
+	PostFinanceCategoryArchive409JSONResponseBodyErrorReservedCategory PostFinanceCategoryArchive409JSONResponseBodyError = "reserved_category"
+)
+
+// Valid indicates whether the value is a known member of the PostFinanceCategoryArchive409JSONResponseBodyError enum.
+func (e PostFinanceCategoryArchive409JSONResponseBodyError) Valid() bool {
+	switch e {
+	case PostFinanceCategoryArchive409JSONResponseBodyErrorReservedCategory:
 		return true
 	default:
 		return false
@@ -675,6 +792,15 @@ type MfaVerifyRequest struct {
 	RecoveryCode *string `json:"recoveryCode,omitempty"`
 }
 
+// NewFinanceCategory defines model for NewFinanceCategory.
+type NewFinanceCategory struct {
+	Direction NewFinanceCategoryDirection `json:"direction"`
+	Name      string                      `json:"name"`
+}
+
+// NewFinanceCategoryDirection defines model for NewFinanceCategory.Direction.
+type NewFinanceCategoryDirection string
+
 // NewFinanceEntry defines model for NewFinanceEntry.
 type NewFinanceEntry struct {
 	AmountCents int64  `json:"amountCents"`
@@ -723,6 +849,11 @@ type ReferencePrice struct {
 	Date        string `json:"date"`
 	Description string `json:"description"`
 	Id          string `json:"id"`
+}
+
+// RenameFinanceCategory defines model for RenameFinanceCategory.
+type RenameFinanceCategory struct {
+	Name string `json:"name"`
 }
 
 // Role defines model for Role.
@@ -835,6 +966,24 @@ type PutElectoralCommission409JSONResponseBodyError string
 // PutElectoralCommission422JSONResponseBodyError defines parameters for PutElectoralCommission.
 type PutElectoralCommission422JSONResponseBodyError string
 
+// PostFinanceCategories409JSONResponseBodyError defines parameters for PostFinanceCategories.
+type PostFinanceCategories409JSONResponseBodyError string
+
+// PostFinanceCategories422JSONResponseBodyError defines parameters for PostFinanceCategories.
+type PostFinanceCategories422JSONResponseBodyError string
+
+// DeleteFinanceCategory409JSONResponseBodyError defines parameters for DeleteFinanceCategory.
+type DeleteFinanceCategory409JSONResponseBodyError string
+
+// PatchFinanceCategory409JSONResponseBodyError defines parameters for PatchFinanceCategory.
+type PatchFinanceCategory409JSONResponseBodyError string
+
+// PatchFinanceCategory422JSONResponseBodyError defines parameters for PatchFinanceCategory.
+type PatchFinanceCategory422JSONResponseBodyError string
+
+// PostFinanceCategoryArchive409JSONResponseBodyError defines parameters for PostFinanceCategoryArchive.
+type PostFinanceCategoryArchive409JSONResponseBodyError string
+
 // DeleteMemberOfficer404JSONResponseBodyError defines parameters for DeleteMemberOfficer.
 type DeleteMemberOfficer404JSONResponseBodyError string
 
@@ -908,6 +1057,12 @@ type PutElectionJSONRequestBody = ElectionDraftRequest
 
 // PutElectoralCommissionJSONRequestBody defines body for PutElectoralCommission for application/json ContentType.
 type PutElectoralCommissionJSONRequestBody = CommissionDesignation
+
+// PostFinanceCategoriesJSONRequestBody defines body for PostFinanceCategories for application/json ContentType.
+type PostFinanceCategoriesJSONRequestBody = NewFinanceCategory
+
+// PatchFinanceCategoryJSONRequestBody defines body for PatchFinanceCategory for application/json ContentType.
+type PatchFinanceCategoryJSONRequestBody = RenameFinanceCategory
 
 // PostFinanceEntriesJSONRequestBody defines body for PostFinanceEntries for application/json ContentType.
 type PostFinanceEntriesJSONRequestBody = NewFinanceEntry
@@ -1022,6 +1177,18 @@ type ServerInterface interface {
 	// GetFinanceCategories List categories in the active school
 	// (GET /finance/categories)
 	GetFinanceCategories(w http.ResponseWriter, r *http.Request)
+	// PostFinanceCategories Add a category
+	// (POST /finance/categories)
+	PostFinanceCategories(w http.ResponseWriter, r *http.Request)
+	// DeleteFinanceCategory Delete an unused category
+	// (DELETE /finance/categories/{id})
+	DeleteFinanceCategory(w http.ResponseWriter, r *http.Request, id string)
+	// PatchFinanceCategory Rename a category
+	// (PATCH /finance/categories/{id})
+	PatchFinanceCategory(w http.ResponseWriter, r *http.Request, id string)
+	// PostFinanceCategoryArchive Archive a category
+	// (POST /finance/categories/{id}/archive)
+	PostFinanceCategoryArchive(w http.ResponseWriter, r *http.Request, id string)
 	// GetFinanceEntries List entries in the active school
 	// (GET /finance/entries)
 	GetFinanceEntries(w http.ResponseWriter, r *http.Request)
@@ -1705,6 +1872,98 @@ func (siw *ServerInterfaceWrapper) GetFinanceCategories(w http.ResponseWriter, r
 	handler.ServeHTTP(w, r)
 }
 
+// PostFinanceCategories operation middleware
+func (siw *ServerInterfaceWrapper) PostFinanceCategories(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostFinanceCategories(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteFinanceCategory operation middleware
+func (siw *ServerInterfaceWrapper) DeleteFinanceCategory(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteFinanceCategory(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PatchFinanceCategory operation middleware
+func (siw *ServerInterfaceWrapper) PatchFinanceCategory(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PatchFinanceCategory(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostFinanceCategoryArchive operation middleware
+func (siw *ServerInterfaceWrapper) PostFinanceCategoryArchive(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostFinanceCategoryArchive(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetFinanceEntries operation middleware
 func (siw *ServerInterfaceWrapper) GetFinanceEntries(w http.ResponseWriter, r *http.Request) {
 
@@ -2069,6 +2328,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/elections/{electionId}", wrapper.GetElection)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/elections/{electionId}", wrapper.PutElection)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/categories", wrapper.GetFinanceCategories)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/finance/categories", wrapper.PostFinanceCategories)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/finance/categories/{id}", wrapper.DeleteFinanceCategory)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/finance/categories/{id}", wrapper.PatchFinanceCategory)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/finance/categories/{id}/archive", wrapper.PostFinanceCategoryArchive)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/balance", wrapper.GetFinanceBalance)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/entries", wrapper.GetFinanceEntries)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/finance/entries", wrapper.PostFinanceEntries)

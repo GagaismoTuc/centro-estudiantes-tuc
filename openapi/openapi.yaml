@@ -1347,6 +1347,149 @@ paths:
                   $ref: "#/components/schemas/FinanceCategory"
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      operationId: postFinanceCategories
+      summary: Add a category
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NewFinanceCategory" }
+      responses:
+        "201":
+          description: Created category.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FinanceCategory" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409":
+          description: Category already exists.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [category_exists]
+        "422":
+          description: Invalid category input.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [name_required, invalid_category]
+  /finance/categories/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+    patch:
+      operationId: patchFinanceCategory
+      summary: Rename a category
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RenameFinanceCategory" }
+      responses:
+        "200":
+          description: Renamed category.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FinanceCategory" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: Category not found.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotFoundError" }
+        "409":
+          description: Duplicate or reserved category.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [category_exists, reserved_category]
+        "422":
+          description: Category name is required.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [name_required]
+    delete:
+      operationId: deleteFinanceCategory
+      summary: Delete an unused category
+      responses:
+        "204": { description: Deleted. }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: Category not found.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotFoundError" }
+        "409":
+          description: Used or reserved category.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [category_in_use, reserved_category]
+  /finance/categories/{id}/archive:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+    post:
+      operationId: postFinanceCategoryArchive
+      summary: Archive a category
+      responses:
+        "200":
+          description: Archived category.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FinanceCategory" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: Category not found.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotFoundError" }
+        "409":
+          description: Reserved category.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [reserved_category]
   /finance/balance:
     get:
       operationId: getFinanceBalance
@@ -1494,6 +1637,19 @@ components:
           schema:
             $ref: "#/components/schemas/Error"
   schemas:
+    NewFinanceCategory:
+      type: object
+      additionalProperties: false
+      required: [name, direction]
+      properties:
+        name: { type: string }
+        direction: { type: string, enum: [income, expense] }
+    RenameFinanceCategory:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: { type: string }
     FinanceCategory:
       type: object
       required: [id, name, direction, active, reserved]
