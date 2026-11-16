@@ -39,3 +39,11 @@ export async function moneyRequest<T>(path: string, init?: RequestInit): Promise
 export function isValidInt64Cents(amountCents: string): boolean {
   return /^[1-9]\d{0,18}$/.test(amountCents) && BigInt(amountCents) <= 9223372036854775807n;
 }
+
+export function sendMoneyJSON<T>(path: string, method: "POST" | "PATCH", amountCents: string, rest: Record<string, unknown>): Promise<MoneyResult<T>> {
+  if (!isValidInt64Cents(amountCents)) {
+    return Promise.resolve({ ok: false as const, code: "invalid_amount" });
+  }
+  const body = `${JSON.stringify(rest).slice(0, -1)},"amountCents":${amountCents}}`;
+  return moneyRequest<T>(path, { method, headers: { "Content-Type": "application/json" }, body });
+}

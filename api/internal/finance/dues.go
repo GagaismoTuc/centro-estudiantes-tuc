@@ -119,8 +119,18 @@ func parseDueDate(raw string) (time.Time, error) {
 }
 
 func hasDueActivity(_ context.Context, _ pgx.Tx, _, _ string) (bool, error) {
-	// Payments (#78) and Exemptions (#79) are not in the schema yet; those tickets add the check here.
+	// shortcut: returns false until #78 (payments) and #79 (exemptions) add their tables.
 	return false, nil
+}
+
+func buildDueDetail(ctx context.Context, tx pgx.Tx, tenantID string, due Due) (DueDetail, error) {
+	members, err := loadDueMembers(ctx, tx, tenantID, due.ID)
+	if err != nil {
+		return DueDetail{}, err
+	}
+	due.OwingCount = len(members)
+	due.TotalCount = len(members)
+	return DueDetail{Due: due, Members: members}, nil
 }
 
 func loadDueMembers(ctx context.Context, tx pgx.Tx, tenantID, dueID string) ([]DueMember, error) {
@@ -181,23 +191,14 @@ func (s *Store) CreateDue(ctx context.Context, sess auth.Session, in NewDue) (ou
 		if tag.RowsAffected() == 0 {
 			return ErrEmptyRoster
 		}
-		members, e := loadDueMembers(ctx, tx, sess.TenantID, dueID)
-		if e != nil {
-			return e
-		}
-		out = DueDetail{
-			Due: Due{
-				ID:          dueID,
-				Name:        name,
-				AmountCents: in.AmountCents,
-				DueDate:     in.DueDate,
-				CreatedAt:   createdAt,
-				OwingCount:  len(members),
-				TotalCount:  len(members),
-			},
-			Members: members,
-		}
-		return nil
+		out, e = buildDueDetail(ctx, tx, sess.TenantID, Due{
+			ID:          dueID,
+			Name:        name,
+			AmountCents: in.AmountCents,
+			DueDate:     in.DueDate,
+			CreatedAt:   createdAt,
+		})
+		return e
 	})
 	return
 }
@@ -241,14 +242,8 @@ func (s *Store) GetDue(ctx context.Context, sess auth.Session, id string) (out D
 		if e != nil {
 			return e
 		}
-		members, e := loadDueMembers(ctx, tx, sess.TenantID, id)
-		if e != nil {
-			return e
-		}
-		out.Members = members
-		out.TotalCount = len(members)
-		out.OwingCount = len(members)
-		return nil
+		out, e = buildDueDetail(ctx, tx, sess.TenantID, out.Due)
+		return e
 	})
 	return
 }
@@ -318,23 +313,14 @@ func (s *Store) UpdateDue(ctx context.Context, sess auth.Session, id string, in 
 			sess.TenantID, id, nextName, nextAmount, nextDate); e != nil {
 			return e
 		}
-		members, e := loadDueMembers(ctx, tx, sess.TenantID, id)
-		if e != nil {
-			return e
-		}
-		out = DueDetail{
-			Due: Due{
-				ID:          cur.ID,
-				Name:        nextName,
-				AmountCents: nextAmount,
-				DueDate:     nextDateStr,
-				CreatedAt:   cur.CreatedAt,
-				OwingCount:  len(members),
-				TotalCount:  len(members),
-			},
-			Members: members,
-		}
-		return nil
+		out, e = buildDueDetail(ctx, tx, sess.TenantID, Due{
+			ID:          cur.ID,
+			Name:        nextName,
+			AmountCents: nextAmount,
+			DueDate:     nextDateStr,
+			CreatedAt:   cur.CreatedAt,
+		})
+		return e
 	})
 	return
 }

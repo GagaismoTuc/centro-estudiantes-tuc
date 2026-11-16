@@ -184,6 +184,26 @@ test("R3 due_frozen error and R6 mfa_required refresh on Dues", async () => {
   await waitFor(() => expect(screen.getByRole("heading", { name: /Verificá/i })).toBeTruthy());
 });
 
+test("CS-9 invalid_date server error marks Vencimiento invalid and moves focus to it", async () => {
+  mockApi({
+    "GET /auth/me": ok(me({ role: "officer", mfa: "satisfied" })),
+    "GET /finance/dues": ok([]),
+    "GET /finance/dues/mine": ok([]),
+    "POST /finance/dues": fail(422, "invalid_date"),
+  });
+  window.history.replaceState(null, "", "/cuotas");
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Nueva cuota" }));
+  fireEvent.change(screen.getByLabelText("Nombre"), { target: { value: "Cuota de noviembre" } });
+  fireEvent.change(screen.getByLabelText("Monto en pesos"), { target: { value: "2000" } });
+  fireEvent.change(screen.getByLabelText("Vencimiento"), { target: { value: "2026-11-30" } });
+  fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+
+  const dueDateInput = screen.getByLabelText("Vencimiento") as HTMLInputElement;
+  await waitFor(() => expect(dueDateInput.getAttribute("aria-invalid")).toBe("true"));
+  expect(document.activeElement).toBe(dueDateInput);
+});
+
 test("PRESERVE navigation includes Cuotas link and navigates to /cuotas", async () => {
   mockApi({
     "GET /auth/me": ok(me()),

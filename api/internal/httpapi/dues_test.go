@@ -170,6 +170,11 @@ func TestDuesR3UpdateAndDelete(t *testing.T) {
 	wantResponse(t, f.do(http.MethodPatch, "/api/finance/dues/"+created.ID, `{"name":"  "}`, "198.51.100.10", officer, nil), http.StatusUnprocessableEntity, `{"error":"name_required"}`)
 	wantResponse(t, f.do(http.MethodPatch, "/api/finance/dues/"+created.ID, `{"amountCents":0}`, "198.51.100.10", officer, nil), http.StatusUnprocessableEntity, `{"error":"invalid_amount"}`)
 	wantResponse(t, f.do(http.MethodPatch, "/api/finance/dues/"+created.ID, `{"dueDate":"invalid"}`, "198.51.100.10", officer, nil), http.StatusUnprocessableEntity, `{"error":"invalid_date"}`)
+	afterReject := f.do(http.MethodGet, "/api/finance/dues/"+created.ID, "", "198.51.100.10", officer, nil)
+	var unchanged dueDetailJSON
+	if afterReject.Code != http.StatusOK || json.Unmarshal(afterReject.Body.Bytes(), &unchanged) != nil || unchanged.Name != "Cuota de noviembre" || unchanged.AmountCents != 200000 || unchanged.DueDate != "2026-11-30" {
+		t.Fatalf("rejected PATCH mutated row: code=%d got=%+v", afterReject.Code, unchanged)
+	}
 
 	patch := f.do(http.MethodPatch, "/api/finance/dues/"+created.ID, `{"name":"Cuota de diciembre","amountCents":250000,"dueDate":"2026-12-15"}`, "198.51.100.10", officer, nil)
 	if patch.Code != http.StatusOK {
@@ -268,6 +273,13 @@ func TestDuesR5StudentMineAndForbiddenFullList(t *testing.T) {
 	wantResponse(t, f.do(http.MethodGet, "/api/finance/dues", "", "198.51.100.10", betoToken, nil), http.StatusForbidden, `{"error":"forbidden"}`)
 	wantResponse(t, f.do(http.MethodGet, "/api/finance/dues/"+created.ID, "", "198.51.100.10", betoToken, nil), http.StatusForbidden, `{"error":"forbidden"}`)
 
+	// Student imported after creation is absent from /finance/dues/mine.
+	_, lateToken, _ := f.student(t, ctx, "Carla Ficticia", "30111224")
+	var lateMine []myDueJSON
+	if rec := f.do(http.MethodGet, "/api/finance/dues/mine", "", "198.51.100.10", lateToken, nil); rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &lateMine) != nil || len(lateMine) != 0 {
+		t.Fatalf("late student mine=%+v code=%d body=%s", lateMine, rec.Code, rec.Body)
+	}
+
 	// Student and Officer (ADR 0002) both see their own dues via /finance/dues/mine.
 	for _, token := range []string{betoToken, officer} {
 		rec := f.do(http.MethodGet, "/api/finance/dues/mine", "", "198.51.100.10", token, nil)
@@ -295,6 +307,7 @@ func TestDuesR6WriteAuthorizationTable(t *testing.T) {
 
 	// Position holder (role=student + officer_positions row) with MFA can write; without MFA gets mfa_required.
 	posUser, posMFA, _, _ := f.signInMFA(t, ctx, "student")
+	_, posNoMFA := f.signIn(t, ctx, "student")
 	carlaID := seedMember(t, ctx, f.tenant, "Carla Ficticia", "30111224")
 	if _, err := tdb.Super.Exec(ctx, `UPDATE memberships SET roster_member_id=$1 WHERE tenant_id=$2 AND user_id=$3`, carlaID, f.tenant, posUser); err != nil {
 		t.Fatal(err)
@@ -302,6 +315,16 @@ func TestDuesR6WriteAuthorizationTable(t *testing.T) {
 	if _, err := tdb.Super.Exec(ctx, `INSERT INTO officer_positions(tenant_id,roster_member_id,position) VALUES($1,$2,'Tesorero')`, f.tenant, carlaID); err != nil {
 		t.Fatal(err)
 	}
+	// Link posNoMFA user to a second position holder to verify MFA-before-parse on position holders too.
+	posNoMFAUser, posNoMFAToken := f.signIn(t, ctx, "student")
+	diegoID := seedMember(t, ctx, f.tenant, "Diego Ficticio", "30111225")
+	if _, err := tdb.Super.Exec(ctx, `UPDATE memberships SET roster_member_id=$1 WHERE tenant_id=$2 AND user_id=$3`, diegoID, f.tenant, posNoMFAUser); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tdb.Super.Exec(ctx, `INSERT INTO officer_positions(tenant_id,roster_member_id,position) VALUES($1,$2,'Secretario')`, f.tenant, diegoID); err != nil {
+		t.Fatal(err)
+	}
+	_ = posNoMFA
 
 	create := f.do(http.MethodPost, "/api/finance/dues", `{"name":"Cuota base","amountCents":200000,"dueDate":"2026-11-30"}`, "198.51.100.10", officerMFA, nil)
 	if create.Code != http.StatusCreated {
@@ -323,6 +346,7 @@ func TestDuesR6WriteAuthorizationTable(t *testing.T) {
 		{"student", studentToken, http.StatusForbidden, "forbidden"},
 		{"school_admin", adminMFA, http.StatusForbidden, "forbidden"},
 		{"officer without MFA", officerNoMFA, http.StatusForbidden, "mfa_required"},
+		{"position holder without MFA", posNoMFAToken, http.StatusForbidden, "mfa_required"},
 	}
 
 	for _, c := range cases {
@@ -339,6 +363,9 @@ func TestDuesR6WriteAuthorizationTable(t *testing.T) {
 			})
 		}
 	}
+
+	// Auth/MFA runs before JSON parsing: malformed JSON without MFA still returns 403 mfa_required.
+	wantResponse(t, f.do(http.MethodPost, "/api/finance/dues", `{not-json`, "198.51.100.10", officerNoMFA, nil), http.StatusForbidden, `{"error":"mfa_required"}`)
 
 	// Confirm nothing changed in the database after all rejections.
 	if d, _ := duesCount(t, f); d != 1 {

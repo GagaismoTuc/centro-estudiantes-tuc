@@ -86,6 +86,15 @@ func (s *server) GetFinanceDues(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
+func decodePositiveAmount(w http.ResponseWriter, raw json.RawMessage) (int64, bool) {
+	var amount int64
+	if len(raw) == 0 || string(raw) == "null" || json.Unmarshal(raw, &amount) != nil || amount <= 0 {
+		writeDueError(w, finance.ErrAmount)
+		return 0, false
+	}
+	return amount, true
+}
+
 func (s *server) PostFinanceDues(w http.ResponseWriter, r *http.Request) {
 	sess, ok := rosterSession(w, r)
 	if !ok {
@@ -103,9 +112,8 @@ func (s *server) PostFinanceDues(w http.ResponseWriter, r *http.Request) {
 	if !decodeStrict(w, r, &req) {
 		return
 	}
-	var amount int64
-	if len(req.AmountCents) == 0 || string(req.AmountCents) == "null" || json.Unmarshal(req.AmountCents, &amount) != nil || amount <= 0 {
-		writeDueError(w, finance.ErrAmount)
+	amount, ok := decodePositiveAmount(w, req.AmountCents)
+	if !ok {
 		return
 	}
 	due, err := s.finance.CreateDue(r.Context(), sess, finance.NewDue{
@@ -199,9 +207,8 @@ func (s *server) PatchFinanceDue(w http.ResponseWriter, r *http.Request, id stri
 	}
 	var in = finance.UpdateDue{Name: name, DueDate: dueDate}
 	if len(req.AmountCents) > 0 {
-		var amount int64
-		if string(req.AmountCents) == "null" || json.Unmarshal(req.AmountCents, &amount) != nil || amount <= 0 {
-			writeDueError(w, finance.ErrAmount)
+		amount, ok := decodePositiveAmount(w, req.AmountCents)
+		if !ok {
 			return
 		}
 		in.AmountCents = &amount
