@@ -354,6 +354,12 @@ func TestElectionListConstraintsAndCandidateUniqueness(t *testing.T) {
 }
 
 func TestElectionListsMigrationIsReversible(t *testing.T) {
+	if _, err := migrations.FS.ReadFile("00021_election_lists.sql"); err != nil {
+		t.Fatalf("election lists migration 00021 is missing: %v", err)
+	}
+	if _, err := migrations.FS.ReadFile("00015_election_lists.sql"); err == nil {
+		t.Fatal("old election lists migration 00015 still exists")
+	}
 	ctx := integration(t)
 	if _, err := env.super.Exec(ctx, `CREATE DATABASE election_lists_migration_check`); err != nil {
 		t.Fatal(err)
@@ -363,9 +369,6 @@ func TestElectionListsMigrationIsReversible(t *testing.T) {
 		t.Fatal(err)
 	}
 	dsn := fmt.Sprintf("postgres://%s:%s@%s:%d/election_lists_migration_check?sslmode=disable", cfg.User, cfg.Password, cfg.Host, cfg.Port)
-	if err := db.Migrate(ctx, dsn); err != nil {
-		t.Fatal(err)
-	}
 	sqlDB, err := sql.Open("pgx", dsn)
 	if err != nil {
 		t.Fatal(err)
@@ -387,13 +390,32 @@ func TestElectionListsMigrationIsReversible(t *testing.T) {
 			t.Fatalf("tables present = (%v, %v), want (%v, %v)", lists, cands, want, want)
 		}
 	}
+	checkVersion := func(want int) {
+		t.Helper()
+		var version int
+		if err := sqlDB.QueryRowContext(ctx, `SELECT max(version_id) FROM goose_db_version WHERE is_applied`).Scan(&version); err != nil || version != want {
+			t.Fatalf("goose version = %d (err=%v), want %d", version, err, want)
+		}
+	}
+	// Simulate upgrading a database already at origin/main's 00019_reversals.sql.
+	if _, err := p.UpTo(ctx, 19); err != nil {
+		t.Fatalf("up to 19: %v", err)
+	}
+	checkVersion(19)
+	checkTables(false)
+	if err := db.Migrate(ctx, dsn); err != nil {
+		t.Fatalf("migrate up from 19: %v", err)
+	}
+	checkVersion(21)
 	checkTables(true)
-	if _, err := p.DownTo(ctx, 13); err != nil {
+	if _, err := p.DownTo(ctx, 20); err != nil {
 		t.Fatalf("down: %v", err)
 	}
+	checkVersion(19)
 	checkTables(false)
 	if _, err := p.Up(ctx); err != nil {
 		t.Fatalf("up: %v", err)
 	}
+	checkVersion(21)
 	checkTables(true)
 }
