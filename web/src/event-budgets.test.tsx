@@ -28,3 +28,26 @@ test("officer adds a cost using a copied reference price and sees the event tota
   await waitFor(() => expect(sent.some((r) => r.method === "POST" && r.path === "/event-budgets/b1/lines" && (r.body as { unitAmountCents: number }).unitAmountCents === 2500000)).toBe(true));
   await waitFor(() => expect(screen.getByText(/^Costo:/).textContent).toContain("25.000"));
 });
+
+test("invalid budget form focuses the first invalid field and blocks students", async () => {
+  mockApi({
+    "GET /auth/me": ok(me({ role: "officer", mfa: "satisfied" })),
+    "GET /event-budgets": ok([]),
+    "GET /contacts/headings": ok([]),
+    "GET /contacts": ok([]),
+  });
+  window.history.replaceState(null, "", "/presupuestos");
+  const { unmount } = render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Crear presupuesto" }));
+  const nameInput = screen.getByLabelText("Nombre");
+  expect(nameInput.getAttribute("aria-invalid")).toBe("true");
+  expect(document.activeElement).toBe(nameInput);
+  expect(screen.getByText("Escrib\u00ed un nombre.")).toBeTruthy();
+  unmount();
+
+  mockApi({
+    "GET /auth/me": ok(me({ role: "student", mfa: "none" })),
+  });
+  render(<App />);
+  expect((await screen.findByRole("alert")).textContent).toContain("No ten\u00e9s acceso");
+});
