@@ -240,6 +240,51 @@ func TestCategoryManagementRulesR2ToR7(t *testing.T) {
 	})
 }
 
+func TestCategoryManagementR6PositionHolder(t *testing.T) {
+	ctx := integration(t)
+	f := newFixture(t, ctx)
+	if _, err := tdb.Super.Exec(ctx, `SELECT seed_finance_categories($1)`, f.tenant); err != nil {
+		t.Fatal(err)
+	}
+	_, token, member := f.student(t, ctx, "Carla Ficticia", "30999002")
+	if _, err := tdb.Super.Exec(ctx, `INSERT INTO officer_positions (tenant_id, roster_member_id, position) VALUES ($1, $2, 'Tesorero')`, f.tenant, member); err != nil {
+		t.Fatal(err)
+	}
+	body := `{"name":"Buzos de egresados","direction":"expense"}`
+	wantResponse(t, f.do("POST", "/api/finance/categories", body, "198.51.100.40", token, nil), 403, `{"error":"mfa_required"}`)
+	secret := f.enroll(t, token)
+	token, _ = f.confirm(t, token, secret)
+	var ventas string
+	if err := tdb.Super.QueryRow(ctx, `SELECT id::text FROM finance_categories WHERE tenant_id=$1 AND direction='income' AND name='Ventas'`, f.tenant).Scan(&ventas); err != nil {
+		t.Fatal(err)
+	}
+	e := f.do("POST", "/api/finance/entries", fmt.Sprintf(`{"categoryId":%q,"direction":"income","date":"2026-11-10","amountCents":100,"description":"Fixture"}`, ventas), "198.51.100.40", token, nil)
+	if e.Code != 201 {
+		t.Fatalf("control: position holder records a movement: %d %s", e.Code, e.Body)
+	}
+	r := f.do("POST", "/api/finance/categories", body, "198.51.100.40", token, nil)
+	if r.Code != 201 {
+		t.Fatalf("position holder adds category: %d %s", r.Code, r.Body)
+	}
+	var category struct{ ID string }
+	if err := json.Unmarshal(r.Body.Bytes(), &category); err != nil || category.ID == "" {
+		t.Fatalf("category response: %s (%v)", r.Body, err)
+	}
+	for _, v := range []struct {
+		method, path, body string
+		status             int
+	}{
+		{"PATCH", "/" + category.ID, `{"name":"Renamed"}`, 200},
+		{"POST", "/" + category.ID + "/archive", "", 200},
+		{"DELETE", "/" + category.ID, "", 204},
+	} {
+		res := f.do(v.method, "/api/finance/categories"+v.path, v.body, "198.51.100.40", token, nil)
+		if res.Code != v.status {
+			t.Fatalf("%s %s: %d %s", v.method, v.path, res.Code, res.Body)
+		}
+	}
+}
+
 func TestFinanceReadEntryPointsPreserved(t *testing.T) {
 	ctx := integration(t)
 	f := newFixture(t, ctx)

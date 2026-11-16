@@ -24,7 +24,8 @@ func (s *Store) withCategoryWriter(ctx context.Context, sess auth.Session, fn fu
 	}
 	return db.WithTenant(ctx, s.pool, sess.TenantID, func(tx pgx.Tx) error {
 		var officer bool
-		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM memberships WHERE tenant_id=$1 AND user_id=$2 AND role='officer')`, sess.TenantID, sess.UserID).Scan(&officer); err != nil {
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM memberships m WHERE m.tenant_id=$1 AND m.user_id=$2 AND (m.role='officer' OR EXISTS
+     (SELECT 1 FROM officer_positions p WHERE p.tenant_id=m.tenant_id AND p.roster_member_id=m.roster_member_id)))`, sess.TenantID, sess.UserID).Scan(&officer); err != nil {
 			return err
 		}
 		if !officer {
