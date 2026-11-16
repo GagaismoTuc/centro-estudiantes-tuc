@@ -41,6 +41,10 @@ func writeFinanceError(w http.ResponseWriter, err error) {
 		writeError(w, 409, "reserved_category")
 	case errors.Is(err, finance.ErrReserved):
 		writeError(w, 422, "reserved_category")
+	case errors.Is(err, finance.ErrAlreadyReversed):
+		writeError(w, 409, "already_reversed")
+	case errors.Is(err, finance.ErrReverseReversal):
+		writeError(w, 409, "cannot_reverse_reversal")
 	default:
 		// Database errors can contain submitted values; never write them to logs.
 		slog.Error("finance operation failed")
@@ -48,7 +52,14 @@ func writeFinanceError(w http.ResponseWriter, err error) {
 	}
 }
 func financeEntry(e finance.Entry) oapi.FinanceEntry {
-	return oapi.FinanceEntry{Id: e.ID, CategoryId: e.CategoryID, Direction: e.Direction, Date: e.Date, Description: e.Description, AmountCents: e.AmountCents, RecordedBy: e.RecordedBy, RecordedAt: e.RecordedAt}
+	optional := func(v string) *string {
+		if v == "" {
+			return nil
+		}
+		return &v
+	}
+	return oapi.FinanceEntry{Id: e.ID, CategoryId: e.CategoryID, Direction: e.Direction, Date: e.Date, Description: e.Description, AmountCents: e.AmountCents, RecordedBy: e.RecordedBy, RecordedAt: e.RecordedAt,
+		ReversesId: optional(e.ReversesID), ReversalId: optional(e.ReversalID), ReversedBy: optional(e.ReversedBy), ReversedOn: optional(e.ReversedOn)}
 }
 func (s *server) GetFinanceCategories(w http.ResponseWriter, r *http.Request) {
 	sess, ok := rosterSession(w, r)
@@ -139,7 +150,6 @@ func (s *server) PostFinanceEntries(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 201, financeEntry(entry))
 }
-
 func categoryResponse(c finance.Category) oapi.FinanceCategory {
 	return oapi.FinanceCategory{Id: c.ID, Name: c.Name, Direction: c.Direction, Active: c.Active, Reserved: c.Reserved}
 }
@@ -201,4 +211,17 @@ func (s *server) DeleteFinanceCategory(w http.ResponseWriter, r *http.Request, i
 }
 func (s *server) PostFinanceCategoryArchive(w http.ResponseWriter, r *http.Request, id string) {
 	s.categoryWrite(w, r, id, "archive")
+}
+
+func (s *server) PostFinanceEntryReversal(w http.ResponseWriter, r *http.Request, entryID string) {
+	sess, ok := rosterSession(w, r)
+	if !ok {
+		return
+	}
+	entry, err := s.finance.Reverse(r.Context(), sess, entryID)
+	if err != nil {
+		writeFinanceError(w, err)
+		return
+	}
+	writeJSON(w, 201, financeEntry(entry))
 }

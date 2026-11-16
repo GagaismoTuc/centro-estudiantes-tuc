@@ -5,6 +5,7 @@ import { errorMessage } from "../api/errors.ts";
 import { createFinanceEntry, financeBalance, financeEntries } from "../api/finance.ts";
 import type { components } from "../api/schema.gen.ts";
 import { hasRole, useMe, useSession } from "../auth/session.tsx";
+import { ConfirmDialog } from "../components/ConfirmDialog.tsx";
 import { Field, FormStatus, useFormErrors, type Status } from "../components/Form.tsx";
 import { PageTitle, useDocumentTitle } from "../components/Page.tsx";
 import { FinanceCategories } from "./FinanceCategories.tsx";
@@ -15,6 +16,7 @@ const pesos = (value: string) => {
   const cents = BigInt(value); const negative = cents < 0n; const absolute = negative ? -cents : cents;
   return `$ ${negative ? "-" : ""}${new Intl.NumberFormat("es-AR").format(absolute / 100n)},${String(absolute % 100n).padStart(2, "0")}`;
 };
+const dayMonthYear = (isoDate: string) => isoDate.split("-").reverse().join("/");
 const today = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Argentina/Buenos_Aires", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 
 function centsOf(value: string): string | null {
@@ -42,6 +44,7 @@ export function Finance() {
   const [busy, setBusy] = useState(false);
   const pending = useRef(false); const categoryRef = useRef<HTMLSelectElement>(null);
   const [categoryError, setCategoryError] = useState("");
+  const [confirmReverse, setConfirmReverse] = useState<Entry | null>(null);
   const form = useFormErrors();
   const failed = useCallback((code: string) => {
     if (code === "mfa_required" || code === "unauthenticated") void refresh();
@@ -77,6 +80,15 @@ export function Finance() {
     pending.current = false; setBusy(false);
   }
 
+  async function reverse(target: Entry) {
+    setConfirmReverse(null);
+    if (pending.current) return;
+    pending.current = true; setBusy(true); setStatus(null);
+    const result = await call(apiClient.POST("/finance/entries/{entryId}/reversal", { params: { path: { entryId: target.id } } }));
+    if (result.ok) { setStatus({ tone: "ok", text: "Se revirtió el movimiento." }); await load(); } else { failed(result.code); form.failed(result.code); }
+    pending.current = false; setBusy(false);
+  }
+
   return <>
     <header className="page-header"><PageTitle>Caja</PageTitle></header>
     <FormStatus status={status} {...form.statusProps} />
@@ -101,7 +113,12 @@ export function Finance() {
         <strong>{entry.description}</strong> {"\u2014"} {pesos(entry.amountCents)} ({entry.direction === "income" ? "Ingreso" : "Gasto"})<br />
         {categories.find((c) => c.id === entry.categoryId)?.name} {"\u2014"} {entry.date}<br />
         Registrado por {entry.recordedBy} {"\u2014"} {new Date(entry.recordedAt).toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" })}
+        {entry.reversalId && <><br /><span>Revertido por {entry.reversedBy} el {dayMonthYear(entry.reversedOn ?? "")}</span></>}
+        {hasRole(me, "officer") && !entry.reversalId && !entry.reversesId && <><br /><button type="button" className="button button--secondary button--small" disabled={busy} aria-label={`Revertir ${entry.description}`} onClick={() => setConfirmReverse(entry)}>Revertir</button></>}
       </li>)}</ul>}
     </section>
+    {confirmReverse && <ConfirmDialog title="Revertir movimiento" confirmLabel="Revertir" onConfirm={() => void reverse(confirmReverse)} onCancel={() => setConfirmReverse(null)}>
+      <p>{"¿Revertís este movimiento? Se va a cargar un movimiento opuesto con fecha de hoy."}</p>
+    </ConfirmDialog>}
   </>;
 }

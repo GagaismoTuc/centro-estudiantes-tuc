@@ -28,6 +28,8 @@ const messages: Record<string, string> = {
   description_too_long: "La descripci\u00f3n puede tener hasta 500 caracteres.",
   invalid_category: "Eleg\u00ed una categor\u00eda v\u00e1lida para el movimiento.",
   reserved_category: "Esa categor\u00eda est\u00e1 reservada para pagos de cuotas.",
+  already_reversed: "Ese movimiento ya fue revertido. Actualizá la caja para ver la reversión.",
+  cannot_reverse_reversal: "Una reversión no se puede revertir. Para corregirla, cargá un movimiento nuevo.",
   member_has_account: "Esa persona ya tiene una cuenta.",
   body_too_large: "El archivo es demasiado grande. El máximo es 1 MB.",
   unsupported_media_type: "El archivo tiene que ser CSV.",
