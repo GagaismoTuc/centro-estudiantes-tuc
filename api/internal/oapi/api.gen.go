@@ -59,6 +59,27 @@ func (e ElectionState) Valid() bool {
 	}
 }
 
+// Defines values for FinanceDueStatus.
+const (
+	Exempt FinanceDueStatus = "exempt"
+	Owing  FinanceDueStatus = "owing"
+	Paid   FinanceDueStatus = "paid"
+)
+
+// Valid indicates whether the value is a known member of the FinanceDueStatus enum.
+func (e FinanceDueStatus) Valid() bool {
+	switch e {
+	case Exempt:
+		return true
+	case Owing:
+		return true
+	case Paid:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ForbiddenErrorError.
 const (
 	ForbiddenErrorErrorForbidden   ForbiddenErrorError = "forbidden"
@@ -542,6 +563,81 @@ func (e PostFinanceCategoryArchive409JSONResponseBodyError) Valid() bool {
 	}
 }
 
+// Defines values for PostFinanceDues422JSONResponseBodyError.
+const (
+	PostFinanceDues422JSONResponseBodyErrorEmptyRoster   PostFinanceDues422JSONResponseBodyError = "empty_roster"
+	PostFinanceDues422JSONResponseBodyErrorInvalidAmount PostFinanceDues422JSONResponseBodyError = "invalid_amount"
+	PostFinanceDues422JSONResponseBodyErrorInvalidDate   PostFinanceDues422JSONResponseBodyError = "invalid_date"
+	PostFinanceDues422JSONResponseBodyErrorNameRequired  PostFinanceDues422JSONResponseBodyError = "name_required"
+)
+
+// Valid indicates whether the value is a known member of the PostFinanceDues422JSONResponseBodyError enum.
+func (e PostFinanceDues422JSONResponseBodyError) Valid() bool {
+	switch e {
+	case PostFinanceDues422JSONResponseBodyErrorEmptyRoster:
+		return true
+	case PostFinanceDues422JSONResponseBodyErrorInvalidAmount:
+		return true
+	case PostFinanceDues422JSONResponseBodyErrorInvalidDate:
+		return true
+	case PostFinanceDues422JSONResponseBodyErrorNameRequired:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DeleteFinanceDue409JSONResponseBodyError.
+const (
+	DeleteFinanceDue409JSONResponseBodyErrorDueFrozen DeleteFinanceDue409JSONResponseBodyError = "due_frozen"
+)
+
+// Valid indicates whether the value is a known member of the DeleteFinanceDue409JSONResponseBodyError enum.
+func (e DeleteFinanceDue409JSONResponseBodyError) Valid() bool {
+	switch e {
+	case DeleteFinanceDue409JSONResponseBodyErrorDueFrozen:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatchFinanceDue409JSONResponseBodyError.
+const (
+	PatchFinanceDue409JSONResponseBodyErrorDueFrozen PatchFinanceDue409JSONResponseBodyError = "due_frozen"
+)
+
+// Valid indicates whether the value is a known member of the PatchFinanceDue409JSONResponseBodyError enum.
+func (e PatchFinanceDue409JSONResponseBodyError) Valid() bool {
+	switch e {
+	case PatchFinanceDue409JSONResponseBodyErrorDueFrozen:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatchFinanceDue422JSONResponseBodyError.
+const (
+	PatchFinanceDue422JSONResponseBodyErrorInvalidAmount PatchFinanceDue422JSONResponseBodyError = "invalid_amount"
+	PatchFinanceDue422JSONResponseBodyErrorInvalidDate   PatchFinanceDue422JSONResponseBodyError = "invalid_date"
+	PatchFinanceDue422JSONResponseBodyErrorNameRequired  PatchFinanceDue422JSONResponseBodyError = "name_required"
+)
+
+// Valid indicates whether the value is a known member of the PatchFinanceDue422JSONResponseBodyError enum.
+func (e PatchFinanceDue422JSONResponseBodyError) Valid() bool {
+	switch e {
+	case PatchFinanceDue422JSONResponseBodyErrorInvalidAmount:
+		return true
+	case PatchFinanceDue422JSONResponseBodyErrorInvalidDate:
+		return true
+	case PatchFinanceDue422JSONResponseBodyErrorNameRequired:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PostFinanceEntryReversal409JSONResponseBodyError.
 const (
 	AlreadyReversed       PostFinanceEntryReversal409JSONResponseBodyError = "already_reversed"
@@ -864,6 +960,39 @@ type FinanceCategory struct {
 	Reserved  bool   `json:"reserved"`
 }
 
+// FinanceDueDetail defines model for FinanceDueDetail.
+type FinanceDueDetail struct {
+	AmountCents int64              `json:"amountCents"`
+	CreatedAt   time.Time          `json:"createdAt"`
+	DueDate     string             `json:"dueDate"`
+	Id          string             `json:"id"`
+	Members     []FinanceDueMember `json:"members"`
+	Name        string             `json:"name"`
+	OwingCount  int                `json:"owingCount"`
+	TotalCount  int                `json:"totalCount"`
+}
+
+// FinanceDueMember defines model for FinanceDueMember.
+type FinanceDueMember struct {
+	FullName       string           `json:"fullName"`
+	RosterMemberId string           `json:"rosterMemberId"`
+	Status         FinanceDueStatus `json:"status"`
+}
+
+// FinanceDueStatus defines model for FinanceDueStatus.
+type FinanceDueStatus string
+
+// FinanceDueSummary defines model for FinanceDueSummary.
+type FinanceDueSummary struct {
+	AmountCents int64     `json:"amountCents"`
+	CreatedAt   time.Time `json:"createdAt"`
+	DueDate     string    `json:"dueDate"`
+	Id          string    `json:"id"`
+	Name        string    `json:"name"`
+	OwingCount  int       `json:"owingCount"`
+	TotalCount  int       `json:"totalCount"`
+}
+
 // FinanceEntry defines model for FinanceEntry.
 type FinanceEntry struct {
 	AmountCents int64     `json:"amountCents"`
@@ -987,6 +1116,15 @@ type MfaVerifyRequest struct {
 	RecoveryCode *string `json:"recoveryCode,omitempty"`
 }
 
+// MyFinanceDue defines model for MyFinanceDue.
+type MyFinanceDue struct {
+	AmountCents int64            `json:"amountCents"`
+	DueDate     string           `json:"dueDate"`
+	Id          string           `json:"id"`
+	Name        string           `json:"name"`
+	Status      FinanceDueStatus `json:"status"`
+}
+
 // NewFinanceCategory defines model for NewFinanceCategory.
 type NewFinanceCategory struct {
 	Direction NewFinanceCategoryDirection `json:"direction"`
@@ -995,6 +1133,13 @@ type NewFinanceCategory struct {
 
 // NewFinanceCategoryDirection defines model for NewFinanceCategory.Direction.
 type NewFinanceCategoryDirection string
+
+// NewFinanceDue defines model for NewFinanceDue.
+type NewFinanceDue struct {
+	AmountCents int64  `json:"amountCents"`
+	DueDate     string `json:"dueDate"`
+	Name        string `json:"name"`
+}
 
 // NewFinanceEntry defines model for NewFinanceEntry.
 type NewFinanceEntry struct {
@@ -1149,6 +1294,13 @@ type UpdateContactRequest struct {
 	Zone      *string `json:"zone,omitempty"`
 }
 
+// UpdateFinanceDue defines model for UpdateFinanceDue.
+type UpdateFinanceDue struct {
+	AmountCents *int64  `json:"amountCents,omitempty"`
+	DueDate     *string `json:"dueDate,omitempty"`
+	Name        *string `json:"name,omitempty"`
+}
+
 // BadRequest defines model for BadRequest.
 type BadRequest = Error
 
@@ -1228,6 +1380,18 @@ type PatchFinanceCategory422JSONResponseBodyError string
 
 // PostFinanceCategoryArchive409JSONResponseBodyError defines parameters for PostFinanceCategoryArchive.
 type PostFinanceCategoryArchive409JSONResponseBodyError string
+
+// PostFinanceDues422JSONResponseBodyError defines parameters for PostFinanceDues.
+type PostFinanceDues422JSONResponseBodyError string
+
+// DeleteFinanceDue409JSONResponseBodyError defines parameters for DeleteFinanceDue.
+type DeleteFinanceDue409JSONResponseBodyError string
+
+// PatchFinanceDue409JSONResponseBodyError defines parameters for PatchFinanceDue.
+type PatchFinanceDue409JSONResponseBodyError string
+
+// PatchFinanceDue422JSONResponseBodyError defines parameters for PatchFinanceDue.
+type PatchFinanceDue422JSONResponseBodyError string
 
 // PostFinanceEntryReversal409JSONResponseBodyError defines parameters for PostFinanceEntryReversal.
 type PostFinanceEntryReversal409JSONResponseBodyError string
@@ -1333,6 +1497,12 @@ type PostFinanceCategoriesJSONRequestBody = NewFinanceCategory
 
 // PatchFinanceCategoryJSONRequestBody defines body for PatchFinanceCategory for application/json ContentType.
 type PatchFinanceCategoryJSONRequestBody = RenameFinanceCategory
+
+// PostFinanceDuesJSONRequestBody defines body for PostFinanceDues for application/json ContentType.
+type PostFinanceDuesJSONRequestBody = NewFinanceDue
+
+// PatchFinanceDueJSONRequestBody defines body for PatchFinanceDue for application/json ContentType.
+type PatchFinanceDueJSONRequestBody = UpdateFinanceDue
 
 // PostFinanceEntriesJSONRequestBody defines body for PostFinanceEntries for application/json ContentType.
 type PostFinanceEntriesJSONRequestBody = NewFinanceEntry
@@ -1495,6 +1665,24 @@ type ServerInterface interface {
 	// PostFinanceCategoryArchive Archive a category
 	// (POST /finance/categories/{id}/archive)
 	PostFinanceCategoryArchive(w http.ResponseWriter, r *http.Request, id string)
+	// GetFinanceDues List dues in the active school
+	// (GET /finance/dues)
+	GetFinanceDues(w http.ResponseWriter, r *http.Request)
+	// PostFinanceDues Create a due for all current roster members as an officer with MFA
+	// (POST /finance/dues)
+	PostFinanceDues(w http.ResponseWriter, r *http.Request)
+	// GetMyFinanceDues List dues owed by the signed-in roster member
+	// (GET /finance/dues/mine)
+	GetMyFinanceDues(w http.ResponseWriter, r *http.Request)
+	// DeleteFinanceDue Delete a due without payments or exemptions as an officer with MFA
+	// (DELETE /finance/dues/{id})
+	DeleteFinanceDue(w http.ResponseWriter, r *http.Request, id string)
+	// GetFinanceDue Get one due and its per-student status list
+	// (GET /finance/dues/{id})
+	GetFinanceDue(w http.ResponseWriter, r *http.Request, id string)
+	// PatchFinanceDue Edit a due as an officer with MFA
+	// (PATCH /finance/dues/{id})
+	PatchFinanceDue(w http.ResponseWriter, r *http.Request, id string)
 	// GetFinanceEntries List entries in the active school
 	// (GET /finance/entries)
 	GetFinanceEntries(w http.ResponseWriter, r *http.Request)
@@ -2570,6 +2758,126 @@ func (siw *ServerInterfaceWrapper) PostFinanceCategoryArchive(w http.ResponseWri
 	handler.ServeHTTP(w, r)
 }
 
+// GetFinanceDues operation middleware
+func (siw *ServerInterfaceWrapper) GetFinanceDues(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetFinanceDues(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostFinanceDues operation middleware
+func (siw *ServerInterfaceWrapper) PostFinanceDues(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostFinanceDues(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetMyFinanceDues operation middleware
+func (siw *ServerInterfaceWrapper) GetMyFinanceDues(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetMyFinanceDues(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteFinanceDue operation middleware
+func (siw *ServerInterfaceWrapper) DeleteFinanceDue(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteFinanceDue(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetFinanceDue operation middleware
+func (siw *ServerInterfaceWrapper) GetFinanceDue(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetFinanceDue(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PatchFinanceDue operation middleware
+func (siw *ServerInterfaceWrapper) PatchFinanceDue(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PatchFinanceDue(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetFinanceEntries operation middleware
 func (siw *ServerInterfaceWrapper) GetFinanceEntries(w http.ResponseWriter, r *http.Request) {
 
@@ -3041,6 +3349,12 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/finance/entries", wrapper.PostFinanceEntries)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/entries/{entryId}", wrapper.GetFinanceEntry)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/finance/entries/{entryId}/reversal", wrapper.PostFinanceEntryReversal)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/dues", wrapper.GetFinanceDues)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/finance/dues", wrapper.PostFinanceDues)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/dues/mine", wrapper.GetMyFinanceDues)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/finance/dues/{id}", wrapper.DeleteFinanceDue)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/dues/{id}", wrapper.GetFinanceDue)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/finance/dues/{id}", wrapper.PatchFinanceDue)
 
 	return m
 }

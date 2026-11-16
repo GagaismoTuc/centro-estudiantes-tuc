@@ -91,6 +91,14 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
             </>
           )}
           <li><Link to="/caja" className="nav__item" onClick={onNavigate}><Icon name="wallet" />Caja</Link></li>
+          {me.role !== null && (
+            <li>
+              <Link to="/cuotas" className="nav__item" onClick={onNavigate}>
+                <Icon name="wallet" />
+                Cuotas
+              </Link>
+            </li>
+          )}
           {upcoming.map((item) => (
             <li key={item.label}>
               <span className="nav__item nav__item--disabled">
