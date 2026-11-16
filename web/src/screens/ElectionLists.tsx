@@ -252,8 +252,15 @@ export function ListForm({
   const searchSeqRef = useRef(0);
 
   const positionsKey = election.positions.join("\0");
+  // State is initialized by useState; skip the initial mount effect so early input is never wiped before passive effects flush.
+  const prevResetRef = useRef({ initial, positionsKey });
   useEffect(() => {
+    if (prevResetRef.current.initial === initial && prevResetRef.current.positionsKey === positionsKey) {
+      return;
+    }
+    prevResetRef.current = { initial, positionsKey };
     setName(initial?.name ?? "");
+    setRepresentativeId("");
     const map: Record<string, string> = {};
     for (const pos of election.positions) {
       map[pos] = initial?.candidates.find((c) => c.position === pos)?.rosterMemberId ?? "";

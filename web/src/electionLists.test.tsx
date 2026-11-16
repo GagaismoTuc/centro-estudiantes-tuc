@@ -373,3 +373,31 @@ test("R14/CS-9: ListForm searches candidates by >=3 letters without preloading f
   fireEvent.change(searchInput, { target: { value: "Zzz" } });
   expect(await screen.findByText("No encontramos alumnos con ese nombre.")).toBeTruthy();
 });
+
+test("ListForm preserves input typed before passive mount effects flush", async () => {
+  mockApi({
+    "GET /auth/me": ok(me({ role: "student", mfa: "not_required" })),
+    "GET /electoral-commission": ok({ commission: { id: "c1", createdAt: "2026-11-01T12:00:00Z", members: [ana, beto] }, isMember: false, canDesignate: false }),
+    "GET /elections/current": ok(submissionElection),
+    "GET /elections/e1/lists": ok({ rosterMemberId: "r-ciro", lists: [] }),
+  });
+
+  let editedInput: HTMLInputElement | null = null;
+  const observer = new MutationObserver(() => {
+    const input = screen.queryByLabelText("Nombre de la lista") as HTMLInputElement | null;
+    if (!input) return;
+    observer.disconnect();
+    editedInput = input;
+    fireEvent.change(input, { target: { value: "Lista Azul" } });
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
+
+  try {
+    renderAt("/eleccion");
+    const nameInput = (await screen.findByLabelText("Nombre de la lista")) as HTMLInputElement;
+    expect(editedInput).toBe(nameInput);
+    expect(nameInput.value).toBe("Lista Azul");
+  } finally {
+    observer.disconnect();
+  }
+});
