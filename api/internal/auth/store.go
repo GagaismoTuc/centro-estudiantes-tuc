@@ -371,6 +371,9 @@ func (s *Store) Bootstrap(ctx context.Context, orgName, email, password string) 
 		if _, err := tx.Exec(ctx, `INSERT INTO organizations (id, kind, name) VALUES ($1, 'school', $2)`, orgID, orgName); err != nil {
 			return err
 		}
+		if _, err := tx.Exec(ctx, `SELECT seed_finance_categories($1)`, orgID); err != nil {
+			return err
+		}
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO contact_headings (tenant_id, name)
 			SELECT $1, name FROM unnest($2::text[]) AS name

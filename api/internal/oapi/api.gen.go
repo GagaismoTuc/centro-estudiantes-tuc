@@ -549,6 +549,33 @@ type Error struct {
 	Error string `json:"error"`
 }
 
+// FinanceBalance defines model for FinanceBalance.
+type FinanceBalance struct {
+	// BalanceCents The exact sum; may exceed int64.
+	BalanceCents int `json:"balanceCents"`
+}
+
+// FinanceCategory defines model for FinanceCategory.
+type FinanceCategory struct {
+	Active    bool   `json:"active"`
+	Direction string `json:"direction"`
+	Id        string `json:"id"`
+	Name      string `json:"name"`
+	Reserved  bool   `json:"reserved"`
+}
+
+// FinanceEntry defines model for FinanceEntry.
+type FinanceEntry struct {
+	AmountCents int64     `json:"amountCents"`
+	CategoryId  string    `json:"categoryId"`
+	Date        string    `json:"date"`
+	Description string    `json:"description"`
+	Direction   string    `json:"direction"`
+	Id          string    `json:"id"`
+	RecordedAt  time.Time `json:"recordedAt"`
+	RecordedBy  string    `json:"recordedBy"`
+}
+
 // ForbiddenError defines model for ForbiddenError.
 type ForbiddenError struct {
 	Error ForbiddenErrorError `json:"error"`
@@ -646,6 +673,15 @@ type MfaState string
 type MfaVerifyRequest struct {
 	Code         *string `json:"code,omitempty"`
 	RecoveryCode *string `json:"recoveryCode,omitempty"`
+}
+
+// NewFinanceEntry defines model for NewFinanceEntry.
+type NewFinanceEntry struct {
+	AmountCents int64  `json:"amountCents"`
+	CategoryId  string `json:"categoryId"`
+	Date        string `json:"date"`
+	Description string `json:"description"`
+	Direction   string `json:"direction"`
 }
 
 // NotFoundError defines model for NotFoundError.
@@ -873,6 +909,9 @@ type PutElectionJSONRequestBody = ElectionDraftRequest
 // PutElectoralCommissionJSONRequestBody defines body for PutElectoralCommission for application/json ContentType.
 type PutElectoralCommissionJSONRequestBody = CommissionDesignation
 
+// PostFinanceEntriesJSONRequestBody defines body for PostFinanceEntries for application/json ContentType.
+type PostFinanceEntriesJSONRequestBody = NewFinanceEntry
+
 // PostMemberOfficerJSONRequestBody defines body for PostMemberOfficer for application/json ContentType.
 type PostMemberOfficerJSONRequestBody PostMemberOfficerJSONBody
 
@@ -977,6 +1016,21 @@ type ServerInterface interface {
 	// GetElectoralCommissionCandidates List the roster members who can sit on the Electoral commission
 	// (GET /electoral-commission/candidates)
 	GetElectoralCommissionCandidates(w http.ResponseWriter, r *http.Request)
+	// GetFinanceBalance Fund balance in cents
+	// (GET /finance/balance)
+	GetFinanceBalance(w http.ResponseWriter, r *http.Request)
+	// GetFinanceCategories List categories in the active school
+	// (GET /finance/categories)
+	GetFinanceCategories(w http.ResponseWriter, r *http.Request)
+	// GetFinanceEntries List entries in the active school
+	// (GET /finance/entries)
+	GetFinanceEntries(w http.ResponseWriter, r *http.Request)
+	// PostFinanceEntries Record an income or expense as an officer with MFA
+	// (POST /finance/entries)
+	PostFinanceEntries(w http.ResponseWriter, r *http.Request)
+	// GetFinanceEntry Get an entry in the active school
+	// (GET /finance/entries/{entryId})
+	GetFinanceEntry(w http.ResponseWriter, r *http.Request, entryId string)
 	// GetHealth Liveness check
 	// (GET /health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
@@ -1623,6 +1677,88 @@ func (siw *ServerInterfaceWrapper) GetElectoralCommissionCandidates(w http.Respo
 	handler.ServeHTTP(w, r)
 }
 
+// GetFinanceBalance operation middleware
+func (siw *ServerInterfaceWrapper) GetFinanceBalance(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetFinanceBalance(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetFinanceCategories operation middleware
+func (siw *ServerInterfaceWrapper) GetFinanceCategories(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetFinanceCategories(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetFinanceEntries operation middleware
+func (siw *ServerInterfaceWrapper) GetFinanceEntries(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetFinanceEntries(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostFinanceEntries operation middleware
+func (siw *ServerInterfaceWrapper) PostFinanceEntries(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostFinanceEntries(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetFinanceEntry operation middleware
+func (siw *ServerInterfaceWrapper) GetFinanceEntry(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "entryId" -------------
+	var entryId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "entryId", r.PathValue("entryId"), &entryId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "entryId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetFinanceEntry(w, r, entryId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetHealth operation middleware
 func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Request) {
 
@@ -1932,6 +2068,11 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/elections/current", wrapper.GetCurrentElection)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/elections/{electionId}", wrapper.GetElection)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/elections/{electionId}", wrapper.PutElection)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/categories", wrapper.GetFinanceCategories)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/balance", wrapper.GetFinanceBalance)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/entries", wrapper.GetFinanceEntries)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/finance/entries", wrapper.PostFinanceEntries)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/entries/{entryId}", wrapper.GetFinanceEntry)
 
 	return m
 }
