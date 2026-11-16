@@ -101,6 +101,7 @@ const fieldsByCode: Record<string, string[]> = {
   same_password: ["newPassword"],
   invalid_code: ["code", "recoveryCode"],
   name_required: ["name"],
+  category_exists: ["name"],
   heading_exists: ["name"],
   invalid_heading: ["headingId"],
   invalid_name: ["name"],

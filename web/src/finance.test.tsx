@@ -158,3 +158,35 @@ test("R1 created expense appears in the movement form", async () => {
   fireEvent.change(screen.getByLabelText("Tipo"), { target: { value: "expense" } });
   expect(await screen.findByRole("option", { name: "Buzos" })).toBeTruthy();
 });
+
+test("R2 renaming changes the category shown on historical movements", async () => {
+  const renamed = [{ ...categories[0]!, name: "Kiosco" }, ...categories.slice(1)];
+  mockApi({ "GET /auth/me": ok(me({ role: "officer", mfa: "satisfied" })), ...reads,
+    "GET /finance/categories": [ok(categories), ok(renamed)],
+    "PATCH /finance/categories/c1": ok(renamed[0]),
+  });
+  window.history.replaceState(null, "", "/caja"); render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Categor\u00edas" }));
+  const used = (await screen.findByText("Ventas", { selector: "strong" })).closest("li")!;
+  fireEvent.click(within(used).getByRole("button", { name: "Renombrar" }));
+  fireEvent.change(screen.getByLabelText("Nuevo nombre"), { target: { value: "Kiosco" } });
+  fireEvent.click(screen.getByRole("button", { name: "Guardar nombre" }));
+  expect(await screen.findByText(/Kiosco.*2026-11-10/)).toBeTruthy();
+});
+
+test("R3 archived categories disappear from entry choices but remain on historical movements", async () => {
+  const archived = [{ ...categories[0]!, active: false }, ...categories.slice(1)];
+  mockApi({ "GET /auth/me": ok(me({ role: "officer", mfa: "satisfied" })), ...reads,
+    "GET /finance/categories": [ok(categories), ok(archived)],
+    "POST /finance/categories/c1/archive": ok(archived[0]),
+  });
+  window.history.replaceState(null, "", "/caja"); render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Categor\u00edas" }));
+  const used = (await screen.findByText("Ventas", { selector: "strong" })).closest("li")!;
+  fireEvent.click(within(used).getByRole("button", { name: "Archivar" }));
+  fireEvent.click(screen.getByRole("button", { name: "Confirmar archivo" }));
+  await screen.findByText("(Archivada)", { exact: false });
+  expect(screen.getByText(/Ventas.*2026-11-10/)).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Nuevo movimiento" }));
+  expect(screen.queryByRole("option", { name: "Ventas" })).toBeNull();
+});

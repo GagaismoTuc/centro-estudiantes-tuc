@@ -1,12 +1,14 @@
 package httpapi_test
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestCategoryManagementR1(t *testing.T) {
@@ -196,6 +198,7 @@ func TestCategoryManagementRulesR2ToR7(t *testing.T) {
 				t.Fatalf("orphans=%d err=%v", orphans, err)
 			}
 		}
+		assertCategoryRaceOrders(t, ctx, f, officer)
 	})
 	t.Run("R6 only officers with MFA mutate and all members read", func(t *testing.T) {
 		for _, token := range []string{student, admin, unverified} {
@@ -235,4 +238,132 @@ func TestCategoryManagementRulesR2ToR7(t *testing.T) {
 			t.Fatalf("tenant name: %d %s", r.Code, r.Body)
 		}
 	})
+}
+
+func TestFinanceReadEntryPointsPreserved(t *testing.T) {
+	ctx := integration(t)
+	f := newFixture(t, ctx)
+	if _, err := tdb.Super.Exec(ctx, `SELECT seed_finance_categories($1)`, f.tenant); err != nil {
+		t.Fatal(err)
+	}
+	user, officer, _, _ := f.signInMFA(t, ctx, "officer")
+	member := seedMember(t, ctx, f.tenant, "Ana Ficticia", "30111224")
+	if _, err := tdb.Super.Exec(ctx, `UPDATE memberships SET roster_member_id=$1 WHERE tenant_id=$2 AND user_id=$3`, member, f.tenant, user); err != nil {
+		t.Fatal(err)
+	}
+	var category string
+	if err := tdb.Super.QueryRow(ctx, `SELECT id::text FROM finance_categories WHERE tenant_id=$1 AND name='Ventas'`, f.tenant).Scan(&category); err != nil {
+		t.Fatal(err)
+	}
+	post := f.do("POST", "/api/finance/entries", fmt.Sprintf(`{"categoryId":%q,"direction":"income","date":"2026-11-10","amountCents":100,"description":"Fixture"}`, category), "198.51.100.12", officer, nil)
+	if post.Code != 201 {
+		t.Fatalf("seed: %d %s", post.Code, post.Body)
+	}
+	var entry struct{ ID string }
+	if err := json.Unmarshal(post.Body.Bytes(), &entry); err != nil {
+		t.Fatal(err)
+	}
+	_, student := f.signIn(t, ctx, "student")
+	for _, v := range []struct{ name, path, contains string }{{"GET balance", "/api/finance/balance", `"balanceCents":100`}, {"GET entries", "/api/finance/entries", entry.ID}, {"GET entry", "/api/finance/entries/" + entry.ID, `"description":"Fixture"`}} {
+		t.Run(v.name, func(t *testing.T) {
+			r := f.do("GET", v.path, "", "198.51.100.12", student, nil)
+			if r.Code != 200 || !strings.Contains(r.Body.String(), v.contains) {
+				t.Fatalf("%s: %d %s", v.path, r.Code, r.Body)
+			}
+		})
+	}
+}
+
+func assertCategoryRaceOrders(t *testing.T, ctx context.Context, f *fixture, officer string) {
+	t.Helper()
+	setup := `CREATE FUNCTION category_race_entry_pause() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN PERFORM pg_advisory_xact_lock(727201); RETURN NEW; END $$;
+ CREATE FUNCTION category_race_delete_pause() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN PERFORM pg_advisory_xact_lock(727202); RETURN OLD; END $$;
+ CREATE TRIGGER category_race_entry BEFORE INSERT ON finance_entries FOR EACH ROW EXECUTE FUNCTION category_race_entry_pause();
+ CREATE TRIGGER category_race_delete BEFORE DELETE ON finance_categories FOR EACH ROW EXECUTE FUNCTION category_race_delete_pause()`
+	if _, err := tdb.Super.Exec(ctx, setup); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = tdb.Super.Exec(context.Background(), `DROP TRIGGER IF EXISTS category_race_entry ON finance_entries; DROP TRIGGER IF EXISTS category_race_delete ON finance_categories; DROP FUNCTION IF EXISTS category_race_entry_pause(); DROP FUNCTION IF EXISTS category_race_delete_pause()`)
+	})
+	conn, err := tdb.Super.Acquire(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Release()
+	defer func() { _, _ = conn.Exec(context.Background(), `SELECT pg_advisory_unlock_all()`) }()
+	wait := func(t *testing.T, query string, args ...any) {
+		t.Helper()
+		deadline := time.Now().Add(5 * time.Second)
+		for time.Now().Before(deadline) {
+			var n int
+			if err := tdb.Super.QueryRow(ctx, query, args...).Scan(&n); err != nil {
+				t.Fatal(err)
+			}
+			if n > 0 {
+				return
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		t.Fatalf("timed out waiting for lock: %s", query)
+	}
+	for _, v := range []struct {
+		name       string
+		key        int64
+		entryFirst bool
+	}{{"Entry first", 727201, true}, {"Delete first", 727202, false}} {
+		t.Run(v.name, func(t *testing.T) {
+			var id string
+			if err := tdb.Super.QueryRow(ctx, `INSERT INTO finance_categories(tenant_id,name,direction) VALUES($1,$2,'income') RETURNING id::text`, f.tenant, "Barrier "+v.name).Scan(&id); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := conn.Exec(ctx, `SELECT pg_advisory_lock($1)`, v.key); err != nil {
+				t.Fatal(err)
+			}
+			results := make(chan *httptest.ResponseRecorder, 2)
+			entry := func() {
+				results <- f.do("POST", "/api/finance/entries", fmt.Sprintf(`{"categoryId":%q,"direction":"income","date":"2026-11-10","amountCents":100,"description":"Fixture"}`, id), "198.51.100.12", officer, nil)
+			}
+			deleteCategory := func() { results <- f.do("DELETE", "/api/finance/categories/"+id, "", "198.51.100.12", officer, nil) }
+			if v.entryFirst {
+				go entry()
+			} else {
+				go deleteCategory()
+			}
+			wait(t, `SELECT count(*) FROM pg_locks WHERE locktype='advisory' AND objid=$1 AND NOT granted`, v.key)
+			if v.entryFirst {
+				go deleteCategory()
+				wait(t, `SELECT count(*) FROM pg_stat_activity WHERE wait_event_type='Lock' AND query LIKE 'SELECT id::text,direction,name,active,reserved FROM finance_categories%'`)
+			} else {
+				go entry()
+				wait(t, `SELECT count(*) FROM pg_stat_activity WHERE wait_event_type='Lock' AND query LIKE 'SELECT direction,active,reserved FROM finance_categories%'`)
+			}
+			if _, err := conn.Exec(ctx, `SELECT pg_advisory_unlock($1)`, v.key); err != nil {
+				t.Fatal(err)
+			}
+			a, b := <-results, <-results
+			for _, result := range []*httptest.ResponseRecorder{a, b} {
+				if result.Code == 404 {
+					wantResponse(t, result, 404, `{"error":"not_found"}`)
+				}
+				if result.Code == 409 {
+					wantResponse(t, result, 409, `{"error":"category_in_use"}`)
+				}
+			}
+			if v.entryFirst {
+				if !((a.Code == 201 && b.Code == 409) || (b.Code == 201 && a.Code == 409)) {
+					t.Fatalf("entry first: %d %s / %d %s", a.Code, a.Body, b.Code, b.Body)
+				}
+			} else if !((a.Code == 204 && b.Code == 404) || (b.Code == 204 && a.Code == 404)) {
+				t.Fatalf("delete first: %d %s / %d %s", a.Code, a.Body, b.Code, b.Body)
+			}
+			var categories, entries int
+			if err := tdb.Super.QueryRow(ctx, `SELECT (SELECT count(*) FROM finance_categories WHERE tenant_id=$1 AND id=$2), (SELECT count(*) FROM finance_entries WHERE tenant_id=$1 AND category_id=$2)`, f.tenant, id).Scan(&categories, &entries); err != nil {
+				t.Fatal(err)
+			}
+			if v.entryFirst && (categories != 1 || entries != 1) || !v.entryFirst && (categories != 0 || entries != 0) {
+				t.Fatalf("entry first=%v category=%d entries=%d", v.entryFirst, categories, entries)
+			}
+		})
+	}
 }
