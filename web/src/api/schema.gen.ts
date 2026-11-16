@@ -711,8 +711,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List the roster members of the active school for an election
-         * @description Any member of the active school; returns roster member names and ids only (no document numbers). Responses carry `Cache-Control: no-store`.
+         * Search roster members by name for an election list
+         * @description List builders only (a student with a roster link, or an Electoral commission member with a verified two-factor session). Searches roster members of the active school by name with at least 3 letters and returns at most 20 results (names and ids only, never document numbers). Responses carry `Cache-Control: no-store`.
          */
         get: operations["getElectionCandidates"];
         put?: never;
@@ -2939,7 +2939,10 @@ export interface operations {
     };
     getElectionCandidates: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Name search query (at least 3 letters). */
+                q?: string;
+            };
             header?: never;
             path: {
                 electionId: string;
@@ -2948,7 +2951,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Roster members ordered by name. */
+            /** @description Up to 20 matching roster members ordered by name. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -2958,7 +2961,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
-            /** @description The account has no membership in the active school (`forbidden`). */
+            /** @description Caller may not build a list (`forbidden` for school admins, officers without a roster link, or accounts without membership) or is on the Electoral commission without a verified second factor (`mfa_required`). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -2974,6 +2977,18 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NotFoundError"];
+                };
+            };
+            /** @description Missing, blank, or shorter than 3 letters search query (`query_too_short`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "query_too_short";
+                    };
                 };
             };
         };

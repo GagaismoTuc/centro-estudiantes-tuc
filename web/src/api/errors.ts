@@ -59,6 +59,7 @@ const messages: Record<string, string> = {
   list_name_taken: "Ya hay otra lista con ese nombre en esta elección.",
   candidate_on_other_list: "Uno de los alumnos elegidos ya es candidato en otra lista.",
   reason_required: "Escribí el motivo del rechazo (hasta 500 caracteres).",
+  query_too_short: "Escribí al menos 3 letras para buscar.",
   network: "No pudimos conectarnos. Revisá tu conexión e intentá de nuevo.",
 };
 
@@ -123,6 +124,7 @@ const fieldsByCode: Record<string, string[]> = {
   list_name_taken: ["name"],
   invalid_representative: ["representativeRosterMemberId"],
   reason_required: ["reason"],
+  query_too_short: ["candidateQuery"],
 };
 
 export function errorFields(code: string): string[] {

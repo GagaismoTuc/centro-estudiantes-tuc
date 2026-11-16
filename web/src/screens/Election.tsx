@@ -27,7 +27,6 @@ export function Election() {
   // undefined while loading, null when there is no election in progress.
   const [election, setElection] = useState<ElectionData | null | undefined>(undefined);
   const [listsData, setListsData] = useState<ElectionListsResponse | null>(null);
-  const [rosterCandidates, setRosterCandidates] = useState<CommissionMember[]>([]);
   const [editingList, setEditingList] = useState<ElectionList | null>(null);
   const [status, setStatus] = useState<Status>(null);
 
@@ -46,26 +45,17 @@ export function Election() {
     if (e.ok) {
       setElection(e.data);
       if (e.data.state !== "draft") {
-        const [listsRes, candsRes] = await Promise.all([
-          call(apiClient.GET("/elections/{electionId}/lists", { params: { path: { electionId: e.data.id } } })),
-          e.data.state === "submission"
-            ? call(apiClient.GET("/elections/{electionId}/candidates", { params: { path: { electionId: e.data.id } } }))
-            : Promise.resolve(null),
-        ]);
+        const listsRes = await call(
+          apiClient.GET("/elections/{electionId}/lists", { params: { path: { electionId: e.data.id } } }),
+        );
         if (listsRes.ok) setListsData(listsRes.data);
         else failed(listsRes.code);
-        if (candsRes) {
-          if (candsRes.ok) setRosterCandidates(candsRes.data);
-          else failed(candsRes.code);
-        }
       } else {
         setListsData(null);
-        setRosterCandidates([]);
       }
     } else if (e.code === "not_found") {
       setElection(null);
       setListsData(null);
-      setRosterCandidates([]);
     } else {
       failed(e.code);
     }
@@ -125,7 +115,6 @@ export function Election() {
         <ListForm
           mode={editingList ? "edit" : "submit"}
           election={election}
-          rosterMembers={rosterCandidates}
           initial={editingList ?? undefined}
           onSaved={async (msg) => {
             setEditingList(null);

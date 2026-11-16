@@ -12,7 +12,6 @@ import {
   fromLocalInput,
   loadCommissionStatus,
   toLocalInput,
-  type CommissionMember,
   type CommissionStatus,
   type Election,
   type ElectionList,
@@ -27,7 +26,6 @@ export function CommissionPanel() {
   // undefined while loading, null when there is no election in progress.
   const [election, setElection] = useState<Election | null | undefined>(undefined);
   const [lists, setLists] = useState<ElectionList[] | null>(null);
-  const [rosterCandidates, setRosterCandidates] = useState<CommissionMember[]>([]);
   const [editingList, setEditingList] = useState<ElectionList | null>(null);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<Status>(null);
@@ -53,24 +51,16 @@ export function CommissionPanel() {
     const nextElection = e.ok ? e.data : null;
     setElection(nextElection);
     if (c.ok && c.data.isMember && nextElection && nextElection.state !== "draft") {
-      const [listsRes, candsRes] = await Promise.all([
-        call(apiClient.GET("/elections/{electionId}/lists", { params: { path: { electionId: nextElection.id } } })),
-        nextElection.state === "submission"
-          ? call(apiClient.GET("/elections/{electionId}/candidates", { params: { path: { electionId: nextElection.id } } }))
-          : Promise.resolve(null),
-      ]);
+      const listsRes = await call(
+        apiClient.GET("/elections/{electionId}/lists", { params: { path: { electionId: nextElection.id } } }),
+      );
       if (listsRes.ok) setLists(listsRes.data.lists);
       else {
         if (listsRes.code === "mfa_required" || listsRes.code === "unauthenticated") void refresh();
         setStatus({ tone: "error", text: errorMessage(listsRes.code) });
       }
-      if (candsRes) {
-        if (candsRes.ok) setRosterCandidates(candsRes.data);
-        else setStatus({ tone: "error", text: errorMessage(candsRes.code) });
-      }
     } else {
       setLists(null);
-      setRosterCandidates([]);
     }
   }, [refresh]);
 
@@ -150,7 +140,6 @@ export function CommissionPanel() {
             <ListForm
               mode="edit"
               election={election}
-              rosterMembers={rosterCandidates}
               initial={editingList}
               onSaved={async (msg) => {
                 setEditingList(null);
@@ -164,7 +153,6 @@ export function CommissionPanel() {
             <ListForm
               mode="commission"
               election={election}
-              rosterMembers={rosterCandidates}
               onSaved={async (msg) => {
                 setStatus({ tone: "ok", text: msg });
                 await load();

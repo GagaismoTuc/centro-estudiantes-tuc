@@ -190,17 +190,32 @@ function RejectListForm({
   );
 }
 
+function letterCount(value: string): number {
+  return (value.match(/\p{L}/gu) ?? []).length;
+}
+
+function seedMembersMap(initial?: ElectionList): Map<string, CommissionMember> {
+  const map = new Map<string, CommissionMember>();
+  if (!initial) return map;
+  map.set(initial.representativeRosterMemberId, {
+    rosterMemberId: initial.representativeRosterMemberId,
+    fullName: initial.representativeFullName,
+  });
+  for (const c of initial.candidates) {
+    map.set(c.rosterMemberId, { rosterMemberId: c.rosterMemberId, fullName: c.fullName });
+  }
+  return map;
+}
+
 export function ListForm({
   mode,
   election,
-  rosterMembers,
   initial,
   onSaved,
   onCancel,
 }: {
   mode: "submit" | "edit" | "commission";
   election: Election;
-  rosterMembers: CommissionMember[];
   initial?: ElectionList | undefined;
   onSaved: (message: string) => Promise<void>;
   onCancel?: () => void;
@@ -216,18 +231,27 @@ export function ListForm({
     }
     return map;
   });
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<CommissionMember[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
+  const [knownMembers, setKnownMembers] = useState<Map<string, CommissionMember>>(() => seedMembersMap(initial));
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [nameError, setNameError] = useState<string | null>(null);
   const [repError, setRepError] = useState<string | null>(null);
   const [posErrors, setPosErrors] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<Status>(null);
   const [busy, setBusy] = useState(false);
 
+  const searchRef = useRef<HTMLInputElement>(null);
   const repRef = useRef<HTMLSelectElement>(null);
   const nameRef = useRef<HTMLInputElement>(null);
   const selectRefs = useRef<Record<string, HTMLSelectElement | null>>({});
   const statusRef = useRef<HTMLDivElement>(null);
   const focusNext = useRef<HTMLElement | null>(null);
+  const searchSeqRef = useRef(0);
 
+  const positionsKey = election.positions.join("\0");
   useEffect(() => {
     setName(initial?.name ?? "");
     const map: Record<string, string> = {};
@@ -235,11 +259,18 @@ export function ListForm({
       map[pos] = initial?.candidates.find((c) => c.position === pos)?.rosterMemberId ?? "";
     }
     setPicks(map);
+    setKnownMembers(seedMembersMap(initial));
+    searchSeqRef.current += 1;
+    setSearchQuery("");
+    setSearchResults([]);
+    setSearching(false);
+    setHasSearched(false);
+    setSearchError(null);
     setNameError(null);
     setRepError(null);
     setPosErrors({});
     setStatus(null);
-  }, [initial, election.positions]);
+  }, [initial, positionsKey]);
 
   useEffect(() => {
     if (!focusNext.current) return;
@@ -248,10 +279,67 @@ export function ListForm({
   });
 
   const commissionIds = useMemo(() => new Set(election.commission.map((m) => m.rosterMemberId)), [election.commission]);
-  const eligibleCandidates = useMemo(
-    () => rosterMembers.filter((m) => !commissionIds.has(m.rosterMemberId)),
-    [rosterMembers, commissionIds],
+  const eligibleSearchResults = useMemo(
+    () => searchResults.filter((m) => !commissionIds.has(m.rosterMemberId)),
+    [searchResults, commissionIds],
   );
+  const representativeOptions = useMemo(() => {
+    if (!representativeId || searchResults.some((m) => m.rosterMemberId === representativeId)) return searchResults;
+    const saved = knownMembers.get(representativeId);
+    return saved ? [saved, ...searchResults] : searchResults;
+  }, [representativeId, searchResults, knownMembers]);
+
+  function candidateOptionsFor(pos: string): CommissionMember[] {
+    const pickedId = picks[pos];
+    if (!pickedId || eligibleSearchResults.some((m) => m.rosterMemberId === pickedId)) return eligibleSearchResults;
+    const saved = knownMembers.get(pickedId);
+    return saved ? [saved, ...eligibleSearchResults] : eligibleSearchResults;
+  }
+
+  async function runSearch(rawQuery: string, explicit: boolean) {
+    const trimmed = rawQuery.trim();
+    if (letterCount(trimmed) < 3) {
+      searchSeqRef.current += 1;
+      setSearching(false);
+      setSearchResults([]);
+      setHasSearched(false);
+      if (explicit) {
+        setSearchError(errorMessage("query_too_short", "election-list"));
+        focusNext.current = searchRef.current;
+        searchRef.current?.focus();
+      }
+      return;
+    }
+    const seq = ++searchSeqRef.current;
+    setSearching(true);
+    setSearchError(null);
+    const result = await call(
+      apiClient.GET("/elections/{electionId}/candidates", {
+        params: { path: { electionId: election.id }, query: { q: trimmed } },
+      }),
+    );
+    if (seq !== searchSeqRef.current) return;
+    setSearching(false);
+    if (result.ok) {
+      setHasSearched(true);
+      setSearchResults(result.data);
+      setKnownMembers((prev) => {
+        const next = new Map(prev);
+        for (const m of result.data) next.set(m.rosterMemberId, m);
+        return next;
+      });
+      return;
+    }
+    if (result.code === "mfa_required" || result.code === "unauthenticated") void refresh();
+    const msg = errorMessage(result.code, "election-list");
+    if (result.code === "query_too_short") {
+      setSearchError(msg);
+      focusNext.current = searchRef.current;
+      return;
+    }
+    setStatus({ tone: "error", text: msg });
+    focusNext.current = statusRef.current;
+  }
 
   const heading = mode === "edit" ? "Editá la lista" : mode === "commission" ? "Cargá una lista" : "Presentá tu lista";
   const submitLabel = mode === "edit" ? "Guardar cambios" : mode === "commission" ? "Cargar lista" : "Presentar lista";
@@ -330,6 +418,12 @@ export function ListForm({
         const empty: Record<string, string> = {};
         for (const pos of election.positions) empty[pos] = "";
         setPicks(empty);
+        searchSeqRef.current += 1;
+        setSearchQuery("");
+        setSearchResults([]);
+        setHasSearched(false);
+        setSearchError(null);
+        setKnownMembers(new Map());
       }
       const okMsg =
         mode === "edit" ? "Se guardaron los cambios de la lista." : mode === "commission" ? "Se cargó la lista." : "Se presentó tu lista.";
@@ -353,6 +447,74 @@ export function ListForm({
     focusNext.current = statusRef.current;
   }
 
+  const searchLabel = mode === "commission" ? "Buscar alumno por nombre" : "Buscar candidato por nombre";
+  const searchHintId = `${id}-search-hint`;
+  const searchErrorId = `${id}-search-error`;
+  const candidateSearchField = (
+    <div className="field">
+      <label htmlFor={`${id}-search`}>{searchLabel}</label>
+      <div className="search-row">
+        <input
+          id={`${id}-search`}
+          ref={searchRef}
+          name="candidateQuery"
+          type="search"
+          autoComplete="off"
+          value={searchQuery}
+          aria-invalid={searchError ? true : undefined}
+          aria-describedby={searchError ? `${searchHintId} ${searchErrorId}` : searchHintId}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              void runSearch(searchQuery, true);
+            }
+          }}
+          onChange={(event) => {
+            const next = event.target.value;
+            setSearchQuery(next);
+            setSearchError(null);
+            if (letterCount(next.trim()) >= 3) {
+              void runSearch(next, false);
+            } else {
+              searchSeqRef.current += 1;
+              setSearching(false);
+              setSearchResults([]);
+              setHasSearched(false);
+            }
+          }}
+        />
+        <button
+          type="button"
+          className="button button--secondary"
+          disabled={busy}
+          onClick={() => void runSearch(searchQuery, true)}
+        >
+          Buscar
+        </button>
+      </div>
+      <p className="field__hint" id={searchHintId}>
+        Buscá por nombre con al menos 3 letras.
+      </p>
+      {searchError && <FieldError id={searchErrorId}>{searchError}</FieldError>}
+      {searching && (
+        <p className="field__hint" role="status">
+          Buscando…
+        </p>
+      )}
+      {!searching && hasSearched && (
+        <p className="field__hint" role="status">
+          {searchResults.length === 0
+            ? "No encontramos alumnos con ese nombre."
+            : mode !== "commission" && eligibleSearchResults.length === 0
+              ? "Quienes integran el Centro de estudiantes no pueden ser candidatos."
+              : searchResults.length >= 20
+                ? "Mostrando hasta 20 resultados. Si no aparece, escribí más letras."
+                : `${mode === "commission" ? searchResults.length : eligibleSearchResults.length} ${(mode === "commission" ? searchResults.length : eligibleSearchResults.length) === 1 ? "resultado disponible" : "resultados disponibles"}.`}
+        </p>
+      )}
+    </div>
+  );
+
   return (
     <section className="panel" aria-labelledby={`${id}-title`}>
       <h2 id={`${id}-title`}>{heading}</h2>
@@ -366,30 +528,33 @@ export function ListForm({
       >
         <FormStatus status={status} ref={statusRef} />
         {mode === "commission" && (
-          <div className="field">
-            <label htmlFor={`${id}-rep`}>Apoderado</label>
-            <select
-              id={`${id}-rep`}
-              ref={repRef}
-              name="representativeRosterMemberId"
-              required
-              value={representativeId}
-              aria-invalid={repError ? true : undefined}
-              aria-describedby={repError ? `${id}-rep-error` : undefined}
-              onChange={(event) => {
-                setRepresentativeId(event.target.value);
-                setRepError(null);
-              }}
-            >
-              <option value="">Elegí un alumno</option>
-              {rosterMembers.map((m) => (
-                <option key={m.rosterMemberId} value={m.rosterMemberId}>
-                  {m.fullName}
-                </option>
-              ))}
-            </select>
-            {repError && <FieldError id={`${id}-rep-error`}>{repError}</FieldError>}
-          </div>
+          <>
+            {candidateSearchField}
+            <div className="field">
+              <label htmlFor={`${id}-rep`}>Apoderado</label>
+              <select
+                id={`${id}-rep`}
+                ref={repRef}
+                name="representativeRosterMemberId"
+                required
+                value={representativeId}
+                aria-invalid={repError ? true : undefined}
+                aria-describedby={repError ? `${id}-rep-error` : undefined}
+                onChange={(event) => {
+                  setRepresentativeId(event.target.value);
+                  setRepError(null);
+                }}
+              >
+                <option value="">Elegí un alumno</option>
+                {representativeOptions.map((m) => (
+                  <option key={m.rosterMemberId} value={m.rosterMemberId}>
+                    {m.fullName}
+                  </option>
+                ))}
+              </select>
+              {repError && <FieldError id={`${id}-rep-error`}>{repError}</FieldError>}
+            </div>
+          </>
         )}
         <div className="field">
           <label htmlFor={`${id}-name`}>Nombre de la lista</label>
@@ -413,9 +578,11 @@ export function ListForm({
         </div>
         <fieldset className="choices">
           <legend>Elegí un candidato para cada cargo</legend>
+          {mode !== "commission" && candidateSearchField}
           {election.positions.map((pos, index) => {
             const fieldId = `${id}-pos-${index}`;
             const err = posErrors[pos];
+            const options = candidateOptionsFor(pos);
             return (
               <div className="field" key={pos}>
                 <label htmlFor={fieldId}>{pos}</label>
@@ -441,7 +608,7 @@ export function ListForm({
                   }}
                 >
                   <option value="">Elegí un candidato</option>
-                  {eligibleCandidates.map((m) => (
+                  {options.map((m) => (
                     <option key={m.rosterMemberId} value={m.rosterMemberId}>
                       {m.fullName}
                     </option>
