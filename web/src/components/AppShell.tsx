@@ -73,6 +73,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
               </Link>
             </li>
           )}
+          {canReadContacts(me) && <li><Link to="/presupuestos" className="nav__item" onClick={onNavigate}><Icon name="calculator" />Presupuestos</Link></li>}
           {canReadContacts(me) && (
             <li>
               <Link to="/contactos" className="nav__item" onClick={onNavigate}>
