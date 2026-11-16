@@ -125,6 +125,9 @@ func (s *Store) saveLine(ctx context.Context, sess auth.Session, budgetID, lineI
 		if in.Kind != "ticket" && (in.Quantity == nil || *in.Quantity <= 0) {
 			return ErrQuantity
 		}
+		if in.Kind == "due" && (in.Quantity == nil || *in.Quantity != 1) {
+			return ErrQuantity
+		}
 		if in.Kind == "ticket" && in.Quantity != nil && *in.Quantity < 0 {
 			return ErrQuantity
 		}

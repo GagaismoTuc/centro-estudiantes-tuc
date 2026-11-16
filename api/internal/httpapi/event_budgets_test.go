@@ -184,6 +184,13 @@ func TestEventBudgetDeleteAndArchive(t *testing.T) {
 	}
 	id = create()
 	path = "/api/event-budgets/" + id
+	rec = f.do("POST", path+"/lines", `{"kind":"cost","headingId":"`+headings["gazebos"]+`","description":"Gazebo","quantity":1,"unitAmountCents":100}`, ip, officer, nil)
+	var saved struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &saved); err != nil || rec.Code != 201 {
+		t.Fatalf("line %d %s %v", rec.Code, rec.Body, err)
+	}
 	rec = f.do("POST", path+"/archive", "", ip, officer, nil)
 	if rec.Code != 200 {
 		t.Fatalf("archive %d %s", rec.Code, rec.Body)
@@ -196,6 +203,13 @@ func TestEventBudgetDeleteAndArchive(t *testing.T) {
 		t.Fatalf("archived get %d %s", rec.Code, rec.Body)
 	}
 	wantResponse(t, f.do("POST", path+"/lines", `{"kind":"cost","headingId":"`+headings["gazebos"]+`","description":"Gazebo","quantity":1,"unitAmountCents":100}`, ip, officer, nil), 409, `{"error":"budget_archived"}`)
+	for _, tc := range []struct{ method, path, body string }{{"PUT", path, `{"name":"Change","startsOn":"2026-09-21","endsOn":"2026-09-25"}`}, {"PUT", path + "/lines/" + saved.ID, `{"kind":"cost","headingId":"` + headings["gazebos"] + `","description":"Changed","quantity":1,"unitAmountCents":100}`}, {"DELETE", path + "/lines/" + saved.ID, ""}} {
+		wantResponse(t, f.do(tc.method, tc.path, tc.body, ip, officer, nil), 409, `{"error":"budget_archived"}`)
+	}
+	var name, description string
+	if err := tdb.Super.QueryRow(ctx, `SELECT b.name,l.description FROM event_budgets b JOIN event_budget_lines l ON l.budget_id=b.id WHERE b.id=$1 AND l.id=$2`, id, saved.ID).Scan(&name, &description); err != nil || name != "Week" || description != "Gazebo" {
+		t.Fatalf("archived changed %q %q %v", name, description, err)
+	}
 }
 
 func TestEventBudgetCopiesReferencePrice(t *testing.T) {
@@ -276,6 +290,42 @@ func TestEventBudgetAuthorization(t *testing.T) {
 	r := f.do("POST", "/api/event-budgets", body, ip, officer, nil)
 	if r.Code != 201 {
 		t.Fatal(r.Body.String())
+	}
+	var budget struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(r.Body.Bytes(), &budget); err != nil {
+		t.Fatal(err)
+	}
+	path := "/api/event-budgets/" + budget.ID
+	r = f.do("POST", path+"/lines", `{"kind":"sponsor","description":"Original","quantity":1,"unitAmountCents":100}`, ip, officer, nil)
+	var line struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(r.Body.Bytes(), &line); err != nil || r.Code != 201 {
+		t.Fatalf("seed %d %s %v", r.Code, r.Body, err)
+	}
+	snapshot := func() string {
+		var value string
+		err := tdb.Super.QueryRow(ctx, `SELECT row_to_json(b)::text || coalesce((SELECT jsonb_agg(to_jsonb(l) ORDER BY l.id)::text FROM event_budget_lines l WHERE l.budget_id=b.id),'[]') FROM event_budgets b WHERE b.id=$1`, budget.ID).Scan(&value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return value
+	}
+	before := snapshot()
+	writes := []struct{ method, path, body string }{{"PUT", path, body}, {"DELETE", path, ""}, {"POST", path + "/archive", ""}, {"POST", path + "/lines", `{"kind":"sponsor","description":"Changed","quantity":1,"unitAmountCents":100}`}, {"PUT", path + "/lines/" + line.ID, `{"kind":"sponsor","description":"Changed","quantity":1,"unitAmountCents":100}`}, {"DELETE", path + "/lines/" + line.ID, ""}}
+	for _, tc := range []struct {
+		token  string
+		status int
+		body   string
+	}{{"", 401, unauthBody}, {student, 403, `{"error":"forbidden"}`}, {admin, 403, `{"error":"forbidden"}`}, {pending, 403, `{"error":"mfa_required"}`}} {
+		for _, w := range writes {
+			wantResponse(t, f.do(w.method, w.path, w.body, ip, tc.token, nil), tc.status, tc.body)
+			if snapshot() != before {
+				t.Fatalf("%s %s changed state", w.method, w.path)
+			}
+		}
 	}
 	for _, tc := range []struct {
 		token  string
@@ -368,6 +418,7 @@ func TestEventBudgetIncomeLines(t *testing.T) {
 			t.Fatalf("line %d %s", r.Code, r.Body)
 		}
 	}
+	wantResponse(t, f.do("POST", path+"/lines", `{"kind":"due","description":"Dues","quantity":2,"unitAmountCents":30000}`, ip, officer, nil), 422, `{"error":"invalid_quantity"}`)
 	r = f.do("GET", path, "", ip, officer, nil)
 	var d struct {
 		Lines []struct {
