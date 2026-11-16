@@ -11,7 +11,7 @@ test("officer adds a cost using a copied reference price and sees the event tota
   const sent = mockApi({
     "GET /auth/me": ok(me({ role: "officer", mfa: "satisfied" })),
     "GET /event-budgets": ok([budget]),
-    "GET /event-budgets/b1": ok({ ...budget, totals, days: [], lines: [] }),
+    "GET /event-budgets/b1": [ok({ ...budget, totals: { costCents: 0, incomeCents: 0, resultCents: 0, breakEvenCents: null }, days: [], lines: [] }), ok({ ...budget, totals, days: [], lines: [{ id: "l1", kind: "cost", description: "Gazebo", quantity: 1, unitAmountCents: 2500000 }] })],
     "GET /contacts/headings": ok([{ id: "h1", name: "gazebos", archived: false, reserved: false }]),
     "GET /contacts": ok([{ id: "c1", headingId: "h1", name: "Gazebos", referencePrices: [{ id: "p1", description: "3x3", amountCents: 2500000, date: "2026-09-01" }] }]),
     "POST /event-budgets/b1/lines": ok({ id: "l1", kind: "cost", description: "Gazebo", quantity: 1, unitAmountCents: 2500000 }, 201),
@@ -25,6 +25,6 @@ test("officer adds a cost using a copied reference price and sees the event tota
   fireEvent.change(screen.getByLabelText("Descripci\u00f3n"), { target: { value: "Gazebo" } });
   fireEvent.change(screen.getByLabelText("Cantidad"), { target: { value: "1" } });
   fireEvent.click(screen.getByRole("button", { name: "Agregar l\u00ednea" }));
-  await waitFor(() => expect(sent.some((r) => r.method === "POST" && r.path === "/event-budgets/b1/lines")).toBe(true));
-  expect(screen.getByText(/^Costo:/)).toBeTruthy();
+  await waitFor(() => expect(sent.some((r) => r.method === "POST" && r.path === "/event-budgets/b1/lines" && (r.body as { unitAmountCents: number }).unitAmountCents === 2500000)).toBe(true));
+  await waitFor(() => expect(screen.getByText(/^Costo:/).textContent).toContain("25.000"));
 });

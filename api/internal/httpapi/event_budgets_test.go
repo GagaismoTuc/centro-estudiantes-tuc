@@ -1,6 +1,7 @@
 package httpapi_test
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"testing"
@@ -178,6 +179,11 @@ func TestEventBudgetDeleteAndArchive(t *testing.T) {
 		t.Fatal(rec.Body.String())
 	}
 	wantResponse(t, f.do("DELETE", path, "", ip, officer, nil), 204, "")
+	wantResponse(t, f.do("GET", path, "", ip, officer, nil), 404, `{"error":"not_found"}`)
+	var budgetCount int
+	if err := tdb.Super.QueryRow(ctx, `SELECT count(*) FROM event_budgets WHERE id=$1`, id).Scan(&budgetCount); err != nil || budgetCount != 0 {
+		t.Fatalf("budget remains %d %v", budgetCount, err)
+	}
 	var n int
 	if err := tdb.Super.QueryRow(ctx, `SELECT count(*) FROM event_budget_lines WHERE budget_id=$1`, id).Scan(&n); err != nil || n != 0 {
 		t.Fatalf("orphan lines %d %v", n, err)
@@ -384,10 +390,31 @@ func TestEventBudgetEditingAndConcurrentLines(t *testing.T) {
 		t.Fatalf("detail %d %s %v", r.Code, r.Body, err)
 	}
 	line := detail.Lines[0].ID
-	for _, v := range []struct{ token, name string }{{officer, "First"}, {other, "Last"}} {
-		body := `{"kind":"cost","headingId":"` + headings["gazebos"] + `","description":"` + v.name + `","quantity":1,"unitAmountCents":100}`
-		if r := f.do("PUT", path+"/lines/"+line, body, ip, v.token, nil); r.Code != 200 {
-			t.Fatalf("edit %d %s", r.Code, r.Body)
+
+	// Hold the line so the first request owns the budget lock while the second waits for it.
+	lock, err := tdb.Super.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = lock.Rollback(context.Background()) })
+	if _, err = lock.Exec(ctx, `SELECT id FROM event_budget_lines WHERE id=$1 FOR UPDATE`, line); err != nil {
+		t.Fatal(err)
+	}
+	concurrent := make(chan int, 2)
+	edit := func(token, name string) {
+		payload := `{"kind":"cost","headingId":"` + headings["gazebos"] + `","description":"` + name + `","quantity":1,"unitAmountCents":100}`
+		concurrent <- f.do("PUT", path+"/lines/"+line, payload, ip, token, nil).Code
+	}
+	go edit(officer, "First")
+	waitForLockedQueries(t, ctx, "%UPDATE event_budget_lines SET heading_id=%", 1)
+	go edit(other, "Last")
+	waitForLockedQueries(t, ctx, "%SELECT starts_on::text,ends_on::text,archived_at IS NOT NULL FROM event_budgets%FOR UPDATE%", 1)
+	if err := lock.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 2; i++ {
+		if status := <-concurrent; status != 200 {
+			t.Fatalf("concurrent edit status %d", status)
 		}
 	}
 	var got string
