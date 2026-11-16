@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -103,6 +104,92 @@ func fullCandidates(ana, ciro, dana, eli string) []elections.CandidateInput {
 		{Position: "Vicepresidente", RosterMemberID: ciro},
 		{Position: "Secretario", RosterMemberID: dana},
 		{Position: "Tesorero", RosterMemberID: eli},
+	}
+}
+
+type storeListRow struct {
+	ID               string
+	ElectionID       string
+	Name             string
+	RepresentativeID string
+	Status           string
+	IsActive         bool
+	RejectionReason  *string
+	ReviewedAt       *time.Time
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+}
+
+type storeCandidateRow struct {
+	ListID        string
+	PositionOrder int
+	CandidateID   string
+	IsActive      bool
+}
+
+type storeListSnapshot struct {
+	Lists      []storeListRow
+	Candidates []storeCandidateRow
+}
+
+func snapshotLists(t *testing.T, ctx context.Context, tenant string) storeListSnapshot {
+	t.Helper()
+	var snap storeListSnapshot
+	rows, err := tdb.Super.Query(ctx, `
+		SELECT id::text, election_id::text, name, representative_id::text, status, is_active,
+		       rejection_reason, reviewed_at, created_at, updated_at
+		FROM election_lists
+		WHERE tenant_id = $1
+		ORDER BY id`, tenant)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var r storeListRow
+		var reviewedAt *time.Time
+		if err := rows.Scan(&r.ID, &r.ElectionID, &r.Name, &r.RepresentativeID, &r.Status, &r.IsActive,
+			&r.RejectionReason, &reviewedAt, &r.CreatedAt, &r.UpdatedAt); err != nil {
+			t.Fatal(err)
+		}
+		r.CreatedAt = r.CreatedAt.UTC()
+		r.UpdatedAt = r.UpdatedAt.UTC()
+		if reviewedAt != nil {
+			utc := reviewedAt.UTC()
+			r.ReviewedAt = &utc
+		}
+		snap.Lists = append(snap.Lists, r)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	cRows, err := tdb.Super.Query(ctx, `
+		SELECT list_id::text, position_order, candidate_id::text, is_active
+		FROM election_list_candidates
+		WHERE tenant_id = $1
+		ORDER BY list_id, position_order`, tenant)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cRows.Close()
+	for cRows.Next() {
+		var c storeCandidateRow
+		if err := cRows.Scan(&c.ListID, &c.PositionOrder, &c.CandidateID, &c.IsActive); err != nil {
+			t.Fatal(err)
+		}
+		snap.Candidates = append(snap.Candidates, c)
+	}
+	if err := cRows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	return snap
+}
+
+func assertListsUnchanged(t *testing.T, ctx context.Context, tenant string, before storeListSnapshot, label string) {
+	t.Helper()
+	after := snapshotLists(t, ctx, tenant)
+	if !reflect.DeepEqual(before, after) {
+		t.Fatalf("%s: persisted election lists mutated:\nbefore: %+v\nafter:  %+v", label, before, after)
 	}
 }
 
@@ -382,15 +469,52 @@ func TestStoreApproveRejectAndVisibilityRules(t *testing.T) {
 		t.Fatalf("ana ListLists = %+v, err=%v (want only approved l2)", viewAna, err)
 	}
 
-	// R7: after submission ends, approve/reject/edit/submit all return ErrSubmissionClosed.
-	clk.t = example2027.SubmissionEndsAt
-	if _, err := st.SubmitList(ctx, betoSess, ls.electionID, elections.ListInput{
-		Name: "Lista Tarde", Candidates: fullCandidates(ls.beto, ls.fito, ls.ana, ls.eli),
-	}); !errors.Is(err, elections.ErrSubmissionClosed) {
-		t.Fatalf("submit at SubmissionEndsAt: %v", err)
+	// R7: before and after submission period, submit/commission-submit/edit/approve/reject on a pending
+	// list all return ErrSubmissionClosed with zero persisted changes.
+	pending, err := st.SubmitList(ctx, betoSess, ls.electionID, elections.ListInput{
+		Name: "Lista Pendiente R7", Candidates: fullCandidates(ls.beto, ls.gabi, ls.hugo, ls.iris),
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
-	if _, err := st.ApproveList(ctx, commSess, ls.electionID, l2.ID); !errors.Is(err, elections.ErrSubmissionClosed) {
-		t.Fatalf("approve after submission: %v", err)
+	beforeClosed := snapshotLists(t, ctx, ls.tenant)
+	for _, tc := range []struct {
+		name string
+		at   time.Time
+	}{
+		{"before submissionStartsAt", example2027.SubmissionStartsAt.Add(-time.Second)},
+		{"at submissionEndsAt", example2027.SubmissionEndsAt},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			clk.t = tc.at
+			if _, err := st.SubmitList(ctx, betoSess, ls.electionID, elections.ListInput{
+				Name: "Lista Fuera", Candidates: fullCandidates(ls.beto, ls.fito, ls.ana, ls.eli),
+			}); !errors.Is(err, elections.ErrSubmissionClosed) {
+				t.Fatalf("submit: %v, want ErrSubmissionClosed", err)
+			}
+			if _, err := st.CommissionSubmitList(ctx, commSess, ls.electionID, ls.fito, elections.ListInput{
+				Name: "Lista Fuera Comm", Candidates: fullCandidates(ls.beto, ls.fito, ls.ana, ls.eli),
+			}); !errors.Is(err, elections.ErrSubmissionClosed) {
+				t.Fatalf("commission submit: %v, want ErrSubmissionClosed", err)
+			}
+			if _, err := st.EditList(ctx, betoSess, ls.electionID, pending.ID, elections.ListInput{
+				Name: "Editada Fuera Rep", Candidates: fullCandidates(ls.beto, ls.gabi, ls.hugo, ls.iris),
+			}); !errors.Is(err, elections.ErrSubmissionClosed) {
+				t.Fatalf("rep edit: %v, want ErrSubmissionClosed", err)
+			}
+			if _, err := st.EditList(ctx, commSess, ls.electionID, pending.ID, elections.ListInput{
+				Name: "Editada Fuera Comm", Candidates: fullCandidates(ls.beto, ls.gabi, ls.hugo, ls.iris),
+			}); !errors.Is(err, elections.ErrSubmissionClosed) {
+				t.Fatalf("comm edit: %v, want ErrSubmissionClosed", err)
+			}
+			if _, err := st.ApproveList(ctx, commSess, ls.electionID, pending.ID); !errors.Is(err, elections.ErrSubmissionClosed) {
+				t.Fatalf("approve: %v, want ErrSubmissionClosed", err)
+			}
+			if _, err := st.RejectList(ctx, commSess, ls.electionID, pending.ID, "Fuera"); !errors.Is(err, elections.ErrSubmissionClosed) {
+				t.Fatalf("reject: %v, want ErrSubmissionClosed", err)
+			}
+			assertListsUnchanged(t, ctx, ls.tenant, beforeClosed, "R7 "+tc.name)
+		})
 	}
 
 	// R12: cross-tenant requests return ErrNotFound.
