@@ -23,6 +23,7 @@ export const stateLabel: Record<ElectionState, string> = {
   scheduled: "Programada",
   open: "Abierta",
   closed: "Cerrada",
+  annulled: "Anulada",
 };
 
 export const DEFAULT_POSITIONS = ["Presidente", "Vicepresidente", "Secretario", "Tesorero"];

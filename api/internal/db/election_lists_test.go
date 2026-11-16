@@ -354,11 +354,13 @@ func TestElectionListConstraintsAndCandidateUniqueness(t *testing.T) {
 }
 
 func TestElectionListsMigrationIsReversible(t *testing.T) {
-	if _, err := migrations.FS.ReadFile("00021_election_lists.sql"); err != nil {
-		t.Fatalf("election lists migration 00021 is missing: %v", err)
+	if _, err := migrations.FS.ReadFile("00026_election_lists.sql"); err != nil {
+		t.Fatalf("election lists migration 00026 is missing: %v", err)
 	}
-	if _, err := migrations.FS.ReadFile("00015_election_lists.sql"); err == nil {
-		t.Fatal("old election lists migration 00015 still exists")
+	for _, old := range []string{"00015_election_lists.sql", "00021_election_lists.sql"} {
+		if _, err := migrations.FS.ReadFile(old); err == nil {
+			t.Fatalf("old election lists migration %s still exists", old)
+		}
 	}
 	ctx := integration(t)
 	if _, err := env.super.Exec(ctx, `CREATE DATABASE election_lists_migration_check`); err != nil {
@@ -397,25 +399,25 @@ func TestElectionListsMigrationIsReversible(t *testing.T) {
 			t.Fatalf("goose version = %d (err=%v), want %d", version, err, want)
 		}
 	}
-	// Simulate upgrading a database already at origin/main's 00019_reversals.sql.
-	if _, err := p.UpTo(ctx, 19); err != nil {
-		t.Fatalf("up to 19: %v", err)
+	// Simulate upgrading a database already at origin/main's 00022_election_annulment.sql.
+	if _, err := p.UpTo(ctx, 22); err != nil {
+		t.Fatalf("up to 22: %v", err)
 	}
-	checkVersion(19)
+	checkVersion(22)
 	checkTables(false)
 	if err := db.Migrate(ctx, dsn); err != nil {
-		t.Fatalf("migrate up from 19: %v", err)
+		t.Fatalf("migrate up from 22: %v", err)
 	}
-	checkVersion(21)
+	checkVersion(26)
 	checkTables(true)
-	if _, err := p.DownTo(ctx, 20); err != nil {
+	if _, err := p.DownTo(ctx, 25); err != nil {
 		t.Fatalf("down: %v", err)
 	}
-	checkVersion(19)
+	checkVersion(22)
 	checkTables(false)
 	if _, err := p.Up(ctx); err != nil {
 		t.Fatalf("up: %v", err)
 	}
-	checkVersion(21)
+	checkVersion(26)
 	checkTables(true)
 }

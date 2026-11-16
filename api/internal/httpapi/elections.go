@@ -13,12 +13,16 @@ import (
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/oapi"
 )
 
-// electionJSON renders e with its state at now; dates go out in UTC.
+// electionJSON renders e with its state at now, and its annulment when annulled; dates go out in UTC.
 func electionJSON(e elections.Election, now time.Time) oapi.Election {
-	return oapi.Election{Id: e.ID, Name: e.Name, Mode: oapi.ElectionMode(e.Mode),
+	out := oapi.Election{Id: e.ID, Name: e.Name, Mode: oapi.ElectionMode(e.Mode),
 		SubmissionStartsAt: e.SubmissionStartsAt.UTC(), SubmissionEndsAt: e.SubmissionEndsAt.UTC(),
 		StartsAt: e.StartsAt.UTC(), EndsAt: e.EndsAt.UTC(), Positions: e.Positions,
 		State: oapi.ElectionState(elections.State(now, e)), Commission: commissionMembersJSON(e.Commission)}
+	if e.AnnulledAt != nil && e.AnnulmentReason != nil {
+		out.Annulment = &oapi.Annulment{Reason: *e.AnnulmentReason, AnnulledAt: e.AnnulledAt.UTC()}
+	}
+	return out
 }
 
 // draftBody is oapi.ElectionDraftRequest with every field optional, so a missing or null field gets
@@ -124,6 +128,8 @@ func writeDraftError(w http.ResponseWriter, op string, err error) {
 		writeError(w, http.StatusUnprocessableEntity, "mode_not_supported")
 	case errors.Is(err, elections.ErrElectionInProgress):
 		writeError(w, http.StatusConflict, "election_in_progress")
+	case errors.Is(err, elections.ErrElectionAnnulled):
+		writeError(w, http.StatusConflict, "election_annulled")
 	case errors.Is(err, elections.ErrNotDraft):
 		writeError(w, http.StatusConflict, "election_not_draft")
 	default:
@@ -204,4 +210,58 @@ func (s *server) GetCurrentElection(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, electionJSON(e, s.now()))
+}
+
+func (s *server) GetLatestElection(w http.ResponseWriter, r *http.Request) {
+	sess, ok := rosterSession(w, r)
+	if !ok {
+		return
+	}
+	e, err := s.elections.ViewLatest(r.Context(), sess)
+	if err != nil {
+		writeElectionsError(w, "read latest election", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, electionJSON(e, s.now()))
+}
+
+// annulmentBody is oapi.AnnulmentRequest with the reason optional, so a missing or null reason gets
+// reason_required instead of a bad request.
+type annulmentBody struct {
+	Reason *string `json:"reason"`
+}
+
+func (s *server) PostElectionAnnulment(w http.ResponseWriter, r *http.Request, electionID string) {
+	const op = "annul election"
+	sess, ok := rosterSession(w, r)
+	if !ok {
+		return
+	}
+	if err := s.elections.AuthorizeAnnulment(r.Context(), sess, electionID); err != nil {
+		writeElectionsError(w, op, err)
+		return
+	}
+	var body annulmentBody
+	if !decodeStrict(w, r, &body) {
+		return
+	}
+	var reason string
+	if body.Reason != nil {
+		reason = *body.Reason
+	}
+	e, err := s.elections.Annul(r.Context(), sess, electionID, reason)
+	switch {
+	case err == nil:
+		writeJSON(w, http.StatusOK, electionJSON(e, s.now()))
+	case errors.Is(err, elections.ErrReasonRequired):
+		writeError(w, http.StatusUnprocessableEntity, "reason_required")
+	case errors.Is(err, elections.ErrReasonTooLong):
+		writeError(w, http.StatusUnprocessableEntity, "reason_too_long")
+	case errors.Is(err, elections.ErrElectionAnnulled):
+		writeError(w, http.StatusConflict, "election_annulled")
+	case errors.Is(err, elections.ErrElectionPublished):
+		writeError(w, http.StatusConflict, "election_published")
+	default:
+		writeElectionsError(w, op, err)
+	}
 }

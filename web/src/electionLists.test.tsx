@@ -75,7 +75,7 @@ test("R13/R1/CS-9: student presents a list with voseo, validation focuses first 
   const sent = mockApi({
     "GET /auth/me": ok(me({ role: "student", mfa: "not_required" })),
     "GET /electoral-commission": ok({ commission: { id: "c1", createdAt: "2026-11-01T12:00:00Z", members: [ana, beto] }, isMember: false, canDesignate: false }),
-    "GET /elections/current": ok(submissionElection),
+    "GET /elections/latest": ok(submissionElection),
     "GET /elections/e1/candidates": [ok([ciro]), ok([dana]), ok([eli]), ok([fito])],
     "GET /elections/e1/lists": [ok({ rosterMemberId: "r-ciro", lists: [] }), ok({ rosterMemberId: "r-ciro", lists: [created] })],
     "POST /elections/e1/lists": ok(created, 201),
@@ -159,7 +159,7 @@ test("R11/R9: student sees approved lists, rejected list with reason, and edits 
   const sent = mockApi({
     "GET /auth/me": ok(me({ role: "student", mfa: "not_required" })),
     "GET /electoral-commission": ok({ commission: { id: "c1", createdAt: "2026-11-01T12:00:00Z", members: [ana, beto] }, isMember: false, canDesignate: false }),
-    "GET /elections/current": ok(submissionElection),
+    "GET /elections/latest": ok(submissionElection),
     "GET /elections/e1/lists": ok({ rosterMemberId: "r-ciro", lists: [rejected, pending, approved] }),
     "PUT /elections/e1/lists/l-pen": ok({ ...pending, name: "Lista Celeste" }),
   });
@@ -263,7 +263,7 @@ test("CS-9/CS-11: list_name_taken focuses list name and list grid uses minmax(0,
   mockApi({
     "GET /auth/me": ok(me({ role: "student", mfa: "not_required" })),
     "GET /electoral-commission": ok({ commission: { id: "c1", createdAt: "2026-11-01T12:00:00Z", members: [ana, beto] }, isMember: false, canDesignate: false }),
-    "GET /elections/current": ok(submissionElection),
+    "GET /elections/latest": ok(submissionElection),
     "GET /elections/e1/candidates": [ok([ciro]), ok([dana]), ok([eli]), ok([fito])],
     "GET /elections/e1/lists": ok({ rosterMemberId: "r-ciro", lists: [] }),
     "POST /elections/e1/lists": fail(409, "list_name_taken"),
@@ -337,7 +337,7 @@ test("R14/CS-9: ListForm searches candidates by >=3 letters without preloading f
   const sent = mockApi({
     "GET /auth/me": ok(me({ role: "student", mfa: "not_required" })),
     "GET /electoral-commission": ok({ commission: { id: "c1", createdAt: "2026-11-01T12:00:00Z", members: [ana, beto] }, isMember: false, canDesignate: false }),
-    "GET /elections/current": ok(submissionElection),
+    "GET /elections/latest": ok(submissionElection),
     "GET /elections/e1/candidates": [ok([ana, ciro]), ok([dana]), ok([])],
     "GET /elections/e1/lists": ok({ rosterMemberId: "r-ciro", lists: [] }),
   });
@@ -378,7 +378,7 @@ test("ListForm preserves input typed before passive mount effects flush", async 
   mockApi({
     "GET /auth/me": ok(me({ role: "student", mfa: "not_required" })),
     "GET /electoral-commission": ok({ commission: { id: "c1", createdAt: "2026-11-01T12:00:00Z", members: [ana, beto] }, isMember: false, canDesignate: false }),
-    "GET /elections/current": ok(submissionElection),
+    "GET /elections/latest": ok(submissionElection),
     "GET /elections/e1/lists": ok({ rosterMemberId: "r-ciro", lists: [] }),
   });
 

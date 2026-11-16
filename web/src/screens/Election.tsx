@@ -39,12 +39,13 @@ export function Election() {
   );
 
   const load = useCallback(async () => {
-    const [c, e] = await Promise.all([loadCommissionStatus(), call(apiClient.GET("/elections/current"))]);
+    // The latest election, so an annulled one stays visible with its reason.
+    const [c, e] = await Promise.all([loadCommissionStatus(), call(apiClient.GET("/elections/latest"))]);
     if (c.ok) setCommission(c.data);
     else failed(c.code);
     if (e.ok) {
       setElection(e.data);
-      if (e.data.state !== "draft") {
+      if (e.data.state !== "draft" && e.data.state !== "annulled") {
         const listsRes = await call(
           apiClient.GET("/elections/{electionId}/lists", { params: { path: { electionId: e.data.id } } }),
         );
@@ -82,7 +83,7 @@ export function Election() {
         </section>
       )}
       {election && <ElectionDetails election={election} />}
-      {election && election.state !== "draft" && listsData && (
+      {election && election.state !== "draft" && election.state !== "annulled" && listsData && (
         <section className="panel" aria-labelledby="approved-lists-title">
           <h2 id="approved-lists-title">Listas aprobadas</h2>
           {approvedLists.length === 0 ? (
@@ -96,7 +97,7 @@ export function Election() {
           )}
         </section>
       )}
-      {election && myLists.length > 0 && (
+      {election && election.state !== "annulled" && myLists.length > 0 && (
         <section className="panel" aria-labelledby="my-lists-title">
           <h2 id="my-lists-title">Mis listas</h2>
           <div className="election-lists">
@@ -124,7 +125,7 @@ export function Election() {
           onCancel={() => setEditingList(null)}
         />
       )}
-      {election === null && commission?.commission && (
+      {(election === null || election?.state === "annulled") && commission?.commission && (
         <section className="panel" aria-labelledby="commission-title">
           <h2 id="commission-title">Centro de estudiantes</h2>
           <MemberList members={commission.commission.members} />
@@ -157,6 +158,11 @@ function ElectionDetails({ election }: { election: ElectionData }) {
       <h2 id={`${id}-name`}>
         <bdi>{election.name}</bdi>
       </h2>
+      {election.annulment && (
+        <p>
+          <strong>Anulada:</strong> <bdi>{election.annulment.reason}</bdi>
+        </p>
+      )}
       <dl className="details">
         <div>
           <dt>Estado</dt>

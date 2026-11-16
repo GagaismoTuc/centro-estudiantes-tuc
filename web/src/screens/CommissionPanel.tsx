@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { call } from "../api/call.ts";
 import { apiClient } from "../api/client.ts";
 import { errorMessage } from "../api/errors.ts";
 import { useSession } from "../auth/session.tsx";
-import { Field, FormStatus, useFormErrors, type Check, type Status } from "../components/Form.tsx";
+import { ConfirmDialog } from "../components/ConfirmDialog.tsx";
+import { Field, FieldError, FormStatus, useFormErrors, type Check, type Status } from "../components/Form.tsx";
 import { PageTitle, useDocumentTitle } from "../components/Page.tsx";
 import { Link } from "../lib/router.tsx";
 import { ListCard, ListForm } from "./ElectionLists.tsx";
@@ -161,7 +162,104 @@ export function CommissionPanel() {
           )}
         </>
       )}
+      {commission?.isMember && election && annullable.includes(election.state) && (
+        <Annulment
+          election={election}
+          onDone={async (next) => {
+            setStatus(next);
+            await load();
+            // The dialog and the section that opened it are gone: the outcome takes the focus.
+            statusRef.current?.focus();
+          }}
+        />
+      )}
     </>
+  );
+}
+
+// Before the end of the voting the commission may annul the election; from then on its result is published.
+const annullable: Election["state"][] = ["draft", "submission", "scheduled", "open"];
+
+/** "Anular elección": a confirmation that asks for the public reason. */
+function Annulment({ election, onDone }: { election: Election; onDone: (status: Status) => Promise<void> }) {
+  const id = useId();
+  const { refresh } = useSession();
+  const [asking, setAsking] = useState(false);
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const fieldRef = useRef<HTMLTextAreaElement>(null);
+
+  function invalid(code: string) {
+    setError(errorMessage(code));
+    fieldRef.current?.focus();
+  }
+
+  async function annul() {
+    if (busy) return;
+    if (!reason.trim()) return invalid("reason_required");
+    setBusy(true);
+    const result = await call(
+      apiClient.POST("/elections/{electionId}/annulment", { params: { path: { electionId: election.id } }, body: { reason } }),
+    );
+    setBusy(false);
+    if (!result.ok && (result.code === "reason_required" || result.code === "reason_too_long")) return invalid(result.code);
+    setAsking(false);
+    if (!result.ok && (result.code === "mfa_required" || result.code === "unauthenticated")) void refresh();
+    await onDone(
+      result.ok
+        ? { tone: "ok", text: "Se anuló la elección. Todos van a ver el motivo." }
+        : { tone: "error", text: errorMessage(result.code) },
+    );
+  }
+
+  return (
+    <section className="panel" aria-labelledby={`${id}-title`}>
+      <h2 id={`${id}-title`}>Anular la elección</h2>
+      <p className="muted small">
+        Es definitivo: la elección no publica resultado, no acepta votos y no se vuelve a abrir. El Centro de estudiantes
+        termina su mandato.
+      </p>
+      <button
+        type="button"
+        className="button button--secondary"
+        onClick={() => {
+          setReason("");
+          setError(null);
+          setAsking(true);
+        }}
+      >
+        Anular elección
+      </button>
+      {asking && (
+        <ConfirmDialog
+          title="¿Anular la elección?"
+          confirmLabel="Anular definitivamente"
+          onConfirm={() => void annul()}
+          onCancel={() => setAsking(false)}
+        >
+          <div className="field">
+            <label htmlFor={`${id}-reason`}>Motivo</label>
+            <p className="field__hint" id={`${id}-hint`}>
+              Escribí el motivo; lo van a ver todos.
+            </p>
+            <textarea
+              id={`${id}-reason`}
+              ref={fieldRef}
+              name="reason"
+              value={reason}
+              aria-invalid={error ? true : undefined}
+              aria-describedby={error ? `${id}-hint ${id}-error` : `${id}-hint`}
+              onChange={(event) => {
+                setReason(event.target.value);
+                setError(null);
+              }}
+            />
+            {error && <FieldError id={`${id}-error`}>{error}</FieldError>}
+          </div>
+        </ConfirmDialog>
+      )}
+    </section>
   );
 }
 

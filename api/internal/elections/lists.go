@@ -42,8 +42,6 @@ var (
 	ErrInvalidCandidates = errors.New("elections: invalid candidates")
 	// ErrCandidateInCommission means a candidate is a member of the election's Electoral commission.
 	ErrCandidateInCommission = errors.New("elections: candidate in commission")
-	// ErrReasonRequired means the rejection reason is blank or longer than MaxReasonLen characters.
-	ErrReasonRequired = errors.New("elections: reason required")
 	// ErrInvalidRepresentative means the representative roster member id is missing or empty.
 	ErrInvalidRepresentative = errors.New("elections: invalid representative")
 	// ErrQueryTooShort means the candidate search query is missing or has fewer than MinCandidateQueryLen letters.

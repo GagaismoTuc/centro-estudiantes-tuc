@@ -1,10 +1,17 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { App } from "./App.tsx";
 import css from "./styles.css?raw";
-import { fail, me, mockApi, ok, sentTo, type Reply } from "./test/api.ts";
+import { emulateDialog, fail, me, mockApi, ok, sentTo, type Reply } from "./test/api.ts";
 
-afterEach(() => vi.restoreAllMocks());
+let restoreDialog: () => void;
+beforeEach(() => {
+  restoreDialog = emulateDialog();
+});
+afterEach(() => {
+  restoreDialog();
+  vi.restoreAllMocks();
+});
 
 const ana = { rosterMemberId: "r1", fullName: "Ana Ficticia" };
 const beto = { rosterMemberId: "r2", fullName: "Beto Ficticio" };
@@ -51,6 +58,7 @@ test("S13: the commission is labeled Centro de estudiantes, texts use voseo and 
     "GET /auth/me": ok(me({ role: "officer", mfa: "satisfied" })),
     "GET /electoral-commission": status({ isMember: true, canDesignate: true }),
     "GET /electoral-commission/candidates": ok([ana, beto]),
+    "GET /elections/latest": fail(404, "not_found"),
     "GET /elections/current": fail(404, "not_found"),
   });
   renderAt("/eleccion");
@@ -142,7 +150,7 @@ test("whoever can designate picks the members of the Centro de estudiantes and s
     "GET /auth/me": ok(me({ role: "school_admin", mfa: "satisfied" })),
     "GET /electoral-commission": [status({ canDesignate: true }), status({ canDesignate: true, members: [ana, beto] })],
     "GET /electoral-commission/candidates": ok([ana, beto]),
-    "GET /elections/current": fail(404, "not_found"),
+    "GET /elections/latest": fail(404, "not_found"),
     "PUT /electoral-commission": [fail(409, "election_frozen"), ok({ id: "c2", createdAt: "2026-11-15T12:00:00Z", members: [ana, beto] })],
   });
   renderAt("/eleccion");
@@ -164,7 +172,7 @@ test("a student sees the election with its Spanish state, dates, positions and c
   mockApi({
     "GET /auth/me": ok(me({ role: "student", mfa: "not_required" })),
     "GET /electoral-commission": status({ members: [ana, beto] }),
-    "GET /elections/current": ok(election),
+    "GET /elections/latest": ok(election),
     "GET /elections/e1/lists": ok({ rosterMemberId: null, lists: [] }),
   });
   renderAt("/");
@@ -193,4 +201,58 @@ test("long single-word names wrap at 360 px and checkboxes keep their size", () 
   expect(rule(".check label")).toContain("overflow-wrap: anywhere");
   expect(rule(".check input")).toContain("flex: none");
   expect(rule(".check input")).toContain("inline-size: 1.25rem");
+});
+
+const reason = "Se detectó un error en el padrón cargado";
+const annulled = { ...election, state: "annulled", annulment: { reason, annulledAt: "2027-03-10T12:00:00Z" } };
+
+test("R11: the commission annuls the election after confirming with a reason it is asked for in voseo", async () => {
+  const sent = mockApi({
+    "GET /auth/me": ok(me({ role: "student", mfa: "satisfied" })),
+    "GET /electoral-commission": [status({ isMember: true }), status({ members: null })],
+    "GET /elections/current": [ok({ ...election, state: "open" }), fail(404, "not_found")],
+    "POST /elections/e1/annulment": ok(annulled),
+  });
+  renderAt("/centro-de-estudiantes");
+  fireEvent.click(await screen.findByRole("button", { name: "Anular elección" }));
+  let dialog = await screen.findByRole("dialog", { name: "¿Anular la elección?" });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Cancelar" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+  fireEvent.click(screen.getByRole("button", { name: "Anular elección" }));
+  dialog = await screen.findByRole("dialog", { name: "¿Anular la elección?" });
+  const field = within(dialog).getByLabelText("Motivo");
+  expect(within(dialog).getByText("Escribí el motivo; lo van a ver todos.")).toBeTruthy();
+  fireEvent.change(field, { target: { value: "   " } });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Anular definitivamente" }));
+  await waitFor(() => expect(field.getAttribute("aria-invalid")).toBe("true"));
+  expect(document.activeElement).toBe(field);
+  expect(within(dialog).getByText("Escribí el motivo antes de anular la elección.")).toBeTruthy();
+  expect(sentTo(sent, "POST /elections/e1/annulment")).toHaveLength(0);
+
+  fireEvent.change(field, { target: { value: reason } });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Anular definitivamente" }));
+  await waitFor(() => expect(sentTo(sent, "POST /elections/e1/annulment")).toHaveLength(1));
+  expect(sentTo(sent, "POST /elections/e1/annulment")[0]!.body).toEqual({ reason });
+  expect(await screen.findByText("Se anuló la elección. Todos van a ver el motivo.")).toBeTruthy();
+  await waitFor(() => expect(document.activeElement?.textContent).toBe("Se anuló la elección. Todos van a ver el motivo."));
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(screen.queryByRole("button", { name: "Anular elección" })).toBeNull();
+});
+
+test("R11: every member sees the election as Anulada with its reason", async () => {
+  mockApi({
+    "GET /auth/me": ok(me({ role: "student", mfa: "not_required" })),
+    "GET /electoral-commission": status({ members: [beto] }),
+    "GET /elections/latest": ok(annulled),
+  });
+  renderAt("/eleccion");
+  expect(await screen.findByRole("heading", { level: 2, name: "Elección 2027" })).toBeTruthy();
+  expect(screen.getByText((_, el) => el?.tagName === "P" && el.textContent === `Anulada: ${reason}`)).toBeTruthy();
+  expect(screen.getByText("Anulada")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Anular elección" })).toBeNull();
+  // The commission the Officers designate next shows next to the annulled election.
+  expect(screen.getByRole("heading", { level: 2, name: "Centro de estudiantes" })).toBeTruthy();
+  const lists = screen.getAllByRole("list", { name: "Integrantes del Centro de estudiantes" });
+  expect(lists.map((l) => within(l).getAllByRole("listitem").map((li) => li.textContent))).toEqual([["Ana Ficticia", "Beto Ficticio"], ["Beto Ficticio"]]);
 });
