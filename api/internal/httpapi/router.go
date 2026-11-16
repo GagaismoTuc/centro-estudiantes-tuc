@@ -13,6 +13,7 @@ import (
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/auth"
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/contacts"
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/elections"
+	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/finance"
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/mail"
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/oapi"
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/roster"
@@ -49,6 +50,7 @@ type server struct {
 	// claimLimiter counts invalid access codes per client IP (claim and redeem).
 	claimLimiter *auth.Limiter
 	roster       *roster.Store
+	finance      *finance.Store
 	contacts     *contacts.Store
 	elections    *elections.Store
 	// mailLimiter counts emailed-link requests per client IP and per email.
@@ -99,6 +101,7 @@ func NewRouter(d Deps) http.Handler {
 		limiter:  auth.NewLimiter(loginMaxFailures, loginWindow, d.Now).WithMax("ip:", perIPMax),
 		roster:   roster.NewStore(d.Pool, d.AccessCodeKey, d.Now),
 		contacts: contacts.NewStore(d.Pool, d.Now),
+		finance:  finance.NewStore(d.Pool, d.Now),
 		// The same clock decides election states, so tests move time by moving Deps.Now.
 		elections: elections.NewStore(d.Pool, d.Now),
 

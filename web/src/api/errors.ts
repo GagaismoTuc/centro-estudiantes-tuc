@@ -21,6 +21,13 @@ const messages: Record<string, string> = {
   already_officer: "Ese alumno ya tiene un cargo.",
   position_taken: "Ese cargo ya est\u00e1 ocupado.",
   invalid_position: "Eleg\u00ed un cargo v\u00e1lido.",
+  invalid_amount: "Ingres\u00e1 un monto mayor a cero.",
+  invalid_date: "Ingres\u00e1 una fecha v\u00e1lida.",
+  future_date: "La fecha no puede ser futura.",
+  description_required: "Escrib\u00ed una descripci\u00f3n para el precio de referencia.",
+  description_too_long: "La descripci\u00f3n puede tener hasta 500 caracteres.",
+  invalid_category: "Eleg\u00ed una categor\u00eda v\u00e1lida para el movimiento.",
+  reserved_category: "Esa categor\u00eda est\u00e1 reservada para pagos de cuotas.",
   member_has_account: "Esa persona ya tiene una cuenta.",
   body_too_large: "El archivo es demasiado grande. El máximo es 1 MB.",
   unsupported_media_type: "El archivo tiene que ser CSV.",
@@ -31,10 +38,6 @@ const messages: Record<string, string> = {
   heading_in_use: "Ese rubro tiene contactos asociados. Archivalo en lugar de borrarlo.",
   reserved_heading: "El rubro «otros» es parte del sistema y no se puede editar, archivar ni borrar.",
   invalid_heading: "Elegí un rubro activo válido.",
-  description_required: "Escribí una descripción para el precio de referencia.",
-  invalid_amount: "Ingresá un monto mayor a cero.",
-  future_date: "La fecha no puede ser futura.",
-  invalid_date: "Ingresá una fecha válida.",
   election_frozen: "La elección ya abrió: no se puede cambiar el Centro de estudiantes.",
   empty_commission: "Elegí al menos un integrante para el Centro de estudiantes.",
   no_account: "Ese alumno todavía no tiene cuenta. Pedile que la active antes de sumarlo al Centro de estudiantes.",
@@ -53,9 +56,14 @@ const messages: Record<string, string> = {
 };
 
 /** Where the error happened, when the same code needs different advice. */
-export type ErrorContext = "access-code" | "change-password" | "mfa" | "mfa-recovery" | "reset" | "verify";
+export type ErrorContext = "finance" | "access-code" | "change-password" | "mfa" | "mfa-recovery" | "reset" | "verify";
 
 const contextual: Record<ErrorContext, Record<string, string>> = {
+  finance: {
+    invalid_amount: "Ingres\u00e1 un monto positivo en centavos enteros.",
+    invalid_date: "Eleg\u00ed una fecha v\u00e1lida.",
+    description_required: "Escrib\u00ed una descripci\u00f3n.",
+  },
   "access-code": {
     invalid_code: "El código no es válido, ya se usó o venció. Pedile uno nuevo a tu escuela.",
   },
@@ -83,6 +91,11 @@ export function errorMessage(code: string, context?: ErrorContext): string {
 
 /** Form fields an error code is about, so the form can mark them invalid and focus the first. */
 const fieldsByCode: Record<string, string[]> = {
+  invalid_amount: ["amount"],
+  invalid_date: ["date"],
+  future_date: ["date"],
+  description_required: ["description"],
+  description_too_long: ["description"],
   invalid_credentials: ["email", "password", "currentPassword"],
   invalid_email: ["email"],
   email_in_use: ["email"],
@@ -92,10 +105,6 @@ const fieldsByCode: Record<string, string[]> = {
   name_required: ["name"],
   heading_exists: ["name"],
   invalid_heading: ["headingId"],
-  description_required: ["description"],
-  invalid_amount: ["amount"],
-  future_date: ["date"],
-  invalid_date: ["date"],
   invalid_name: ["name"],
   invalid_window: ["startsAt", "endsAt"],
   invalid_submission_period: ["submissionStartsAt", "submissionEndsAt"],

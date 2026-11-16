@@ -1436,6 +1436,100 @@ paths:
                   error:
                     type: string
                     enum: [reason_required, reason_too_long]
+  /finance/categories:
+    get:
+      operationId: getFinanceCategories
+      summary: List categories in the active school
+      responses:
+        "200":
+          description: Categories with their directions.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FinanceCategory"
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /finance/balance:
+    get:
+      operationId: getFinanceBalance
+      summary: Fund balance in cents
+      responses:
+        "200":
+          description: Income less expenses.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FinanceBalance"
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /finance/entries:
+    get:
+      operationId: getFinanceEntries
+      summary: List entries in the active school
+      responses:
+        "200":
+          description: Append-only ledger.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FinanceEntry"
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      operationId: postFinanceEntries
+      summary: Record an income or expense as an officer with MFA
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewFinanceEntry"
+      responses:
+        "201":
+          description: Entry recorded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FinanceEntry"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: Category not found in the active school (`not_found`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "422":
+          description: "Invalid input: invalid_amount, invalid_date, future_date, description_required, description_too_long, invalid_category, reserved_category."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+  /finance/entries/{entryId}:
+    parameters:
+      - name: entryId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getFinanceEntry
+      summary: Get an entry in the active school
+      responses:
+        "200":
+          description: Entry.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FinanceEntry" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: Entry not found (`not_found`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 components:
   responses:
     InvalidElectionDraft:
@@ -1504,6 +1598,42 @@ components:
           schema:
             $ref: "#/components/schemas/Error"
   schemas:
+    FinanceCategory:
+      type: object
+      required: [id, name, direction, active, reserved]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        direction: { type: string }
+        active: { type: boolean }
+        reserved: { type: boolean }
+    NewFinanceEntry:
+      type: object
+      additionalProperties: false
+      required: [categoryId, direction, date, amountCents, description]
+      properties:
+        categoryId: { type: string }
+        direction: { type: string }
+        date: { type: string }
+        amountCents: { type: integer, format: int64 }
+        description: { type: string }
+    FinanceEntry:
+      type: object
+      required: [id, categoryId, direction, date, amountCents, description, recordedBy, recordedAt]
+      properties:
+        id: { type: string }
+        categoryId: { type: string }
+        direction: { type: string }
+        date: { type: string }
+        amountCents: { type: integer, format: int64 }
+        description: { type: string }
+        recordedBy: { type: string }
+        recordedAt: { type: string, format: date-time }
+    FinanceBalance:
+      type: object
+      required: [balanceCents]
+      properties:
+        balanceCents: { type: integer, description: "The exact sum; may exceed int64." }
     ForbiddenError:
       type: object
       required: [error]
