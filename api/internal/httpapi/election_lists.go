@@ -89,6 +89,8 @@ func writeListError(w http.ResponseWriter, op string, err error) {
 		writeError(w, http.StatusUnprocessableEntity, "invalid_representative")
 	case errors.Is(err, elections.ErrReasonRequired):
 		writeError(w, http.StatusUnprocessableEntity, "reason_required")
+	case errors.Is(err, elections.ErrQueryTooShort):
+		writeError(w, http.StatusUnprocessableEntity, "query_too_short")
 	case errors.Is(err, elections.ErrSubmissionClosed):
 		writeError(w, http.StatusConflict, "submission_closed")
 	case errors.Is(err, elections.ErrListFrozen):
@@ -104,12 +106,12 @@ func writeListError(w http.ResponseWriter, op string, err error) {
 	}
 }
 
-func (s *server) GetElectionCandidates(w http.ResponseWriter, r *http.Request, electionID string) {
+func (s *server) GetElectionCandidates(w http.ResponseWriter, r *http.Request, electionID string, params oapi.GetElectionCandidatesParams) {
 	sess, ok := rosterSession(w, r)
 	if !ok {
 		return
 	}
-	members, err := s.elections.ListRosterCandidates(r.Context(), sess, electionID)
+	members, err := s.elections.SearchRosterCandidates(r.Context(), sess, electionID, derefString(params.Q))
 	if err != nil {
 		writeListError(w, "election candidates", err)
 		return

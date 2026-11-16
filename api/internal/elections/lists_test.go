@@ -380,6 +380,17 @@ func TestStoreApproveRejectAndVisibilityRules(t *testing.T) {
 	}); !errors.Is(err, auth.ErrMFARequired) {
 		t.Fatalf("commission submit without MFA: %v", err)
 	}
+	missingListID := "00000000-0000-4000-8000-000000000000"
+	for _, listID := range []string{l1.ID, missingListID} {
+		if err := st.AuthorizeEditList(ctx, commNoMFA, ls.electionID, listID); !errors.Is(err, auth.ErrMFARequired) {
+			t.Fatalf("AuthorizeEditList(%s) without MFA: %v, want ErrMFARequired", listID, err)
+		}
+		if _, err := st.EditList(ctx, commNoMFA, ls.electionID, listID, elections.ListInput{
+			Name: "Lista Sin MFA", Candidates: fullCandidates(ls.ana, ls.carla, ls.dana, ls.eli),
+		}); !errors.Is(err, auth.ErrMFARequired) {
+			t.Fatalf("EditList(%s) without MFA: %v, want ErrMFARequired", listID, err)
+		}
+	}
 
 	// R8: non-commission cannot approve/reject -> ErrForbidden.
 	if _, err := st.ApproveList(ctx, betoSess, ls.electionID, l1.ID); !errors.Is(err, elections.ErrForbidden) {
@@ -526,8 +537,21 @@ func TestStoreApproveRejectAndVisibilityRules(t *testing.T) {
 	if _, err := st.GetList(ctx, otherSess, ls.electionID, l2.ID); !errors.Is(err, elections.ErrNotFound) {
 		t.Fatalf("other tenant GetList: %v", err)
 	}
-	if got, err := st.ListRosterCandidates(ctx, anaSess, ls.electionID); err != nil || len(got) != 10 {
-		t.Fatalf("ListRosterCandidates len = %d, err = %v, want 10", len(got), err)
+	if got, err := st.SearchRosterCandidates(ctx, anaSess, ls.electionID, "Dana"); err != nil || len(got) != 1 || got[0].RosterMemberID != ls.dana {
+		t.Fatalf("SearchRosterCandidates = %+v, err = %v, want Dana", got, err)
+	}
+	if _, err := st.SearchRosterCandidates(ctx, anaSess, ls.electionID, "Da"); !errors.Is(err, elections.ErrQueryTooShort) {
+		t.Fatalf("SearchRosterCandidates short query: err = %v, want ErrQueryTooShort", err)
+	}
+	if _, err := st.SearchRosterCandidates(ctx, commNoMFA, ls.electionID, "Dana"); !errors.Is(err, auth.ErrMFARequired) {
+		t.Fatalf("SearchRosterCandidates commNoMFA: err = %v, want ErrMFARequired", err)
+	}
+	adminSess := auth.Session{UserID: ls.adminUser, TenantID: ls.tenant, EmailVerified: true, MFAEnrolled: true, MFAVerified: true}
+	if _, err := st.SearchRosterCandidates(ctx, adminSess, ls.electionID, "Dana"); !errors.Is(err, elections.ErrForbidden) {
+		t.Fatalf("SearchRosterCandidates admin: err = %v, want ErrForbidden", err)
+	}
+	if _, err := st.SearchRosterCandidates(ctx, otherSess, ls.electionID, "Dana"); !errors.Is(err, elections.ErrNotFound) {
+		t.Fatalf("other tenant SearchRosterCandidates: %v, want ErrNotFound", err)
 	}
 	// Verify ListLists returns sorted slices and no panic.
 	_ = slices.IsSortedFunc(viewAna.Lists, func(a, b elections.ElectionList) int { return strings.Compare(a.ID, b.ID) })

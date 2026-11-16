@@ -589,6 +589,29 @@ func TestApproveRejectEditVisibilityAndPeriod(t *testing.T) {
 	}
 	ls.assertSnapshotEqual(t, ctx, afterL1, "R8/R10 unauthorized approve/reject")
 
+	// R10: PUT by commission member without MFA returns 403 mfa_required without reading body or list,
+	// both on an existing list and on a missing list, leaving persisted state unchanged.
+	missingListID := "00000000-0000-4000-8000-000000000000"
+	for _, tc := range []struct {
+		name, listID string
+	}{
+		{"comm no MFA PUT existing list", l1.ID},
+		{"comm no MFA PUT missing list", missingListID},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			probe := &readProbe{}
+			req := httptest.NewRequest(http.MethodPut, ls.listPath(tc.listID), probe)
+			req.AddCookie(&http.Cookie{Name: cookieName, Value: ls.commNoMFA})
+			rec := httptest.NewRecorder()
+			ls.h.ServeHTTP(rec, req)
+			wantResponse(t, rec, http.StatusForbidden, mfaBody)
+			if probe.read {
+				t.Fatal("request body read before MFA check")
+			}
+		})
+	}
+	ls.assertSnapshotEqual(t, ctx, afterL1, "R10 PUT commNoMFA existing and missing list")
+
 	// R11: Dana (another student) gets 404 on pending l1 by id, and empty list in GET /lists.
 	wantResponse(t, ls.do(http.MethodGet, ls.listPath(l1.ID), "", electionIP, ls.danaTok, nil), http.StatusNotFound, `{"error":"not_found"}`)
 	danaView := decodeListsResponse(t, ls.do(http.MethodGet, ls.listsPath(), "", electionIP, ls.danaTok, nil), http.StatusOK)
@@ -678,9 +701,11 @@ func TestApproveRejectEditVisibilityAndPeriod(t *testing.T) {
 
 	// R12: another school receives 404 not_found on election, lists, list, candidates, and write endpoints, with no changes.
 	other := newSchool(t, ctx)
+	_, otherStudentTok, _ := other.student(t, ctx, "Alumno Otro", "30888001")
 	wantResponse(t, other.do(http.MethodGet, ls.listsPath(), "", electionIP, other.reader, nil), http.StatusNotFound, `{"error":"not_found"}`)
 	wantResponse(t, other.do(http.MethodGet, ls.listPath(l2.ID), "", electionIP, other.reader, nil), http.StatusNotFound, `{"error":"not_found"}`)
-	wantResponse(t, other.do(http.MethodGet, fmt.Sprintf("%s/%s/candidates", electionsPath, ls.electionID), "", electionIP, other.reader, nil), http.StatusNotFound, `{"error":"not_found"}`)
+	wantResponse(t, other.do(http.MethodGet, fmt.Sprintf("%s/%s/candidates?q=Ana", electionsPath, ls.electionID), "", electionIP, otherStudentTok, nil), http.StatusNotFound, `{"error":"not_found"}`)
+	wantResponse(t, other.do(http.MethodGet, fmt.Sprintf("%s/%s/candidates?q=Ana", electionsPath, ls.electionID), "", electionIP, other.member, nil), http.StatusNotFound, `{"error":"not_found"}`)
 	wantResponse(t, other.do(http.MethodPost, ls.listsPath(), b1, electionIP, other.member, nil), http.StatusNotFound, `{"error":"not_found"}`)
 	wantResponse(t, other.do(http.MethodPost, ls.commissionListsPath(), encode(map[string]any{
 		"name":                         "Intrusa",
@@ -691,10 +716,110 @@ func TestApproveRejectEditVisibilityAndPeriod(t *testing.T) {
 	wantResponse(t, other.do(http.MethodPost, ls.listPath(l3.ID)+"/approve", "", electionIP, other.member, nil), http.StatusNotFound, `{"error":"not_found"}`)
 	wantResponse(t, other.do(http.MethodPost, ls.listPath(l3.ID)+"/reject", `{"reason":"Intrusa"}`, electionIP, other.member, nil), http.StatusNotFound, `{"error":"not_found"}`)
 	ls.assertSnapshotEqual(t, ctx, beforeEnd, "R12 cross-tenant writes")
+}
 
-	// Candidates endpoint returns roster names without DNIs.
-	cRec := ls.do(http.MethodGet, fmt.Sprintf("%s/%s/candidates", electionsPath, ls.electionID), "", electionIP, ls.danaTok, nil)
-	if cRec.Code != http.StatusOK || strings.Contains(cRec.Body.String(), "30222") {
-		t.Fatalf("candidates status=%d body=%s (must not contain DNI)", cRec.Code, cRec.Body)
+// R14: bounded candidate search (min 3 letters, max 20 results, id+name only, no DNI; only list
+// builders: student with roster entry or commission member with verified MFA).
+func TestElectionCandidateSearch(t *testing.T) {
+	ctx := integration(t)
+	ls := newListSchool(t, ctx)
+	candsPath := fmt.Sprintf("%s/%s/candidates", electionsPath, ls.electionID)
+	missingElectionPath := fmt.Sprintf("%s/%s/candidates", electionsPath, "00000000-0000-4000-8000-000000000000")
+
+	// Unauthenticated -> 401.
+	wantResponse(t, ls.do(http.MethodGet, candsPath+"?q=Beto", "", electionIP, "", nil), http.StatusUnauthorized, unauthBody)
+	wantResponse(t, ls.do(http.MethodGet, candsPath, "", electionIP, "", nil), http.StatusUnauthorized, unauthBody)
+
+	// School admin (no roster entry), officer (no roster entry), and outsider -> 403 forbidden.
+	for _, tc := range []struct{ name, tok string }{
+		{"school admin", ls.admin},
+		{"officer without roster", ls.officer},
+		{"outsider", ls.outsider},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			wantResponse(t, ls.do(http.MethodGet, candsPath+"?q=Beto", "", electionIP, tc.tok, nil), http.StatusForbidden, forbiddenBody)
+		})
+	}
+
+	// Commission member without proven MFA -> 403 mfa_required without reading election/query.
+	for _, path := range []string{candsPath + "?q=Beto", candsPath + "?q=ab", candsPath, missingElectionPath + "?q=Beto"} {
+		wantResponse(t, ls.do(http.MethodGet, path, "", electionIP, ls.commNoMFA, nil), http.StatusForbidden, mfaBody)
+	}
+
+	// Missing, empty, blank, or < 3 letters -> 422 query_too_short for both student and commission with MFA.
+	for _, tok := range []string{ls.danaTok, ls.commTok} {
+		for _, suffix := range []string{"", "?q=", "?q=%20%20%20", "?q=a", "?q=ab", "?q=%20ab%20"} {
+			wantResponse(t, ls.do(http.MethodGet, candsPath+suffix, "", electionIP, tok, nil), http.StatusUnprocessableEntity, `{"error":"query_too_short"}`)
+		}
+	}
+
+	// Missing or foreign election -> 404 not_found.
+	other := newSchool(t, ctx)
+	_, otherStudentTok, _ := other.student(t, ctx, "Otro Estudiante", "30888002")
+	wantResponse(t, ls.do(http.MethodGet, missingElectionPath+"?q=Beto", "", electionIP, ls.danaTok, nil), http.StatusNotFound, `{"error":"not_found"}`)
+	wantResponse(t, other.do(http.MethodGet, candsPath+"?q=Beto", "", electionIP, otherStudentTok, nil), http.StatusNotFound, `{"error":"not_found"}`)
+	wantResponse(t, other.do(http.MethodGet, candsPath+"?q=Beto", "", electionIP, other.member, nil), http.StatusNotFound, `{"error":"not_found"}`)
+
+	// Student and commission member with MFA can search (>= 3 letters); response carries Cache-Control: no-store
+	// and only rosterMemberId + fullName (never DNI).
+	for _, tc := range []struct{ name, tok string }{
+		{"student", ls.danaTok},
+		{"commission with MFA", ls.commTok},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := ls.do(http.MethodGet, candsPath+"?q=bet", "", electionIP, tc.tok, nil)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200 (body %s)", rec.Code, rec.Body)
+			}
+			wantNoStore(t, rec)
+			if strings.Contains(rec.Body.String(), "30222") {
+				t.Fatalf("response leaked DNI: %s", rec.Body)
+			}
+			var got []map[string]any
+			if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+				t.Fatal(err)
+			}
+			if len(got) != 2 || got[0]["rosterMemberId"] != ls.betoID || got[0]["fullName"] != "Beto Alumno" || len(got[0]) != 2 ||
+				got[1]["fullName"] != "Beto Ficticio" || len(got[1]) != 2 {
+				t.Fatalf("search result = %#v, want Beto Alumno and Beto Ficticio with only rosterMemberId and fullName", got)
+			}
+		})
+	}
+
+	// SQL LIKE wildcards must be escaped so they do not match arbitrary characters/rows.
+	for _, wild := range []string{"bet%25", "bet_x"} {
+		rec := ls.do(http.MethodGet, candsPath+"?q="+wild, "", electionIP, ls.danaTok, nil)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("wildcard %s status = %d, body %s", wild, rec.Code, rec.Body)
+		}
+		var got []map[string]any
+		if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+			t.Fatal(err)
+		}
+		if len(got) != 0 {
+			t.Fatalf("wildcard %s returned %d rows, want 0", wild, len(got))
+		}
+	}
+
+	// At most 20 results returned even when more than 20 roster members match.
+	for i := 1; i <= 25; i++ {
+		seedMember(t, ctx, ls.tenant, fmt.Sprintf("Match Alumno %02d", i), fmt.Sprintf("30555%03d", i))
+	}
+	rec := ls.do(http.MethodGet, candsPath+"?q=Match", "", electionIP, ls.danaTok, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("capped search status = %d, body %s", rec.Code, rec.Body)
+	}
+	var capped []struct {
+		RosterMemberID string `json:"rosterMemberId"`
+		FullName       string `json:"fullName"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &capped); err != nil {
+		t.Fatal(err)
+	}
+	if len(capped) != 20 {
+		t.Fatalf("len(capped) = %d, want 20", len(capped))
+	}
+	if capped[0].FullName != "Match Alumno 01" || capped[19].FullName != "Match Alumno 20" {
+		t.Fatalf("capped order/slice unexpected: first=%q last=%q", capped[0].FullName, capped[19].FullName)
 	}
 }

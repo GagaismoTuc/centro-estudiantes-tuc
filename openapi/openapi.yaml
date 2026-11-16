@@ -1341,13 +1341,22 @@ paths:
           type: string
     get:
       operationId: getElectionCandidates
-      summary: List the roster members of the active school for an election
+      summary: Search roster members by name for an election list
       description: >
-        Any member of the active school; returns roster member names and ids only (no document numbers).
+        List builders only (a student with a roster link, or an Electoral commission member with a
+        verified two-factor session). Searches roster members of the active school by name with at
+        least 3 letters and returns at most 20 results (names and ids only, never document numbers).
         Responses carry `Cache-Control: no-store`.
+      parameters:
+        - name: q
+          in: query
+          required: false
+          description: Name search query (at least 3 letters).
+          schema:
+            type: string
       responses:
         "200":
-          description: Roster members ordered by name.
+          description: Up to 20 matching roster members ordered by name.
           content:
             application/json:
               schema:
@@ -1357,7 +1366,10 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthenticated"
         "403":
-          description: The account has no membership in the active school (`forbidden`).
+          description: >
+            Caller may not build a list (`forbidden` for school admins, officers without a roster
+            link, or accounts without membership) or is on the Electoral commission without a
+            verified second factor (`mfa_required`).
           content:
             application/json:
               schema:
@@ -1368,6 +1380,17 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/NotFoundError"
+        "422":
+          description: Missing, blank, or shorter than 3 letters search query (`query_too_short`).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [query_too_short]
   /elections/{electionId}/lists:
     parameters:
       - name: electionId

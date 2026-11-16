@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
@@ -20,6 +21,10 @@ const (
 	MaxListNameLen = 80
 	// MaxReasonLen is the longest rejection reason, in characters.
 	MaxReasonLen = 500
+	// MinCandidateQueryLen is the minimum number of letters required to search candidates.
+	MinCandidateQueryLen = 3
+	// MaxCandidateResults is the maximum number of roster members returned by candidate search.
+	MaxCandidateResults = 20
 )
 
 var (
@@ -41,6 +46,8 @@ var (
 	ErrReasonRequired = errors.New("elections: reason required")
 	// ErrInvalidRepresentative means the representative roster member id is missing or empty.
 	ErrInvalidRepresentative = errors.New("elections: invalid representative")
+	// ErrQueryTooShort means the candidate search query is missing or has fewer than MinCandidateQueryLen letters.
+	ErrQueryTooShort = errors.New("elections: query too short")
 )
 
 // ListStatus is a list's approval state.
@@ -185,12 +192,22 @@ func checkEditorAccess(a access, isRep bool, status ListStatus) error {
 }
 
 func (s *Store) authorizeListEditor(ctx context.Context, tx pgx.Tx, sess auth.Session, electionID, listID string, lock bool) (access, error) {
+	if lock {
+		if err := lockCommission(ctx, tx, sess.TenantID); err != nil {
+			return access{}, err
+		}
+	}
 	a, err := readAccess(ctx, tx, sess.TenantID, sess.UserID)
 	if err != nil {
 		return a, err
 	}
 	if !a.member {
 		return a, ErrForbidden
+	}
+	if a.onCommission {
+		if err := auth.RequireMFA(sess); err != nil {
+			return a, err
+		}
 	}
 	if !uuidPattern.MatchString(electionID) || !uuidPattern.MatchString(listID) {
 		return a, ErrNotFound
@@ -210,24 +227,6 @@ func (s *Store) authorizeListEditor(ctx context.Context, tx pgx.Tx, sess auth.Se
 	status := ListStatus(rawStatus)
 	isRep := a.rosterMemberID != "" && strings.EqualFold(a.rosterMemberID, repID)
 	if err := checkEditorAccess(a, isRep, status); err != nil {
-		return a, err
-	}
-	if isRep {
-		return a, nil
-	}
-	if lock {
-		if err := lockCommission(ctx, tx, sess.TenantID); err != nil {
-			return a, err
-		}
-		a, err = readAccess(ctx, tx, sess.TenantID, sess.UserID)
-		if err != nil {
-			return a, err
-		}
-		if err := checkEditorAccess(a, false, status); err != nil {
-			return a, err
-		}
-	}
-	if err := auth.RequireMFA(sess); err != nil {
 		return a, err
 	}
 	return a, nil
@@ -420,11 +419,32 @@ func (s *Store) GetList(ctx context.Context, sess auth.Session, electionID, list
 	return out, err
 }
 
-// ListRosterCandidates returns all roster members of the tenant (names and ids only) for any
-// school member, after verifying electionID exists in the tenant.
-func (s *Store) ListRosterCandidates(ctx context.Context, sess auth.Session, electionID string) ([]CommissionMember, error) {
+// SearchRosterCandidates searches roster members of the tenant by name (ids and names only) for
+// list builders: a student with a roster entry or a commission member with a verified second
+// factor (RequireMFA runs before reading the election or roster). Returns at most
+// MaxCandidateResults rows matching query (at least MinCandidateQueryLen letters).
+func (s *Store) SearchRosterCandidates(ctx context.Context, sess auth.Session, electionID, query string) ([]CommissionMember, error) {
 	out := []CommissionMember{}
-	err := s.asMember(ctx, sess, func(tx pgx.Tx) error {
+	if sess.TenantID == "" {
+		return out, ErrForbidden
+	}
+	err := db.WithTenant(ctx, s.pool, sess.TenantID, func(tx pgx.Tx) error {
+		a, err := readAccess(ctx, tx, sess.TenantID, sess.UserID)
+		if err != nil {
+			return err
+		}
+		if !a.member || (!a.onCommission && a.rosterMemberID == "") {
+			return ErrForbidden
+		}
+		if a.onCommission {
+			if err := auth.RequireMFA(sess); err != nil {
+				return err
+			}
+		}
+		q := strings.TrimSpace(query)
+		if countLetters(q) < MinCandidateQueryLen {
+			return ErrQueryTooShort
+		}
 		if !uuidPattern.MatchString(electionID) {
 			return ErrNotFound
 		}
@@ -433,7 +453,9 @@ func (s *Store) ListRosterCandidates(ctx context.Context, sess auth.Session, ele
 		}
 		rows, err := tx.Query(ctx, `
 			SELECT id::text, full_name FROM roster_members
-			WHERE tenant_id = $1 ORDER BY full_name, id`, sess.TenantID)
+			WHERE tenant_id = $1 AND full_name ILIKE $2 ESCAPE '\'
+			ORDER BY full_name, id
+			LIMIT $3`, sess.TenantID, "%"+escapeLike(q)+"%", MaxCandidateResults)
 		if err != nil {
 			return err
 		}
@@ -441,6 +463,20 @@ func (s *Store) ListRosterCandidates(ctx context.Context, sess auth.Session, ele
 		return err
 	})
 	return out, err
+}
+
+func countLetters(s string) int {
+	n := 0
+	for _, r := range s {
+		if unicode.IsLetter(r) {
+			n++
+		}
+	}
+	return n
+}
+
+func escapeLike(s string) string {
+	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(s)
 }
 
 func (s *Store) createList(ctx context.Context, tx pgx.Tx, tenant, electionID, repID string, in ListInput) (ElectionList, error) {

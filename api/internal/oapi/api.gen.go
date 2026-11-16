@@ -446,6 +446,21 @@ func (e PutElection422JSONResponseBodyError) Valid() bool {
 	}
 }
 
+// Defines values for GetElectionCandidates422JSONResponseBodyError.
+const (
+	QueryTooShort GetElectionCandidates422JSONResponseBodyError = "query_too_short"
+)
+
+// Valid indicates whether the value is a known member of the GetElectionCandidates422JSONResponseBodyError enum.
+func (e GetElectionCandidates422JSONResponseBodyError) Valid() bool {
+	switch e {
+	case QueryTooShort:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PostCommissionElectionList409JSONResponseBodyError.
 const (
 	PostCommissionElectionList409JSONResponseBodyErrorCandidateOnOtherList PostCommissionElectionList409JSONResponseBodyError = "candidate_on_other_list"
@@ -1282,6 +1297,15 @@ type PutElection409JSONResponseBodyError string
 // PutElection422JSONResponseBodyError defines parameters for PutElection.
 type PutElection422JSONResponseBodyError string
 
+// GetElectionCandidatesParams defines parameters for GetElectionCandidates.
+type GetElectionCandidatesParams struct {
+	// Q Name search query (at least 3 letters).
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+}
+
+// GetElectionCandidates422JSONResponseBodyError defines parameters for GetElectionCandidates.
+type GetElectionCandidates422JSONResponseBodyError string
+
 // PostCommissionElectionList409JSONResponseBodyError defines parameters for PostCommissionElectionList.
 type PostCommissionElectionList409JSONResponseBodyError string
 
@@ -1502,9 +1526,9 @@ type ServerInterface interface {
 	// PutElection Edit the draft of an election
 	// (PUT /elections/{electionId})
 	PutElection(w http.ResponseWriter, r *http.Request, electionId string)
-	// GetElectionCandidates List the roster members of the active school for an election
+	// GetElectionCandidates Search roster members by name for an election list
 	// (GET /elections/{electionId}/candidates)
-	GetElectionCandidates(w http.ResponseWriter, r *http.Request, electionId string)
+	GetElectionCandidates(w http.ResponseWriter, r *http.Request, electionId string, params GetElectionCandidatesParams)
 	// PostCommissionElectionList Load a list as the Electoral commission on behalf of a representative
 	// (POST /elections/{electionId}/commission/lists)
 	PostCommissionElectionList(w http.ResponseWriter, r *http.Request, electionId string)
@@ -2172,8 +2196,24 @@ func (siw *ServerInterfaceWrapper) GetElectionCandidates(w http.ResponseWriter, 
 		return
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetElectionCandidatesParams
+
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetElectionCandidates(w, r, electionId)
+		siw.Handler.GetElectionCandidates(w, r, electionId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
