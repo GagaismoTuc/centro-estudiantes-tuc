@@ -14,7 +14,7 @@ import (
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/migrations"
 )
 
-// Migration 00016: an election is annulled exactly when it has a reason of 1 to 500 characters.
+// Migration 00022: an election is annulled exactly when it has a reason of 1 to 500 characters.
 func TestElectionAnnulmentNeedsAReason(t *testing.T) {
 	ctx := integration(t)
 	a := seedElection(t, ctx, env.tenantA)
@@ -67,13 +67,13 @@ func TestElectionAnnulmentMigrationReverses(t *testing.T) {
 		}
 		return ok
 	}
-	if _, err := p.UpTo(ctx, 16); err != nil {
+	if _, err := p.UpTo(ctx, 22); err != nil {
 		t.Fatalf("up: %v", err)
 	}
 	if !hasColumn() {
 		t.Fatal("after up: no annulment_reason column")
 	}
-	if _, err := p.DownTo(ctx, 15); err != nil {
+	if _, err := p.DownTo(ctx, 21); err != nil {
 		t.Fatalf("down: %v", err)
 	}
 	var constraints int
@@ -83,7 +83,7 @@ func TestElectionAnnulmentMigrationReverses(t *testing.T) {
 	if hasColumn() || constraints != 0 {
 		t.Fatalf("after down: column %v, %d annulment constraints; want neither", hasColumn(), constraints)
 	}
-	if _, err := p.UpTo(ctx, 16); err != nil {
+	if _, err := p.UpTo(ctx, 22); err != nil {
 		t.Fatalf("up again: %v", err)
 	}
 	if !hasColumn() {
