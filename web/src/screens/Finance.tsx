@@ -43,7 +43,7 @@ export function Finance() {
   const form = useFormErrors();
   const failed = useCallback((code: string) => {
     if (code === "mfa_required" || code === "unauthenticated") void refresh();
-    setStatus({ tone: "error", text: errorMessage(code) });
+    setStatus({ tone: "error", text: errorMessage(code, "finance") });
   }, [refresh]);
   const load = useCallback(async () => {
     const [list, total, cats] = await Promise.all([financeEntries(), financeBalance(), call(apiClient.GET("/finance/categories"))]);
@@ -69,7 +69,7 @@ export function Finance() {
     } else {
       failed(result.code);
       if (result.code === "invalid_category" || result.code === "reserved_category" || result.code === "not_found") {
-        setCategoryError(errorMessage(result.code)); categoryRef.current?.focus();
+        setCategoryError(errorMessage(result.code, "finance")); categoryRef.current?.focus();
       } else form.failed(result.code);
     }
     pending.current = false; setBusy(false);

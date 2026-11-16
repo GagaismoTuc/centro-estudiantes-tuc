@@ -21,10 +21,10 @@ const messages: Record<string, string> = {
   already_officer: "Ese alumno ya tiene un cargo.",
   position_taken: "Ese cargo ya est\u00e1 ocupado.",
   invalid_position: "Eleg\u00ed un cargo v\u00e1lido.",
-  invalid_amount: "Ingres\u00e1 un monto positivo en centavos enteros.",
-  invalid_date: "Eleg\u00ed una fecha v\u00e1lida.",
+  invalid_amount: "Ingres\u00e1 un monto mayor a cero.",
+  invalid_date: "Ingres\u00e1 una fecha v\u00e1lida.",
   future_date: "La fecha no puede ser futura.",
-  description_required: "Escrib\u00ed una descripci\u00f3n.",
+  description_required: "Escrib\u00ed una descripci\u00f3n para el precio de referencia.",
   description_too_long: "La descripci\u00f3n puede tener hasta 500 caracteres.",
   invalid_category: "Eleg\u00ed una categor\u00eda v\u00e1lida para el movimiento.",
   reserved_category: "Esa categor\u00eda est\u00e1 reservada para pagos de cuotas.",
@@ -33,13 +33,33 @@ const messages: Record<string, string> = {
   unsupported_media_type: "El archivo tiene que ser CSV.",
   invalid_rows: "El archivo tiene filas con errores. No se cargó nada.",
   too_many_rows: "El archivo tiene más de 5000 filas. Dividilo en partes.",
+  name_required: "Escribí un nombre.",
+  heading_exists: "Ya existe un rubro con ese nombre.",
+  heading_in_use: "Ese rubro tiene contactos asociados. Archivalo en lugar de borrarlo.",
+  reserved_heading: "El rubro «otros» es parte del sistema y no se puede editar, archivar ni borrar.",
+  invalid_heading: "Elegí un rubro activo válido.",
+  election_frozen: "La elección ya abrió: no se puede cambiar el Centro de estudiantes.",
+  empty_commission: "Elegí al menos un integrante para el Centro de estudiantes.",
+  no_account: "Ese alumno todavía no tiene cuenta. Pedile que la active antes de sumarlo al Centro de estudiantes.",
+  election_in_progress: "Ya hay una elección en curso en la escuela. Terminala antes de crear otra.",
+  election_not_draft: "La elección ya no es un borrador: no se puede editar.",
+  invalid_name: "Escribí un nombre para la elección de hasta 120 caracteres.",
+  invalid_window: "Revisá las fechas de votación: el inicio tiene que ser futuro y el fin, posterior al inicio.",
+  invalid_submission_period: "Revisá la presentación de listas: tiene que terminar antes de que empiece la votación.",
+  invalid_positions: "Revisá los cargos: tiene que haber al menos uno, sin nombres vacíos ni repetidos.",
+  mode_not_supported: "Por ahora solo se puede votar con voto secreto.",
   network: "No pudimos conectarnos. Revisá tu conexión e intentá de nuevo.",
 };
 
 /** Where the error happened, when the same code needs different advice. */
-export type ErrorContext = "access-code" | "change-password" | "mfa" | "mfa-recovery" | "reset" | "verify";
+export type ErrorContext = "finance" | "access-code" | "change-password" | "mfa" | "mfa-recovery" | "reset" | "verify";
 
 const contextual: Record<ErrorContext, Record<string, string>> = {
+  finance: {
+    invalid_amount: "Ingres\u00e1 un monto positivo en centavos enteros.",
+    invalid_date: "Eleg\u00ed una fecha v\u00e1lida.",
+    description_required: "Escrib\u00ed una descripci\u00f3n.",
+  },
   "access-code": {
     invalid_code: "El código no es válido, ya se usó o venció. Pedile uno nuevo a tu escuela.",
   },
@@ -78,6 +98,14 @@ const fieldsByCode: Record<string, string[]> = {
   weak_password: ["password", "newPassword"],
   same_password: ["newPassword"],
   invalid_code: ["code", "recoveryCode"],
+  name_required: ["name"],
+  heading_exists: ["name"],
+  invalid_heading: ["headingId"],
+  invalid_name: ["name"],
+  invalid_window: ["startsAt", "endsAt"],
+  invalid_submission_period: ["submissionStartsAt", "submissionEndsAt"],
+  invalid_positions: ["position"],
+  mode_not_supported: ["mode"],
 };
 
 export function errorFields(code: string): string[] {

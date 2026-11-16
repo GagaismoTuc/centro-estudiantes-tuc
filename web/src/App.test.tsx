@@ -489,3 +489,16 @@ test("home and sidebar show all roles", async () => {
   expect(within(sidebar).getAllByText("Alumno, Administrador de la escuela")).toHaveLength(2);
   expect(screen.getByText(/Alumno, Administrador de la escuela/, { selector: ".page-header__school" })).toBeTruthy();
 });
+
+test("home and sidebar sort roles regardless of API order", async () => {
+  mockApi({ "GET /auth/me": ok(me({ role: "officer", roles: ["officer", "school_admin", "student"], mfa: "satisfied" })) });
+  renderAt("/");
+  await screen.findByRole("heading", { name: "\u00a1Hola!" });
+  const sidebar = screen.getByRole("complementary");
+  expect(within(sidebar).getAllByText("Alumno, Integrante de la comisi\u00f3n directiva, Administrador de la escuela")).toHaveLength(2);
+  expect(
+    screen.getByText(/Alumno, Integrante de la comisi\u00f3n directiva, Administrador de la escuela/, {
+      selector: ".page-header__school",
+    }),
+  ).toBeTruthy();
+});

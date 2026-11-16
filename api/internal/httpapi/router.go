@@ -11,6 +11,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/auth"
+	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/contacts"
+	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/elections"
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/finance"
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/mail"
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/oapi"
@@ -49,6 +51,8 @@ type server struct {
 	claimLimiter *auth.Limiter
 	roster       *roster.Store
 	finance      *finance.Store
+	contacts     *contacts.Store
+	elections    *elections.Store
 	// mailLimiter counts emailed-link requests per client IP and per email.
 	mailLimiter *auth.Limiter
 	// tokenLimiter counts invalid emailed tokens per client IP.
@@ -91,12 +95,15 @@ func NewRouter(d Deps) http.Handler {
 		d.Background = mail.NewQueue(4, 256).Go
 	}
 	s := &server{
-		now:     d.Now,
-		trusted: d.TrustedProxies,
-		store:   auth.NewStore(d.Pool, d.Now),
-		limiter: auth.NewLimiter(loginMaxFailures, loginWindow, d.Now).WithMax("ip:", perIPMax),
-		roster:  roster.NewStore(d.Pool, d.AccessCodeKey, d.Now),
-		finance: finance.NewStore(d.Pool, d.Now),
+		now:      d.Now,
+		trusted:  d.TrustedProxies,
+		store:    auth.NewStore(d.Pool, d.Now),
+		limiter:  auth.NewLimiter(loginMaxFailures, loginWindow, d.Now).WithMax("ip:", perIPMax),
+		roster:   roster.NewStore(d.Pool, d.AccessCodeKey, d.Now),
+		contacts: contacts.NewStore(d.Pool, d.Now),
+		finance:  finance.NewStore(d.Pool, d.Now),
+		// The same clock decides election states, so tests move time by moving Deps.Now.
+		elections: elections.NewStore(d.Pool, d.Now),
 
 		claimLimiter: auth.NewLimiter(perIPMax, claimWindow, d.Now),
 		mailLimiter:  auth.NewLimiter(mailMaxRequests, mailWindow, d.Now).WithMax("ip:", perIPMax),

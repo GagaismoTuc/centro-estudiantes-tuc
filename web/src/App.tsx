@@ -8,6 +8,11 @@ import { captureFragmentToken } from "./lib/fragment.ts";
 import { destinationFor, readNext, safeNext, withNext } from "./lib/next.ts";
 import { Redirect, usePathname } from "./lib/router.tsx";
 import { Claim } from "./screens/Claim.tsx";
+import { CommissionPanel } from "./screens/CommissionPanel.tsx";
+import { Election } from "./screens/Election.tsx";
+import { Calculator } from "./screens/Calculator.tsx";
+import { ContactHeadings } from "./screens/ContactHeadings.tsx";
+import { Contacts } from "./screens/Contacts.tsx";
 import { Home } from "./screens/Home.tsx";
 import { Finance } from "./screens/Finance.tsx";
 import { MfaEnroll } from "./screens/MfaEnroll.tsx";
@@ -41,6 +46,11 @@ const shellRoutes: Record<string, { page: string; Screen: () => JSX.Element }> =
   "/caja": { page: "Caja", Screen: Finance },
   "/padron": { page: "Padrón", Screen: Roster },
   "/miembros": { page: "Miembros", Screen: Members },
+  "/eleccion": { page: "Elección", Screen: Election },
+  "/centro-de-estudiantes": { page: "Centro de estudiantes", Screen: CommissionPanel },
+  "/calculadora": { page: "Calculadora", Screen: Calculator },
+  "/contactos": { page: "Contactos", Screen: Contacts },
+  "/contactos/rubros": { page: "Rubros", Screen: ContactHeadings },
   "/seguridad": { page: "Seguridad", Screen: Security },
 };
 
@@ -71,6 +81,7 @@ function Routes() {
     return home === "/seguridad/activar" ? <MfaEnroll /> : <MfaVerify />;
   }
   if ((path === "/padron" || path === "/miembros") && !hasRole(me, "school_admin")) return <Redirect to="/" />;
+  if ((path === "/eleccion" || path === "/centro-de-estudiantes") && me.role === null) return <Redirect to="/" />;
 
   const route = shellRoutes[path];
   return (
