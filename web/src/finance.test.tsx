@@ -150,3 +150,12 @@ test("R1 a reversed original shows who reversed it and when", async () => {
   expect(await screen.findByText("Revertido por Beto Ficticio el 14/11/2026")).toBeTruthy();
   expect(screen.getAllByText(/^Revertido por/)).toHaveLength(1);
 });
+
+test("R9 a failed reversal moves focus to the message", async () => {
+  mockApi({ "GET /auth/me": ok(me({ role: "officer", mfa: "satisfied" })), ...reads, "POST /finance/entries/e1/reversal": fail(409, "already_reversed") });
+  window.history.replaceState(null, "", "/caja"); render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: /^Revertir/ }));
+  fireEvent.click(within(screen.getByRole("dialog", { name: "Revertir movimiento" })).getByRole("button", { name: "Revertir" }));
+  const message = await screen.findByText(/ya fue revertido/);
+  await waitFor(() => expect(document.activeElement?.contains(message)).toBe(true));
+});

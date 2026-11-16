@@ -83,7 +83,7 @@ export function Finance() {
     if (pending.current) return;
     pending.current = true; setBusy(true); setStatus(null);
     const result = await call(apiClient.POST("/finance/entries/{entryId}/reversal", { params: { path: { entryId: target.id } } }));
-    if (result.ok) { setStatus({ tone: "ok", text: "Se revirtió el movimiento." }); await load(); } else failed(result.code);
+    if (result.ok) { setStatus({ tone: "ok", text: "Se revirtió el movimiento." }); await load(); } else { failed(result.code); form.failed(result.code); }
     pending.current = false; setBusy(false);
   }
 
