@@ -1609,6 +1609,162 @@ paths:
                   error:
                     type: string
                     enum: [already_reversed, cannot_reverse_reversal]
+  /finance/dues:
+    get:
+      operationId: getFinanceDues
+      summary: List dues in the active school
+      description: Officers, school admins and veedors with a verified two-factor session.
+      responses:
+        "200":
+          description: Dues ordered by due date descending.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FinanceDueSummary"
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/DirectoryForbidden" }
+    post:
+      operationId: postFinanceDues
+      summary: Create a due for all current roster members as an officer with MFA
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewFinanceDue"
+      responses:
+        "201":
+          description: Due created and current roster members snapshotted in one transaction.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FinanceDueDetail"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/DirectoryForbidden" }
+        "422":
+          description: "Invalid input or empty roster: name_required, invalid_amount, invalid_date, empty_roster."
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [name_required, invalid_amount, invalid_date, empty_roster]
+  /finance/dues/mine:
+    get:
+      operationId: getMyFinanceDues
+      summary: List dues owed by the signed-in roster member
+      responses:
+        "200":
+          description: Dues whose snapshot includes the caller's roster member.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MyFinanceDue"
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /finance/dues/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getFinanceDue
+      summary: Get one due and its per-student status list
+      description: Officers, school admins and veedors with a verified two-factor session. Never exposes document numbers.
+      responses:
+        "200":
+          description: Due detail with per-student statuses.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FinanceDueDetail"
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/DirectoryForbidden" }
+        "404":
+          description: Due not found in the active school (`not_found`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotFoundError" }
+    patch:
+      operationId: patchFinanceDue
+      summary: Edit a due as an officer with MFA
+      description: Name can always be edited; amountCents and dueDate return 409 `due_frozen` once payments or exemptions exist.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateFinanceDue"
+      responses:
+        "200":
+          description: Updated due.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FinanceDueDetail"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/DirectoryForbidden" }
+        "404":
+          description: Due not found in the active school (`not_found`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotFoundError" }
+        "409":
+          description: Due already has payments or exemptions (`due_frozen`).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [due_frozen]
+        "422":
+          description: "Invalid input: name_required, invalid_amount, invalid_date."
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [name_required, invalid_amount, invalid_date]
+    delete:
+      operationId: deleteFinanceDue
+      summary: Delete a due without payments or exemptions as an officer with MFA
+      responses:
+        "204":
+          description: Due deleted.
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/DirectoryForbidden" }
+        "404":
+          description: Due not found in the active school (`not_found`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotFoundError" }
+        "409":
+          description: Due already has payments or exemptions (`due_frozen`).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [due_frozen]
 components:
   responses:
     InvalidElectionDraft:
@@ -1738,6 +1894,68 @@ components:
       required: [balanceCents]
       properties:
         balanceCents: { type: integer, description: "The exact sum; may exceed int64." }
+    NewFinanceDue:
+      type: object
+      additionalProperties: false
+      required: [name, amountCents, dueDate]
+      properties:
+        name: { type: string }
+        amountCents: { type: integer, format: int64 }
+        dueDate: { type: string }
+    UpdateFinanceDue:
+      type: object
+      additionalProperties: false
+      properties:
+        name: { type: string }
+        amountCents: { type: integer, format: int64 }
+        dueDate: { type: string }
+    FinanceDueStatus:
+      type: string
+      enum: [owing, paid, exempt]
+    FinanceDueMember:
+      type: object
+      required: [rosterMemberId, fullName, status]
+      properties:
+        rosterMemberId: { type: string }
+        fullName: { type: string }
+        status:
+          $ref: "#/components/schemas/FinanceDueStatus"
+    FinanceDueSummary:
+      type: object
+      required: [id, name, amountCents, dueDate, createdAt, owingCount, totalCount]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        amountCents: { type: integer, format: int64 }
+        dueDate: { type: string }
+        createdAt: { type: string, format: date-time }
+        owingCount: { type: integer }
+        totalCount: { type: integer }
+    FinanceDueDetail:
+      type: object
+      required: [id, name, amountCents, dueDate, createdAt, owingCount, totalCount, members]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        amountCents: { type: integer, format: int64 }
+        dueDate: { type: string }
+        createdAt: { type: string, format: date-time }
+        owingCount: { type: integer }
+        totalCount: { type: integer }
+        members:
+          type: array
+          items:
+            $ref: "#/components/schemas/FinanceDueMember"
+    MyFinanceDue:
+      type: object
+      required: [id, name, amountCents, dueDate, status]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        amountCents: { type: integer, format: int64 }
+        dueDate: { type: string }
+        status:
+          $ref: "#/components/schemas/FinanceDueStatus"
     ForbiddenError:
       type: object
       required: [error]
