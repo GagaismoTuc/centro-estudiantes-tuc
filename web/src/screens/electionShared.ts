@@ -3,9 +3,19 @@ import { call, type Result } from "../api/call.ts";
 import { apiClient } from "../api/client.ts";
 import type { components } from "../api/schema.gen.ts";
 
+export type CommissionMember = components["schemas"]["CommissionMember"];
 export type CommissionStatus = components["schemas"]["ElectoralCommissionStatus"];
 export type Election = components["schemas"]["Election"];
 export type ElectionState = components["schemas"]["ElectionState"];
+export type ElectionList = components["schemas"]["ElectionList"];
+export type ElectionListStatus = components["schemas"]["ElectionListStatus"];
+export type ElectionListsResponse = components["schemas"]["ElectionListsResponse"];
+
+export const listStatusLabel: Record<ElectionListStatus, string> = {
+  pending: "Pendiente",
+  approved: "Aprobada",
+  rejected: "Rechazada",
+};
 
 export const stateLabel: Record<ElectionState, string> = {
   draft: "Borrador",

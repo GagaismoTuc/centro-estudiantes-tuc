@@ -6,22 +6,30 @@ import { useSession } from "../auth/session.tsx";
 import { Field, FormStatus, useFormErrors, type Check, type Status } from "../components/Form.tsx";
 import { PageTitle, useDocumentTitle } from "../components/Page.tsx";
 import { Link } from "../lib/router.tsx";
+import { ListCard, ListForm } from "./ElectionLists.tsx";
 import {
   DEFAULT_POSITIONS,
   fromLocalInput,
   loadCommissionStatus,
   toLocalInput,
+  type CommissionMember,
   type CommissionStatus,
   type Election,
+  type ElectionList,
 } from "./electionShared.ts";
 
-/** The "Centro de estudiantes" section: members of the Electoral commission create and edit the draft. */
+/** The "Centro de estudiantes" section: members of the Electoral commission create and edit the draft,
+ *  and review or load election lists during the submission period. */
 export function CommissionPanel() {
   useDocumentTitle("Centro de estudiantes");
   const { refresh } = useSession();
   const [commission, setCommission] = useState<CommissionStatus | null>(null);
   // undefined while loading, null when there is no election in progress.
   const [election, setElection] = useState<Election | null | undefined>(undefined);
+  const [lists, setLists] = useState<ElectionList[] | null>(null);
+  const [rosterCandidates, setRosterCandidates] = useState<CommissionMember[]>([]);
+  const [editingList, setEditingList] = useState<ElectionList | null>(null);
+  const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<Status>(null);
 
   const load = useCallback(async () => {
@@ -33,12 +41,52 @@ export function CommissionPanel() {
       return;
     }
     if (c.ok) setCommission(c.data);
-    setElection(e.ok ? e.data : null);
+    const nextElection = e.ok ? e.data : null;
+    setElection(nextElection);
+    if (c.ok && c.data.isMember && nextElection && nextElection.state !== "draft") {
+      const [listsRes, candsRes] = await Promise.all([
+        call(apiClient.GET("/elections/{electionId}/lists", { params: { path: { electionId: nextElection.id } } })),
+        nextElection.state === "submission"
+          ? call(apiClient.GET("/elections/{electionId}/candidates", { params: { path: { electionId: nextElection.id } } }))
+          : Promise.resolve(null),
+      ]);
+      if (listsRes.ok) setLists(listsRes.data.lists);
+      else {
+        if (listsRes.code === "mfa_required" || listsRes.code === "unauthenticated") void refresh();
+        setStatus({ tone: "error", text: errorMessage(listsRes.code) });
+      }
+      if (candsRes) {
+        if (candsRes.ok) setRosterCandidates(candsRes.data);
+        else setStatus({ tone: "error", text: errorMessage(candsRes.code) });
+      }
+    } else {
+      setLists(null);
+      setRosterCandidates([]);
+    }
   }, [refresh]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  async function approve(listId: string) {
+    if (!election) return;
+    setStatus(null);
+    setBusy(true);
+    const result = await call(
+      apiClient.POST("/elections/{electionId}/lists/{listId}/approve", {
+        params: { path: { electionId: election.id, listId } },
+      }),
+    );
+    setBusy(false);
+    if (result.ok) {
+      setStatus({ tone: "ok", text: "Se aprobó la lista." });
+      await load();
+      return;
+    }
+    if (result.code === "mfa_required" || result.code === "unauthenticated") void refresh();
+    setStatus({ tone: "error", text: errorMessage(result.code, "election-list") });
+  }
 
   return (
     <>
@@ -55,12 +103,65 @@ export function CommissionPanel() {
         <DraftForm election={election} onSaved={setElection} />
       )}
       {commission?.isMember && election && election.state !== "draft" && (
-        <section className="panel">
-          <p>{errorMessage("election_not_draft")}</p>
-          <p>
-            <Link to="/eleccion">Ver la elección</Link>
-          </p>
-        </section>
+        <>
+          <section className="panel">
+            <p>{errorMessage("election_not_draft")}</p>
+            <p>
+              <Link to="/eleccion">Ver la elección</Link>
+            </p>
+          </section>
+          {lists && (
+            <section className="panel" aria-labelledby="commission-lists-title">
+              <h2 id="commission-lists-title">Listas presentadas</h2>
+              {lists.length === 0 ? (
+                <p className="muted">Todavía no se presentaron listas.</p>
+              ) : (
+                <div className="election-lists">
+                  {lists.map((l) => (
+                    <ListCard
+                      key={l.id}
+                      list={l}
+                      busy={busy}
+                      canEdit={election.state === "submission" && l.status === "pending"}
+                      canReview={election.state === "submission" && l.status === "pending"}
+                      onEdit={() => setEditingList(l)}
+                      onApprove={() => void approve(l.id)}
+                      onRejected={async () => {
+                        setStatus({ tone: "ok", text: "Se rechazó la lista." });
+                        await load();
+                      }}
+                    />
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
+          {election.state === "submission" && editingList && (
+            <ListForm
+              mode="edit"
+              election={election}
+              rosterMembers={rosterCandidates}
+              initial={editingList}
+              onSaved={async (msg) => {
+                setEditingList(null);
+                setStatus({ tone: "ok", text: msg });
+                await load();
+              }}
+              onCancel={() => setEditingList(null)}
+            />
+          )}
+          {election.state === "submission" && (
+            <ListForm
+              mode="commission"
+              election={election}
+              rosterMembers={rosterCandidates}
+              onSaved={async (msg) => {
+                setStatus({ tone: "ok", text: msg });
+                await load();
+              }}
+            />
+          )}
+        </>
       )}
     </>
   );

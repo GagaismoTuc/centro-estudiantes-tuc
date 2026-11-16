@@ -6,12 +6,15 @@ import type { components } from "../api/schema.gen.ts";
 import { useSession } from "../auth/session.tsx";
 import { FieldError, FormStatus, type Status } from "../components/Form.tsx";
 import { PageTitle, useDocumentTitle } from "../components/Page.tsx";
+import { ListCard, ListForm } from "./ElectionLists.tsx";
 import {
   formatArgentina,
   loadCommissionStatus,
   stateLabel,
   type CommissionStatus,
   type Election as ElectionData,
+  type ElectionList,
+  type ElectionListsResponse,
 } from "./electionShared.ts";
 
 type CommissionMember = components["schemas"]["CommissionMember"];
@@ -23,6 +26,9 @@ export function Election() {
   const [commission, setCommission] = useState<CommissionStatus | null>(null);
   // undefined while loading, null when there is no election in progress.
   const [election, setElection] = useState<ElectionData | null | undefined>(undefined);
+  const [listsData, setListsData] = useState<ElectionListsResponse | null>(null);
+  const [rosterCandidates, setRosterCandidates] = useState<CommissionMember[]>([]);
+  const [editingList, setEditingList] = useState<ElectionList | null>(null);
   const [status, setStatus] = useState<Status>(null);
 
   const failed = useCallback(
@@ -37,14 +43,42 @@ export function Election() {
     const [c, e] = await Promise.all([loadCommissionStatus(), call(apiClient.GET("/elections/current"))]);
     if (c.ok) setCommission(c.data);
     else failed(c.code);
-    if (e.ok) setElection(e.data);
-    else if (e.code === "not_found") setElection(null);
-    else failed(e.code);
+    if (e.ok) {
+      setElection(e.data);
+      if (e.data.state !== "draft") {
+        const [listsRes, candsRes] = await Promise.all([
+          call(apiClient.GET("/elections/{electionId}/lists", { params: { path: { electionId: e.data.id } } })),
+          e.data.state === "submission"
+            ? call(apiClient.GET("/elections/{electionId}/candidates", { params: { path: { electionId: e.data.id } } }))
+            : Promise.resolve(null),
+        ]);
+        if (listsRes.ok) setListsData(listsRes.data);
+        else failed(listsRes.code);
+        if (candsRes) {
+          if (candsRes.ok) setRosterCandidates(candsRes.data);
+          else failed(candsRes.code);
+        }
+      } else {
+        setListsData(null);
+        setRosterCandidates([]);
+      }
+    } else if (e.code === "not_found") {
+      setElection(null);
+      setListsData(null);
+      setRosterCandidates([]);
+    } else {
+      failed(e.code);
+    }
   }, [failed]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  const approvedLists = listsData?.lists.filter((l) => l.status === "approved") ?? [];
+  const myLists = listsData?.rosterMemberId
+    ? listsData.lists.filter((l) => l.representativeRosterMemberId === listsData.rosterMemberId)
+    : [];
 
   return (
     <>
@@ -58,6 +92,49 @@ export function Election() {
         </section>
       )}
       {election && <ElectionDetails election={election} />}
+      {election && election.state !== "draft" && listsData && (
+        <section className="panel" aria-labelledby="approved-lists-title">
+          <h2 id="approved-lists-title">Listas aprobadas</h2>
+          {approvedLists.length === 0 ? (
+            <p className="muted">Todavía no hay listas aprobadas.</p>
+          ) : (
+            <div className="election-lists">
+              {approvedLists.map((l) => (
+                <ListCard key={l.id} list={l} />
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+      {election && myLists.length > 0 && (
+        <section className="panel" aria-labelledby="my-lists-title">
+          <h2 id="my-lists-title">Mis listas</h2>
+          <div className="election-lists">
+            {myLists.map((l) => (
+              <ListCard
+                key={l.id}
+                list={l}
+                canEdit={election.state === "submission" && l.status === "pending"}
+                onEdit={() => setEditingList(l)}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+      {election && election.state === "submission" && listsData?.rosterMemberId && (
+        <ListForm
+          mode={editingList ? "edit" : "submit"}
+          election={election}
+          rosterMembers={rosterCandidates}
+          initial={editingList ?? undefined}
+          onSaved={async (msg) => {
+            setEditingList(null);
+            setStatus({ tone: "ok", text: msg });
+            await load();
+          }}
+          onCancel={() => setEditingList(null)}
+        />
+      )}
       {election === null && commission?.commission && (
         <section className="panel" aria-labelledby="commission-title">
           <h2 id="commission-title">Centro de estudiantes</h2>
