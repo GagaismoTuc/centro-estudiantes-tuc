@@ -52,6 +52,8 @@ const messages: Record<string, string> = {
   invalid_submission_period: "Revisá la presentación de listas: tiene que terminar antes de que empiece la votación.",
   invalid_positions: "Revisá los cargos: tiene que haber al menos uno, sin nombres vacíos ni repetidos.",
   mode_not_supported: "Por ahora solo se puede votar con voto secreto.",
+  empty_roster: "El padrón está vacío. Cargá al menos un alumno antes de crear una cuota.",
+  due_frozen: "Esta cuota ya tiene pagos o exenciones: solo podés cambiar el nombre.",
   network: "No pudimos conectarnos. Revisá tu conexión e intentá de nuevo.",
 };
 
@@ -92,7 +94,7 @@ export function errorMessage(code: string, context?: ErrorContext): string {
 /** Form fields an error code is about, so the form can mark them invalid and focus the first. */
 const fieldsByCode: Record<string, string[]> = {
   invalid_amount: ["amount"],
-  invalid_date: ["date"],
+  invalid_date: ["date", "dueDate"],
   future_date: ["date"],
   description_required: ["description"],
   description_too_long: ["description"],

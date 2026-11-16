@@ -18,6 +18,9 @@ export function canReadContacts(me: Me): boolean {
   return roles.includes("officer") || roles.includes("school_admin") || roles.includes("veedor");
 }
 
+/** Reports whether the signed-in user may view per-student Due lists (R4). */
+export const canReadDues = canReadContacts;
+
 export type Session =
   | { status: "loading" }
   | { status: "anon" }
