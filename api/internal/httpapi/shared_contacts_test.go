@@ -142,7 +142,8 @@ func TestSharedContactsLifecycleAndPrivacy(t *testing.T) {
 		t.Fatalf("rejected visible to B: %+v", page.Items)
 	}
 
-	// Share again after rejection -> 201 pending with a new id.
+	// Share again after rejection under the same frozen clock -> 201 pending with a new id, and
+	// shareStatus deterministically switches back to pending (no timestamp-tie flakiness).
 	rec = fA.do(http.MethodPost, "/api/contacts/"+cA.ID+"/share", "", ip, officerA, nil)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("re-share = %d body=%s", rec.Code, rec.Body)
@@ -155,6 +156,12 @@ func TestSharedContactsLifecycleAndPrivacy(t *testing.T) {
 	if share2.ID == share1.ID || share2.Status != "pending" {
 		t.Fatalf("share2 = %+v vs share1 = %+v", share2, share1)
 	}
+	rec = fA.do(http.MethodGet, "/api/contacts", "", ip, officerA, nil)
+	_ = json.Unmarshal(rec.Body.Bytes(), &listA)
+	if len(listA) != 1 || listA[0].ShareStatus == nil || *listA[0].ShareStatus != "pending" {
+		t.Fatalf("after re-share listA = %+v, want shareStatus=pending", listA)
+	}
+	wantResponse(t, fA.do(http.MethodPost, "/api/contacts/"+cA.ID+"/share", "", ip, officerA, nil), http.StatusConflict, `{"error":"already_shared"}`)
 
 	// Approve share2 -> visible to B (without notes or school), and re-sharing while approved -> 409 already_shared.
 	if err := contacts.ApproveShared(ctx, tdb.Super, share2.ID, time.Now()); err != nil {

@@ -19,8 +19,15 @@ import (
 )
 
 const (
-	reservedHeadingName = "otros"
-	maxEmailLen         = 254
+	reservedHeadingName     = "otros"
+	maxEmailLen             = 254
+	latestShareStatusSelect = `
+		SELECT sc.status
+		FROM shared_contact_links l
+		JOIN shared_contacts sc ON sc.id = l.shared_contact_id
+		WHERE l.tenant_id = c.tenant_id AND l.contact_id = c.id
+		ORDER BY l.seq DESC
+		LIMIT 1`
 )
 
 // Tucumán (ART) is UTC-3 year-round; used to determine "today" when rejecting future price dates.
@@ -382,14 +389,7 @@ func (s *Store) ListContacts(ctx context.Context, sess auth.Session, headingID, 
 			       c.name, c.phone, c.email, c.zone, c.notes, COALESCE(sh.status, ''), c.created_at, c.updated_at
 			FROM contacts c
 			JOIN contact_headings h ON h.tenant_id = c.tenant_id AND h.id = c.heading_id
-			LEFT JOIN LATERAL (
-				SELECT sc.status
-				FROM shared_contact_links l
-				JOIN shared_contacts sc ON sc.id = l.shared_contact_id
-				WHERE l.tenant_id = c.tenant_id AND l.contact_id = c.id
-				ORDER BY l.created_at DESC, l.id DESC
-				LIMIT 1
-			) sh ON true
+			LEFT JOIN LATERAL (` + latestShareStatusSelect + `) sh ON true
 			WHERE ` + strings.Join(where, " AND ") + `
 			ORDER BY lower(c.name), c.id`
 
@@ -669,14 +669,7 @@ func loadContact(ctx context.Context, tx pgx.Tx, tenantID, id string) (Contact, 
 		       c.name, c.phone, c.email, c.zone, c.notes, COALESCE(sh.status, ''), c.created_at, c.updated_at
 		FROM contacts c
 		JOIN contact_headings h ON h.tenant_id = c.tenant_id AND h.id = c.heading_id
-		LEFT JOIN LATERAL (
-			SELECT sc.status
-			FROM shared_contact_links l
-			JOIN shared_contacts sc ON sc.id = l.shared_contact_id
-			WHERE l.tenant_id = c.tenant_id AND l.contact_id = c.id
-			ORDER BY l.created_at DESC, l.id DESC
-			LIMIT 1
-		) sh ON true
+		LEFT JOIN LATERAL (`+latestShareStatusSelect+`) sh ON true
 		WHERE c.tenant_id = $1 AND c.id = $2`,
 		tenantID, id,
 	).Scan(

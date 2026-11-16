@@ -45,22 +45,33 @@ func ListPendingShared(ctx context.Context, pool *pgxpool.Pool) ([]PendingShared
 	return out, nil
 }
 
+type sharedTransition struct {
+	requiredFrom string
+	targetStatus string
+}
+
+var (
+	approveTransition = sharedTransition{requiredFrom: "pending", targetStatus: "approved"}
+	rejectTransition  = sharedTransition{requiredFrom: "pending", targetStatus: "rejected"}
+	removeTransition  = sharedTransition{requiredFrom: "approved", targetStatus: "removed"}
+)
+
 // ApproveShared transitions a pending shared contact to approved (idempotent if already approved).
 func ApproveShared(ctx context.Context, pool *pgxpool.Pool, id string, now time.Time) error {
-	return transitionSharedStatus(ctx, pool, id, "pending", "approved", "reviewed_at", now)
+	return applySharedTransition(ctx, pool, id, approveTransition, now)
 }
 
 // RejectShared transitions a pending shared contact to rejected (idempotent if already rejected).
 func RejectShared(ctx context.Context, pool *pgxpool.Pool, id string, now time.Time) error {
-	return transitionSharedStatus(ctx, pool, id, "pending", "rejected", "reviewed_at", now)
+	return applySharedTransition(ctx, pool, id, rejectTransition, now)
 }
 
 // RemoveShared transitions an approved shared contact to removed (idempotent if already removed).
 func RemoveShared(ctx context.Context, pool *pgxpool.Pool, id string, now time.Time) error {
-	return transitionSharedStatus(ctx, pool, id, "approved", "removed", "removed_at", now)
+	return applySharedTransition(ctx, pool, id, removeTransition, now)
 }
 
-func transitionSharedStatus(ctx context.Context, pool *pgxpool.Pool, id, requiredFrom, targetStatus, timestampCol string, now time.Time) error {
+func applySharedTransition(ctx context.Context, pool *pgxpool.Pool, id string, tr sharedTransition, now time.Time) error {
 	if !uuidPattern.MatchString(id) {
 		return fmt.Errorf("shared contact %s not found", id)
 	}
@@ -73,15 +84,20 @@ func transitionSharedStatus(ctx context.Context, pool *pgxpool.Pool, id, require
 		if err != nil {
 			return fmt.Errorf("read shared contact %s: %w", id, err)
 		}
-		if current == targetStatus {
+		if current == tr.targetStatus {
 			return nil
 		}
-		if current != requiredFrom {
-			return fmt.Errorf("shared contact %s is not %s", id, requiredFrom)
+		if current != tr.requiredFrom {
+			return fmt.Errorf("shared contact %s is not %s", id, tr.requiredFrom)
 		}
-		query := fmt.Sprintf(`UPDATE shared_contacts SET status = $2, %s = $3 WHERE id = $1`, timestampCol)
-		if _, err := tx.Exec(ctx, query, id, targetStatus, now.UTC()); err != nil {
-			return fmt.Errorf("update shared contact %s: %w", id, err)
+		var execErr error
+		if tr.targetStatus == "removed" {
+			_, execErr = tx.Exec(ctx, `UPDATE shared_contacts SET status = 'removed', removed_at = $2 WHERE id = $1`, id, now.UTC())
+		} else {
+			_, execErr = tx.Exec(ctx, `UPDATE shared_contacts SET status = $2, reviewed_at = $3 WHERE id = $1`, id, tr.targetStatus, now.UTC())
+		}
+		if execErr != nil {
+			return fmt.Errorf("update shared contact %s: %w", id, execErr)
 		}
 		return nil
 	})

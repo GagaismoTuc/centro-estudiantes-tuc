@@ -6,10 +6,10 @@ import type { components } from "../api/schema.gen.ts";
 import { canReadContacts, hasRole, useMe, useSession } from "../auth/session.tsx";
 import { ConfirmDialog } from "../components/ConfirmDialog.tsx";
 import { FormStatus, SubmitButton, type Status } from "../components/Form.tsx";
-import { Icon } from "../components/Icon.tsx";
 import { PageTitle, useDocumentTitle } from "../components/Page.tsx";
 import { formatPesos } from "../lib/money.ts";
 import { Link } from "../lib/router.tsx";
+import { ContactMeta, NoContactsAccess } from "./contactShared.tsx";
 
 type Heading = components["schemas"]["ContactHeading"];
 type Contact = components["schemas"]["Contact"];
@@ -579,6 +579,8 @@ export function Contacts() {
         tone: "ok",
         text: `Se envió a ${contact.name} para compartir. Quedará visible cuando lo aprueben.`,
       });
+      // The "Compartir" button unmounts when status becomes pending; move focus to status instead of body.
+      requestAnimationFrame(() => statusRef.current?.focus());
       return;
     }
     handleAuthError(res.code);
@@ -612,21 +614,11 @@ export function Contacts() {
 
   if (!canRead) {
     return (
-      <>
-        <header className="page-header">
-          <PageTitle eyebrow="Comisión directiva">Contactos</PageTitle>
-        </header>
-        <section className="banner" role="alert" aria-labelledby="no-access-title">
-          <Icon name="alert" />
-          <div className="banner__body">
-            <h2 id="no-access-title">No tenés acceso a esta sección</h2>
-            <p>Solo la comisión directiva, la escuela y el veedor pueden ver el directorio de contactos.</p>
-          </div>
-          <Link className="button button--secondary" to="/">
-            Volver al inicio
-          </Link>
-        </section>
-      </>
+      <NoContactsAccess
+        title="Contactos"
+        description="Solo la comisión directiva, la escuela y el veedor pueden ver el directorio de contactos."
+        headingId="no-access-title"
+      />
     );
   }
 
@@ -791,32 +783,7 @@ export function Contacts() {
                   )}
                 </div>
 
-                <dl className="contact-card__meta">
-                  {contact.phone && (
-                    <div>
-                      <dt>Teléfono / WhatsApp</dt>
-                      <dd>
-                        <bdi>{contact.phone}</bdi>
-                      </dd>
-                    </div>
-                  )}
-                  {contact.email && (
-                    <div>
-                      <dt>Mail</dt>
-                      <dd>
-                        <bdi>{contact.email}</bdi>
-                      </dd>
-                    </div>
-                  )}
-                  {contact.zone && (
-                    <div>
-                      <dt>Zona o ciudad</dt>
-                      <dd>
-                        <bdi>{contact.zone}</bdi>
-                      </dd>
-                    </div>
-                  )}
-                </dl>
+                <ContactMeta phone={contact.phone} email={contact.email} zone={contact.zone} />
 
                 {contact.notes && (
                   <p className="contact-card__notes">

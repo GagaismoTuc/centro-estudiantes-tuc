@@ -19,6 +19,18 @@ const sharedPageSize = 50
 const accentFrom = "áàäâãéèëêíìïîóòöôõúùüû"
 const accentTo = "aaaaaeeeeiiiiooooouuuu"
 
+var accentReplacer = buildAccentReplacer(accentFrom, accentTo)
+
+func buildAccentReplacer(from, to string) *strings.Replacer {
+	fromRunes := []rune(from)
+	toRunes := []rune(to)
+	pairs := make([]string, 0, len(fromRunes)*2)
+	for i, r := range fromRunes {
+		pairs = append(pairs, string(r), string(toRunes[i]))
+	}
+	return strings.NewReplacer(pairs...)
+}
+
 // ShareResult is returned when an officer shares a contact into the pending moderation queue.
 type ShareResult struct {
 	ID        string
@@ -87,7 +99,7 @@ func (s *Store) ShareContact(ctx context.Context, sess auth.Session, contactID s
 			FROM shared_contact_links l
 			JOIN shared_contacts sc ON sc.id = l.shared_contact_id
 			WHERE l.tenant_id = $1 AND l.contact_id = $2
-			ORDER BY l.created_at DESC, l.id DESC
+			ORDER BY l.seq DESC
 			LIMIT 1`,
 			sess.TenantID, contactID,
 		).Scan(&latestStatus)
@@ -245,14 +257,7 @@ func (s *Store) ListSharedContacts(ctx context.Context, sess auth.Session, headi
 }
 
 func foldAccentsLower(s string) string {
-	r := strings.NewReplacer(
-		"á", "a", "à", "a", "ä", "a", "â", "a", "ã", "a",
-		"é", "e", "è", "e", "ë", "e", "ê", "e",
-		"í", "i", "ì", "i", "ï", "i", "î", "i",
-		"ó", "o", "ò", "o", "ö", "o", "ô", "o", "õ", "o",
-		"ú", "u", "ù", "u", "ü", "u", "û", "u",
-	)
-	return r.Replace(strings.ToLower(s))
+	return accentReplacer.Replace(strings.ToLower(s))
 }
 
 func newUUIDv4() (string, error) {

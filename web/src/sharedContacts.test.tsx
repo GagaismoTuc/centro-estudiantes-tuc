@@ -113,12 +113,15 @@ describe("Shared directory and contact sharing", () => {
     await settle();
     expect(sentTo(sent, "POST /contacts/c-1/share")).toHaveLength(0);
 
-    // Confirming share sends POST and updates badge to "Pendiente de aprobación".
+    // Confirming share sends POST, updates badge to "Pendiente de aprobación", and focuses status.
     fireEvent.click(within(card1).getByRole("button", { name: "Compartir" }));
     fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Compartir" }));
     expect(await within(card1).findByText("Pendiente de aprobación")).toBeTruthy();
     expect(within(card1).queryByRole("button", { name: "Compartir" })).toBeNull();
     expect(sentTo(sent, "POST /contacts/c-1/share")).toHaveLength(1);
+    await waitFor(() => {
+      expect(document.activeElement?.classList.contains("form-status")).toBe(true);
+    });
 
     // Server conflict surfaces Spanish error in status alert and focuses it.
     fireEvent.click(within(card2).getByRole("button", { name: "Compartir" }));

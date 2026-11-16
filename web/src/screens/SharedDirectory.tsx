@@ -5,10 +5,10 @@ import { errorMessage } from "../api/errors.ts";
 import type { components } from "../api/schema.gen.ts";
 import { canReadContacts, useMe, useSession } from "../auth/session.tsx";
 import { FormStatus, type Status } from "../components/Form.tsx";
-import { Icon } from "../components/Icon.tsx";
 import { PageTitle, useDocumentTitle } from "../components/Page.tsx";
 import { formatPesos } from "../lib/money.ts";
 import { Link } from "../lib/router.tsx";
+import { ContactMeta, NoContactsAccess } from "./contactShared.tsx";
 
 type SharedContact = components["schemas"]["SharedContact"];
 
@@ -68,21 +68,11 @@ export function SharedDirectory() {
 
   if (!canRead) {
     return (
-      <>
-        <header className="page-header">
-          <PageTitle eyebrow="Comisión directiva">Directorio compartido</PageTitle>
-        </header>
-        <section className="banner" role="alert" aria-labelledby="no-shared-access-title">
-          <Icon name="alert" />
-          <div className="banner__body">
-            <h2 id="no-shared-access-title">No tenés acceso a esta sección</h2>
-            <p>Solo la comisión directiva, la escuela y el veedor pueden ver el directorio compartido.</p>
-          </div>
-          <Link className="button button--secondary" to="/">
-            Volver al inicio
-          </Link>
-        </section>
-      </>
+      <NoContactsAccess
+        title="Directorio compartido"
+        description="Solo la comisión directiva, la escuela y el veedor pueden ver el directorio compartido."
+        headingId="no-shared-access-title"
+      />
     );
   }
 
@@ -169,32 +159,7 @@ export function SharedDirectory() {
                   </div>
                 </div>
 
-                <dl className="contact-card__meta">
-                  {contact.phone && (
-                    <div>
-                      <dt>Teléfono / WhatsApp</dt>
-                      <dd>
-                        <bdi>{contact.phone}</bdi>
-                      </dd>
-                    </div>
-                  )}
-                  {contact.email && (
-                    <div>
-                      <dt>Mail</dt>
-                      <dd>
-                        <bdi>{contact.email}</bdi>
-                      </dd>
-                    </div>
-                  )}
-                  {contact.zone && (
-                    <div>
-                      <dt>Zona o ciudad</dt>
-                      <dd>
-                        <bdi>{contact.zone}</bdi>
-                      </dd>
-                    </div>
-                  )}
-                </dl>
+                <ContactMeta phone={contact.phone} email={contact.email} zone={contact.zone} />
 
                 <div className="contact-prices">
                   <div className="contact-prices__header">

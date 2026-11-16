@@ -20,6 +20,7 @@ CREATE INDEX shared_contacts_status_heading_idx ON shared_contacts (status, lowe
 
 CREATE TABLE shared_contact_links (
     id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    seq               bigint GENERATED ALWAYS AS IDENTITY,
     tenant_id         uuid NOT NULL REFERENCES organizations (id),
     contact_id        uuid NOT NULL,
     shared_contact_id uuid NOT NULL REFERENCES shared_contacts (id) ON DELETE CASCADE,
@@ -29,7 +30,7 @@ CREATE TABLE shared_contact_links (
 );
 
 CREATE INDEX shared_contact_links_tenant_contact_idx
-    ON shared_contact_links (tenant_id, contact_id, created_at DESC, id DESC);
+    ON shared_contact_links (tenant_id, contact_id, seq DESC);
 
 GRANT SELECT, INSERT ON shared_contacts TO ce_app;
 ALTER TABLE shared_contacts ENABLE ROW LEVEL SECURITY;
