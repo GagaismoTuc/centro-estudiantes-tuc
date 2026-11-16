@@ -131,14 +131,15 @@ func TestDuesMigration00025(t *testing.T) {
 		t.Fatalf("delete due as ce_app: %v", err)
 	}
 
-	if _, err = p.DownTo(ctx, 20); err != nil {
-		t.Fatalf("down to 20: %v", err)
+	// DownTo/UpTo, not unbounded Up: later or earlier migrations must not shift the version this test rolls back.
+	if _, err = p.DownTo(ctx, 23); err != nil {
+		t.Fatalf("down to 23: %v", err)
 	}
 	var exists bool
 	if err = env.Super.QueryRow(ctx, `SELECT to_regclass('public.finance_dues') IS NOT NULL OR to_regclass('public.finance_due_members') IS NOT NULL`).Scan(&exists); err != nil || exists {
 		t.Fatalf("tables still exist after down: exists=%v err=%v", exists, err)
 	}
-	if _, err = p.Up(ctx); err != nil {
+	if _, err = p.UpTo(ctx, 25); err != nil {
 		t.Fatalf("reapply 00025: %v", err)
 	}
 }
