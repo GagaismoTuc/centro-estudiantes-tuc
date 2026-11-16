@@ -140,3 +140,21 @@ test("R8 officers manage categories by direction and see only permitted actions"
   fireEvent.click(screen.getByRole("button", { name: "Confirmar borrado" }));
   await waitFor(() => expect(sentTo(sent, "DELETE /finance/categories/c3")).toHaveLength(1));
 });
+
+test("R1 created expense appears in the movement form", async () => {
+  const added = { id: "c4", name: "Buzos", direction: "expense", active: true, reserved: false };
+  mockApi({ "GET /auth/me": ok(me({ role: "officer", mfa: "satisfied" })), ...reads,
+    "GET /finance/categories": [ok(categories), ok([...categories, added])],
+    "POST /finance/categories": ok(added, 201),
+  });
+  window.history.replaceState(null, "", "/caja"); render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Categor\u00edas" }));
+  await screen.findByText("Reservada para los pagos de cuotas");
+  fireEvent.change(screen.getByLabelText("Nombre de la categor\u00eda"), { target: { value: "Buzos" } });
+  fireEvent.change(screen.getByLabelText("Sentido"), { target: { value: "expense" } });
+  fireEvent.click(screen.getByRole("button", { name: "Agregar categor\u00eda" }));
+  await screen.findByText("Buzos", { selector: "strong" });
+  fireEvent.click(screen.getByRole("button", { name: "Nuevo movimiento" }));
+  fireEvent.change(screen.getByLabelText("Tipo"), { target: { value: "expense" } });
+  expect(await screen.findByRole("option", { name: "Buzos" })).toBeTruthy();
+});
