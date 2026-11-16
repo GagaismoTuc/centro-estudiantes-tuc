@@ -68,6 +68,7 @@ func TestCategoryManagementMigration00020(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	// DownTo/UpTo, not Down/Up: later migrations must not move the version this test rolls back.
 	if _, err = p.DownTo(ctx, 19); err != nil {
 		t.Fatalf("down: %v", err)
 	}

@@ -14,6 +14,7 @@ import { Calculator } from "./screens/Calculator.tsx";
 import { ContactHeadings } from "./screens/ContactHeadings.tsx";
 import { Contacts } from "./screens/Contacts.tsx";
 import { Home } from "./screens/Home.tsx";
+import { EventBudgets } from "./screens/EventBudgets.tsx";
 import { Finance } from "./screens/Finance.tsx";
 import { Dues } from "./screens/Dues.tsx";
 import { MfaEnroll } from "./screens/MfaEnroll.tsx";
@@ -50,6 +51,7 @@ const shellRoutes: Record<string, { page: string; Screen: () => JSX.Element }> =
   "/miembros": { page: "Miembros", Screen: Members },
   "/eleccion": { page: "Elección", Screen: Election },
   "/centro-de-estudiantes": { page: "Centro de estudiantes", Screen: CommissionPanel },
+  "/presupuestos": { page: "Presupuestos", Screen: EventBudgets },
   "/calculadora": { page: "Calculadora", Screen: Calculator },
   "/contactos": { page: "Contactos", Screen: Contacts },
   "/contactos/rubros": { page: "Rubros", Screen: ContactHeadings },
