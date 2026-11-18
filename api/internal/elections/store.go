@@ -92,6 +92,8 @@ type Election struct {
 type Store struct {
 	pool *pgxpool.Pool
 	now  func() time.Time
+	// ballotFault, set only by tests (export_test.go), replaces a vote's Ballot write with its error.
+	ballotFault func() error
 }
 
 // NewStore returns a Store with the clock now. It panics when now is nil.
