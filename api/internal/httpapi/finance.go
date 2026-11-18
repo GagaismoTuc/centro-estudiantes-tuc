@@ -58,8 +58,12 @@ func financeEntry(e finance.Entry) oapi.FinanceEntry {
 		}
 		return &v
 	}
-	return oapi.FinanceEntry{Id: e.ID, CategoryId: e.CategoryID, Direction: e.Direction, Date: e.Date, Description: e.Description, AmountCents: e.AmountCents, RecordedBy: e.RecordedBy, RecordedAt: e.RecordedAt,
+	out := oapi.FinanceEntry{Id: e.ID, CategoryId: e.CategoryID, Direction: e.Direction, Date: e.Date, Description: e.Description, AmountCents: e.AmountCents, RecordedBy: e.RecordedBy, RecordedAt: e.RecordedAt,
 		ReversesId: optional(e.ReversesID), ReversalId: optional(e.ReversalID), ReversedBy: optional(e.ReversedBy), ReversedOn: optional(e.ReversedOn)}
+	if e.RosterMemberID != "" {
+		out.RosterMember = &oapi.FinanceEntryRosterMember{Id: e.RosterMemberID, FullName: e.RosterMemberName}
+	}
+	return out
 }
 func (s *server) GetFinanceCategories(w http.ResponseWriter, r *http.Request) {
 	sess, ok := rosterSession(w, r)

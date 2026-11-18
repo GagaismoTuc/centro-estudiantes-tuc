@@ -1,10 +1,14 @@
 package httpapi
 
 import (
+	"bytes"
+	"encoding/csv"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/auth"
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/finance"
@@ -25,6 +29,12 @@ func writeDueError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusUnprocessableEntity, "invalid_amount")
 	case errors.Is(err, finance.ErrDate):
 		writeError(w, http.StatusUnprocessableEntity, "invalid_date")
+	case errors.Is(err, finance.ErrFutureDate):
+		writeError(w, http.StatusUnprocessableEntity, "future_date")
+	case errors.Is(err, finance.ErrNotOwed):
+		writeError(w, http.StatusUnprocessableEntity, "not_owed")
+	case errors.Is(err, finance.ErrOverpayment):
+		writeError(w, http.StatusUnprocessableEntity, "overpayment")
 	case errors.Is(err, finance.ErrEmptyRoster):
 		writeError(w, http.StatusUnprocessableEntity, "empty_roster")
 	case errors.Is(err, finance.ErrDueFrozen):
@@ -55,6 +65,7 @@ func dueDetailResponse(d finance.DueDetail) oapi.FinanceDueDetail {
 			RosterMemberId: m.RosterMemberID,
 			FullName:       m.FullName,
 			Status:         oapi.FinanceDueStatus(m.Status),
+			PaidCents:      m.PaidCents,
 		})
 	}
 	return oapi.FinanceDueDetail{
@@ -146,6 +157,7 @@ func (s *server) GetMyFinanceDues(w http.ResponseWriter, r *http.Request) {
 			AmountCents: d.AmountCents,
 			DueDate:     d.DueDate,
 			Status:      oapi.FinanceDueStatus(d.Status),
+			PaidCents:   d.PaidCents,
 		})
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -231,4 +243,73 @@ func (s *server) DeleteFinanceDue(w http.ResponseWriter, r *http.Request, id str
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *server) PostFinanceDuePayment(w http.ResponseWriter, r *http.Request, id string) {
+	sess, ok := rosterSession(w, r)
+	if !ok {
+		return
+	}
+	if err := s.finance.Authorize(r.Context(), sess); err != nil {
+		writeDueError(w, err)
+		return
+	}
+	var req struct {
+		RosterMemberID string          `json:"rosterMemberId"`
+		AmountCents    json.RawMessage `json:"amountCents"`
+		Date           string          `json:"date"`
+	}
+	if !decodeStrict(w, r, &req) {
+		return
+	}
+	amount, ok := decodePositiveAmount(w, req.AmountCents)
+	if !ok {
+		return
+	}
+	p, err := s.finance.RecordDuePayment(r.Context(), sess, id, finance.NewDuePayment{RosterMemberID: req.RosterMemberID, AmountCents: amount, Date: req.Date})
+	if err != nil {
+		writeDueError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, oapi.FinanceDuePayment{Id: p.ID, DueId: p.DueID, RosterMemberId: p.RosterMemberID, EntryId: p.EntryID, AmountCents: p.AmountCents, Date: p.Date})
+}
+
+var dueStatusCSV = map[string]string{finance.DueStatusOwing: "Debe", finance.DueStatusPaid: "Pagó", finance.DueStatusExempt: "Exento"}
+
+// GetFinanceDueMembersCsv writes the per-student list of a Due for spreadsheets in Argentina:
+// UTF-8 with a byte order mark, ";" as separator and decimal commas. It never carries the DNI.
+func (s *server) GetFinanceDueMembersCsv(w http.ResponseWriter, r *http.Request, id string) {
+	sess, ok := rosterSession(w, r)
+	if !ok {
+		return
+	}
+	due, err := s.finance.GetDue(r.Context(), sess, id)
+	if err != nil {
+		writeDueError(w, err)
+		return
+	}
+	var buf bytes.Buffer
+	buf.WriteString("\ufeff") // byte order mark
+	out := csv.NewWriter(&buf)
+	out.Comma = ';'
+	out.UseCRLF = true
+	_ = out.Write([]string{"Nombre", "Pagado", "Falta", "Estado"})
+	for _, m := range due.Members {
+		_ = out.Write([]string{csvText(m.FullName), csvPesos(m.PaidCents), csvPesos(max(due.AmountCents-m.PaidCents, 0)), dueStatusCSV[m.Status]})
+	}
+	out.Flush()
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="cuota.csv"`)
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write(buf.Bytes())
+}
+
+func csvPesos(cents int64) string { return fmt.Sprintf("%d,%02d", cents/100, cents%100) }
+
+// csvText keeps a spreadsheet from running a Roster name as a formula.
+func csvText(v string) string {
+	if v != "" && strings.ContainsRune("=+-@\t\r", rune(v[0])) {
+		return "'" + v
+	}
+	return v
 }
