@@ -168,6 +168,8 @@ export function Dues() {
   const createForm = useFormErrors();
   const editForm = useFormErrors();
   const exemptForm = useFormErrors();
+  // After an exemption the form unmounts with focus inside it: move focus to the success message (CS-9).
+  const focusStatus = useRef(false);
 
   const failed = useCallback(
     (code: string, targetForm?: ReturnType<typeof useFormErrors>, context?: ErrorContext) => {
@@ -277,6 +279,7 @@ export function Dues() {
     setStatus(null);
     const result = await exemptDueMember(detail.id, { rosterMemberId: exempting.rosterMemberId, reason });
     if (result.ok) {
+      focusStatus.current = true;
       setExempting(null);
       setDetail(result.data);
       setStatus({ tone: "ok", text: "Se registró la exención." });
@@ -290,6 +293,12 @@ export function Dues() {
   }
 
   const activeForm = exempting ? exemptForm : editing ? editForm : createForm;
+
+  useEffect(() => {
+    if (!focusStatus.current) return;
+    focusStatus.current = false;
+    activeForm.statusProps.ref.current?.focus();
+  });
 
   return (
     <>
@@ -360,7 +369,7 @@ export function Dues() {
                     <strong>{due.name}</strong> — {pesos(due.amountCents)} — vence el {dayMonthYear(due.dueDate)}
                     <br />
                     <span className="muted small">
-                      {due.owingCount} de {due.totalCount} deben
+                      {due.totalCount - due.owingCount} de {due.totalCount} pagaron
                     </span>
                   </div>
                   <div className="panel__actions">

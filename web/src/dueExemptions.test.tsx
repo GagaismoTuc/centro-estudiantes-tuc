@@ -82,7 +82,8 @@ test("S1 S6 officer exempts a member with a reason: POST sends rosterMemberId an
   expect(within(row("Beto Ficticio")).queryByRole("button", { name: /Eximir/ })).toBeNull();
   expect(within(row("Ana Ficticia")).getByRole("button", { name: "Eximir a Ana Ficticia" })).toBeTruthy();
   expect(screen.queryByLabelText("Motivo")).toBeNull();
-  expect(screen.getByText("Se registró la exención.")).toBeTruthy();
+  const success = screen.getByText("Se registró la exención.").closest(".form-status");
+  await waitFor(() => expect(document.activeElement).toBe(success));
 });
 
 test("S2 empty or too long reason shows the Spanish message, marks Motivo invalid and sends nothing", async () => {
@@ -147,7 +148,7 @@ test("S3 S8 S9 API errors already_exempt, not_owed and reason_too_long show Span
   expect(within(row("Beto Ficticio")).getByText("Debe")).toBeTruthy();
 });
 
-test("S4 detail shows 0 de 2 pagaron for 3 members with 1 exempt and no payments", async () => {
+test("S4 list and detail show 0 de 2 pagaron for 3 members with 1 exempt and no payments", async () => {
   mockApi({
     "GET /auth/me": ok(officer()),
     "GET /finance/dues": ok([{ ...dueSummary, owingCount: 2, totalCount: 2 }]),
@@ -155,7 +156,11 @@ test("S4 detail shows 0 de 2 pagaron for 3 members with 1 exempt and no payments
     "GET /finance/dues/d1": ok(exemptDetail),
   });
   await openDetail();
-  expect(screen.getByText(/0 de 2 pagaron/)).toBeTruthy();
+  const list = screen.getByRole("heading", { name: "Listado de cuotas" }).closest("section") as HTMLElement;
+  expect(within(list).getByText("0 de 2 pagaron")).toBeTruthy();
+  expect(within(list).queryByText(/deben/)).toBeNull();
+  const detail = screen.getByRole("heading", { name: "Cuota de noviembre" }).closest("section") as HTMLElement;
+  expect(within(detail).getByText(/0 de 2 pagaron/)).toBeTruthy();
   expect(within(row("Ana Ficticia")).getByText("Debe")).toBeTruthy();
   expect(within(row("Carla Ficticia")).getByText("Debe")).toBeTruthy();
   expect(within(row("Beto Ficticio")).getByText("Exento")).toBeTruthy();
