@@ -84,6 +84,7 @@ const contextual: Record<ErrorContext, Record<string, string>> = {
     invalid_amount: "Ingres\u00e1 un monto positivo en centavos enteros.",
     invalid_date: "Eleg\u00ed una fecha v\u00e1lida.",
     description_required: "Escrib\u00ed una descripci\u00f3n.",
+    invalid_range: "Revisá las fechas: elegí las dos y que la de inicio no sea posterior a la de fin.",
   },
   "access-code": {
     invalid_code: "El código no es válido, ya se usó o venció. Pedile uno nuevo a tu escuela.",

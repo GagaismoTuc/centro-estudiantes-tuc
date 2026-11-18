@@ -29,6 +29,69 @@ type Report struct {
 	Entries []Entry
 	// Totals of the Categories with Entries in the range: income Categories first, then by name.
 	Totals []CategoryTotal
+	// SeesPayers reports whether the reader may see who paid a Due (see seesPayers).
+	SeesPayers bool
+}
+
+// Ledger is the ledger a member exports: Entries oldest first, the names of the school's
+// Categories by id and whether the reader may see who paid a Due.
+type Ledger struct {
+	Entries    []Entry
+	Categories map[string]string
+	SeesPayers bool
+}
+
+// ledgerQuery selects a tenant's Entries oldest first; NULL bounds select the whole ledger.
+const ledgerQuery = `SELECT ` + entryColumns + ` WHERE e.tenant_id=$1 AND ($2::date IS NULL OR e.entry_date BETWEEN $2::date AND $3::date) ORDER BY e.entry_date,e.recorded_at,e.id`
+
+// seesPayers reports whether sess may see who paid a Due (ADR 0004): the Board or a School admin,
+// with the two-factor session the Due list already requires of them. Everyone else, Students
+// included, reads the ledger without payer names.
+// shortcut: the Veedor role does not exist yet; add it here when #28 creates it.
+func seesPayers(ctx context.Context, tx pgx.Tx, sess auth.Session) (bool, error) {
+	if auth.RequireMFA(sess) != nil {
+		return false, nil
+	}
+	var ok bool
+	err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM memberships m WHERE m.tenant_id=$1 AND m.user_id=$2 AND (m.role IN ('officer','school_admin')
+  OR EXISTS (SELECT 1 FROM officer_positions p WHERE p.tenant_id=m.tenant_id AND p.roster_member_id=m.roster_member_id)))`, sess.TenantID, sess.UserID).Scan(&ok)
+	return ok, err
+}
+
+// Ledger reads the ledger for export by any member of the school; it writes nothing. With from and
+// to empty it returns every Entry; otherwise both are validated like the report's range.
+func (s *Store) Ledger(ctx context.Context, sess auth.Session, from, to string) (out Ledger, err error) {
+	var lo, hi any
+	if from != "" || to != "" {
+		if err := ValidateRange(from, to); err != nil {
+			return Ledger{}, err
+		}
+		lo, hi = from, to
+	}
+	err = s.withMember(ctx, sess, false, func(tx pgx.Tx) error {
+		rows, e := tx.Query(ctx, ledgerQuery, sess.TenantID, lo, hi)
+		if e != nil {
+			return e
+		}
+		if out.Entries, e = pgx.CollectRows(rows, pgx.RowToStructByPos[Entry]); e != nil {
+			return e
+		}
+		cats, e := tx.Query(ctx, `SELECT id::text,name FROM finance_categories WHERE tenant_id=$1`, sess.TenantID)
+		if e != nil {
+			return e
+		}
+		out.Categories = map[string]string{}
+		var id, name string
+		if _, e = pgx.ForEachRow(cats, []any{&id, &name}, func() error { out.Categories[id] = name; return nil }); e != nil {
+			return e
+		}
+		out.SeesPayers, e = seesPayers(ctx, tx, sess)
+		return e
+	})
+	if err != nil {
+		return Ledger{}, err
+	}
+	return out, nil
 }
 
 // ValidateRange checks that from and to are YYYY-MM-DD dates and from is not after to.
@@ -78,11 +141,14 @@ func (s *Store) Report(ctx context.Context, sess auth.Session, from, to string) 
 		for _, c := range out.Totals {
 			out.ClosingCents += c.TotalCents
 		}
-		rows, e = tx.Query(ctx, `SELECT `+entryColumns+` WHERE e.tenant_id=$1 AND e.entry_date BETWEEN $2::date AND $3::date ORDER BY e.entry_date,e.recorded_at,e.id`, sess.TenantID, from, to)
+		rows, e = tx.Query(ctx, ledgerQuery, sess.TenantID, from, to)
 		if e != nil {
 			return e
 		}
-		out.Entries, e = pgx.CollectRows(rows, pgx.RowToStructByPos[Entry])
+		if out.Entries, e = pgx.CollectRows(rows, pgx.RowToStructByPos[Entry]); e != nil {
+			return e
+		}
+		out.SeesPayers, e = seesPayers(ctx, tx, sess)
 		return e
 	})
 	if err != nil {

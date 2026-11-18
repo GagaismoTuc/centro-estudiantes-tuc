@@ -2344,6 +2344,72 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+  /finance/report:
+    get:
+      operationId: getFinanceReport
+      summary: Fund report (Informe de caja) for an inclusive date range
+      description: >
+        Any member of the active school reads it (Officers, Students, School admins), with the same
+        session the ledger listing needs. Computed on demand; nothing is written. Dates are inclusive
+        and compare with each Entry's date; a Reversal counts on its own date.
+      parameters:
+        - $ref: "#/components/parameters/ReportFrom"
+        - $ref: "#/components/parameters/ReportTo"
+      responses:
+        "200":
+          description: The report; a range without Entries has zero totals and opening equal to closing.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FinanceReport" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/MemberForbidden" }
+        "422": { $ref: "#/components/responses/InvalidRange" }
+  /finance/report.csv:
+    get:
+      operationId: getFinanceReportCsv
+      summary: Fund report as a CSV download
+      description: >
+        Same readers and range rules as `/finance/report`. UTF-8 with BOM, `;` separator, CRLF line
+        ends, amounts with decimal comma and no thousands separator. First a summary section (header
+        `concepto;tipo;monto`, then `Saldo inicial`, one row per Category total with its `tipo`
+        (`ingreso`/`gasto`) and `Saldo final`), an empty line, then the range's ledger with the same
+        columns as `/finance/entries.csv`. A cell starting with `=`, `+`, `-` or `@` gets a leading
+        `'`, except an amount.
+      parameters:
+        - $ref: "#/components/parameters/ReportFrom"
+        - $ref: "#/components/parameters/ReportTo"
+      responses:
+        "200":
+          description: Attachment `informe-de-caja-<from>-a-<to>.csv`.
+          content:
+            text/csv:
+              schema: { type: string }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/MemberForbidden" }
+        "422": { $ref: "#/components/responses/InvalidRange" }
+  /finance/entries.csv:
+    get:
+      operationId: getFinanceEntriesCsv
+      summary: Fund ledger as a CSV download
+      description: >
+        Same readers as `/finance/report`. Without `from` and `to` it exports the whole ledger;
+        with either, both are required and validated like the report. Oldest first. Columns:
+        `fecha;tipo;Categoría;descripción;monto;registrado por;revertido;con comprobante`, plus a
+        trailing `alumno` column only for Officers and School admins with a two-factor session
+        (never for Students). `monto` is signed (income +, expense −); `revertido` and
+        `con comprobante` are `sí`/`no`. Same encoding and escaping as `/finance/report.csv`.
+      parameters:
+        - $ref: "#/components/parameters/ReportFrom"
+        - $ref: "#/components/parameters/ReportTo"
+      responses:
+        "200":
+          description: Attachment `libro-de-caja.csv`, or `libro-de-caja-<from>-a-<to>.csv` with a range.
+          content:
+            text/csv:
+              schema: { type: string }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/MemberForbidden" }
+        "422": { $ref: "#/components/responses/InvalidRange" }
   /finance/entries/{entryId}:
     parameters:
       - name: entryId
@@ -2563,6 +2629,19 @@ paths:
                     type: string
                     enum: [due_frozen]
 components:
+  parameters:
+    ReportFrom:
+      name: from
+      in: query
+      required: false
+      description: First day of the range (YYYY-MM-DD, inclusive). Missing or invalid answers `invalid_range`.
+      schema: { type: string }
+    ReportTo:
+      name: to
+      in: query
+      required: false
+      description: Last day of the range (YYYY-MM-DD, inclusive). Missing or invalid answers `invalid_range`.
+      schema: { type: string }
   responses:
     InvalidElectionList:
       description: >
@@ -2688,6 +2767,25 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+    MemberForbidden:
+      description: The user has no membership in the active school (`forbidden`). Nothing is read or written.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    InvalidRange:
+      description: >
+        `from` or `to` is missing or not a valid YYYY-MM-DD date, or `from` is after `to`
+        (`invalid_range`). Nothing is read.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [error]
+            properties:
+              error:
+                type: string
+                enum: [invalid_range]
     DirectoryForbidden:
       description: >
         The user lacks the required role in the active tenant (`forbidden`), or has a privileged role
@@ -2825,6 +2923,35 @@ components:
         reversedOn:
           type: string
           description: Present when this entry was reversed; the Reversal's date (YYYY-MM-DD, Argentina).
+    FinanceCategoryTotal:
+      type: object
+      required: [categoryId, name, direction, totalCents]
+      properties:
+        categoryId: { type: string }
+        name: { type: string }
+        direction: { type: string, enum: [income, expense] }
+        totalCents:
+          type: integer
+          format: int64
+          description: Signed net of the Category's Entries in the range (income +, expense −); a Reversal counts with the opposite sign.
+    FinanceReport:
+      type: object
+      required: [from, to, openingCents, closingCents, incomeCents, expenseCents, totals, entries]
+      properties:
+        from: { type: string, description: "YYYY-MM-DD, inclusive." }
+        to: { type: string, description: "YYYY-MM-DD, inclusive." }
+        openingCents: { type: integer, format: int64, description: Balance of every Entry dated before `from`. }
+        closingCents: { type: integer, format: int64, description: openingCents + incomeCents + expenseCents. }
+        incomeCents: { type: integer, format: int64, description: Sum of the income Categories' totals. }
+        expenseCents: { type: integer, format: int64, description: Sum of the expense Categories' totals (zero or negative unless reversed). }
+        totals:
+          type: array
+          description: Categories with Entries in the range; income first, then by name.
+          items: { $ref: "#/components/schemas/FinanceCategoryTotal" }
+        entries:
+          type: array
+          description: Entries in the range, oldest first.
+          items: { $ref: "#/components/schemas/FinanceEntry" }
     FinanceBalance:
       type: object
       required: [balanceCents]
