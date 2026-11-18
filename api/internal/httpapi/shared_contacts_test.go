@@ -499,14 +499,20 @@ func TestSharedContactsCopyAndIndependence(t *testing.T) {
 	ctx := integration(t)
 	fA := newFixture(t, ctx)
 	fB := newFixture(t, ctx)
+	fC := newFixture(t, ctx)
 	headingsA := seedHeadingsForTenant(t, ctx, fA.tenant)
 	headingsB := seedHeadingsForTenant(t, ctx, fB.tenant)
+	headingsC := seedHeadingsForTenant(t, ctx, fC.tenant)
 	_, officerA, _, _ := fA.signInMFA(t, ctx, "officer")
 	_, officerB, _, _ := fB.signInMFA(t, ctx, "officer")
+	_, officerC, _, _ := fC.signInMFA(t, ctx, "officer")
 	const ip = "198.51.100.44"
 
-	// Remove "gazebos" from School B so R1 falls back to "otros".
+	// Remove "gazebos" from School B and archive "gazebos" in School C so both fall back to "otros" (R1).
 	wantResponse(t, fB.do(http.MethodDelete, "/api/contacts/headings/"+headingsB["gazebos"], "", ip, officerB, nil), http.StatusNoContent, "")
+	if rec := fC.do(http.MethodPost, "/api/contacts/headings/"+headingsC["gazebos"]+"/archive", "", ip, officerC, nil); rec.Code != http.StatusOK {
+		t.Fatalf("archive heading C = %d body=%s", rec.Code, rec.Body)
+	}
 
 	rec := fA.do(http.MethodPost, "/api/contacts", `{
 		"name":"Gazebos Ficticios SRL",
@@ -521,10 +527,32 @@ func TestSharedContactsCopyAndIndependence(t *testing.T) {
 	}
 	var cA contactWithShareDTO
 	_ = json.Unmarshal(rec.Body.Bytes(), &cA)
-	rec = fA.do(http.MethodPost, "/api/contacts/"+cA.ID+"/reference-prices", `{"description":"Gazebo 3×3","amountCents":2500000,"date":"2026-09-01"}`, ip, officerA, nil)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("add price = %d body=%s", rec.Code, rec.Body)
+	for _, priceBody := range []string{
+		`{"description":"Gazebo 3×3","amountCents":2500000,"date":"2026-09-01"}`,
+		`{"description":"Gazebo 3×3 noche","amountCents":2800000,"date":"2026-09-01"}`,
+		`{"description":"Gazebo 6×3","amountCents":4200000,"date":"2026-09-02"}`,
+	} {
+		rec = fA.do(http.MethodPost, "/api/contacts/"+cA.ID+"/reference-prices", priceBody, ip, officerA, nil)
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("add price = %d body=%s", rec.Code, rec.Body)
+		}
 	}
+
+	// Second contact in A with uppercase heading to verify case-insensitive active heading matching in B.
+	rec = fA.do(http.MethodPatch, "/api/contacts/headings/"+headingsA["sonido e iluminación"], `{"name":"SONIDO E ILUMINACIÓN"}`, ip, officerA, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("rename heading A = %d body=%s", rec.Code, rec.Body)
+	}
+	rec = fA.do(http.MethodPost, "/api/contacts", `{
+		"name":"Sonido Pro",
+		"headingId":"`+headingsA["sonido e iluminación"]+`",
+		"phone":"381 444-0000"
+	}`, ip, officerA, nil)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create sonido A = %d body=%s", rec.Code, rec.Body)
+	}
+	var cSonA contactWithShareDTO
+	_ = json.Unmarshal(rec.Body.Bytes(), &cSonA)
 
 	rec = fA.do(http.MethodPost, "/api/contacts/"+cA.ID+"/share", "", ip, officerA, nil)
 	if rec.Code != http.StatusCreated {
@@ -532,13 +560,42 @@ func TestSharedContactsCopyAndIndependence(t *testing.T) {
 	}
 	var sh shareResponseDTO
 	_ = json.Unmarshal(rec.Body.Bytes(), &sh)
+	rec = fA.do(http.MethodPost, "/api/contacts/"+cSonA.ID+"/share", "", ip, officerA, nil)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("share sonido = %d body=%s", rec.Code, rec.Body)
+	}
+	var shSon shareResponseDTO
+	_ = json.Unmarshal(rec.Body.Bytes(), &shSon)
 	t.Cleanup(func() {
-		_, _ = tdb.Super.Exec(context.Background(), `DELETE FROM shared_contacts WHERE id = $1`, sh.ID)
+		_, _ = tdb.Super.Exec(context.Background(), `DELETE FROM shared_contacts WHERE id IN ($1, $2)`, sh.ID, shSon.ID)
 	})
 
-	// R1 negative: pending or nonexistent shared contact returns 404 not_found and creates nothing.
+	// R1 negative: pending, rejected, malformed, or nonexistent shared contact returns 404 not_found and creates nothing.
 	wantResponse(t, fB.do(http.MethodPost, "/api/shared-contacts/"+sh.ID+"/copy", "", ip, officerB, nil), http.StatusNotFound, `{"error":"not_found"}`)
 	wantResponse(t, fB.do(http.MethodPost, "/api/shared-contacts/00000000-0000-0000-0000-000000000000/copy", "", ip, officerB, nil), http.StatusNotFound, `{"error":"not_found"}`)
+	wantResponse(t, fB.do(http.MethodPost, "/api/shared-contacts/not-a-uuid/copy", "", ip, officerB, nil), http.StatusNotFound, `{"error":"not_found"}`)
+
+	// Rejected entry cannot be copied either.
+	rec = fA.do(http.MethodPost, "/api/contacts", `{"name":"Rechazado Copia","headingId":"`+headingsA["gazebos"]+`"}`, ip, officerA, nil)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create rejected A = %d body=%s", rec.Code, rec.Body)
+	}
+	var cRejA contactWithShareDTO
+	_ = json.Unmarshal(rec.Body.Bytes(), &cRejA)
+	rec = fA.do(http.MethodPost, "/api/contacts/"+cRejA.ID+"/share", "", ip, officerA, nil)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("share rejected A = %d body=%s", rec.Code, rec.Body)
+	}
+	var shRej shareResponseDTO
+	_ = json.Unmarshal(rec.Body.Bytes(), &shRej)
+	t.Cleanup(func() {
+		_, _ = tdb.Super.Exec(context.Background(), `DELETE FROM shared_contacts WHERE id = $1`, shRej.ID)
+	})
+	if err := contacts.RejectShared(ctx, tdb.Super, shRej.ID, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	wantResponse(t, fB.do(http.MethodPost, "/api/shared-contacts/"+shRej.ID+"/copy", "", ip, officerB, nil), http.StatusNotFound, `{"error":"not_found"}`)
+
 	rec = fB.do(http.MethodGet, "/api/contacts", "", ip, officerB, nil)
 	var emptyB []contactWithShareDTO
 	_ = json.Unmarshal(rec.Body.Bytes(), &emptyB)
@@ -549,8 +606,28 @@ func TestSharedContactsCopyAndIndependence(t *testing.T) {
 	if err := contacts.ApproveShared(ctx, tdb.Super, sh.ID, time.Now()); err != nil {
 		t.Fatal(err)
 	}
+	if err := contacts.ApproveShared(ctx, tdb.Super, shSon.ID, time.Now()); err != nil {
+		t.Fatal(err)
+	}
 
-	// R1 + R8: Beto Ficticio (Escuela B) copies "Gazebos Ficticios SRL" -> enters "otros" without notes or school.
+	// Capture A's reference price order (including frozen-clock same-date tie-break) to verify R1 preserves exact order.
+	rec = fA.do(http.MethodGet, "/api/contacts", "", ip, officerA, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("get A contacts = %d body=%s", rec.Code, rec.Body)
+	}
+	var srcListA []contactWithShareDTO
+	_ = json.Unmarshal(rec.Body.Bytes(), &srcListA)
+	var srcCA contactWithShareDTO
+	for _, c := range srcListA {
+		if c.ID == cA.ID {
+			srcCA = c
+		}
+	}
+	if len(srcCA.ReferencePrices) != 3 || srcCA.ReferencePrices[0].Description != "Gazebo 6×3" || srcCA.ShareOutdated {
+		t.Fatalf("srcCA = %+v", srcCA)
+	}
+
+	// R1 + R8: Beto Ficticio (Escuela B) copies "Gazebos Ficticios SRL" -> enters "otros" with all prices in order, without notes or school.
 	rec = fB.do(http.MethodPost, "/api/shared-contacts/"+sh.ID+"/copy", "", ip, officerB, nil)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("copy = %d body=%s", rec.Code, rec.Body)
@@ -563,9 +640,65 @@ func TestSharedContactsCopyAndIndependence(t *testing.T) {
 	if copy1.HeadingName != "otros" || copy1.HeadingID != headingsB["otros"] ||
 		copy1.Name != "Gazebos Ficticios SRL" || copy1.Phone != "381 555-0000" ||
 		copy1.Email != "ventas@gazebos-ficticios.example" || copy1.Zone != "Yerba Buena" ||
-		copy1.Notes != "" || copy1.ShareStatus != nil || len(copy1.ReferencePrices) != 1 ||
-		copy1.ReferencePrices[0].Description != "Gazebo 3×3" || copy1.ReferencePrices[0].AmountCents != 2500000 {
+		copy1.Notes != "" || copy1.ShareStatus != nil || len(copy1.ReferencePrices) != len(srcCA.ReferencePrices) {
 		t.Fatalf("copy1 = %+v", copy1)
+	}
+	for i, wantPrice := range srcCA.ReferencePrices {
+		gotPrice := copy1.ReferencePrices[i]
+		if gotPrice.Description != wantPrice.Description || gotPrice.AmountCents != wantPrice.AmountCents || gotPrice.Date != wantPrice.Date {
+			t.Fatalf("copy1 price[%d] = %+v, want %+v", i, gotPrice, wantPrice)
+		}
+	}
+	var bLinks int
+	if err := tdb.Super.QueryRow(ctx, `SELECT count(*) FROM shared_contact_links WHERE tenant_id = $1`, fB.tenant).Scan(&bLinks); err != nil || bLinks != 0 {
+		t.Fatalf("copying school received shared_contact_links rows = %d (err=%v), want 0", bLinks, err)
+	}
+
+	// R1: Case-insensitive active heading match via HTTP.
+	rec = fB.do(http.MethodPost, "/api/shared-contacts/"+shSon.ID+"/copy", "", ip, officerB, nil)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("copy sonido = %d body=%s", rec.Code, rec.Body)
+	}
+	var copySon contactWithShareDTO
+	_ = json.Unmarshal(rec.Body.Bytes(), &copySon)
+	if copySon.HeadingID != headingsB["sonido e iluminación"] || copySon.HeadingName != "sonido e iluminación" {
+		t.Fatalf("copySon heading = %q (%s), want sonido e iluminación (%s)", copySon.HeadingName, copySon.HeadingID, headingsB["sonido e iluminación"])
+	}
+
+	// R1: Archived heading in School C falls back to "otros" via HTTP.
+	rec = fC.do(http.MethodPost, "/api/shared-contacts/"+sh.ID+"/copy", "", ip, officerC, nil)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("copy to C = %d body=%s", rec.Code, rec.Body)
+	}
+	var copyC contactWithShareDTO
+	_ = json.Unmarshal(rec.Body.Bytes(), &copyC)
+	if copyC.HeadingID != headingsC["otros"] || copyC.HeadingName != "otros" {
+		t.Fatalf("copyC heading = %q (%s), want otros (%s)", copyC.HeadingName, copyC.HeadingID, headingsC["otros"])
+	}
+
+	// R7: Atomic copy through HTTP — if inserting a reference price fails, HTTP answers 500 and no partial contact remains.
+	if _, err := tdb.Super.Exec(ctx, `
+		CREATE FUNCTION http_copy_price_fail_probe() RETURNS trigger LANGUAGE plpgsql AS $$
+		BEGIN
+			IF NEW.tenant_id = '`+fC.tenant+`'::uuid AND NEW.description = 'Gazebo 3×3' THEN
+				RAISE EXCEPTION 'probe fail';
+			END IF;
+			RETURN NEW;
+		END $$;
+		CREATE TRIGGER http_copy_price_fail_probe_trig BEFORE INSERT ON contact_reference_prices
+			FOR EACH ROW EXECUTE FUNCTION http_copy_price_fail_probe();
+	`); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = tdb.Super.Exec(context.Background(), `DROP TRIGGER IF EXISTS http_copy_price_fail_probe_trig ON contact_reference_prices; DROP FUNCTION IF EXISTS http_copy_price_fail_probe()`)
+	})
+	wantResponse(t, fC.do(http.MethodPost, "/api/shared-contacts/"+sh.ID+"/copy", "", ip, officerC, nil), http.StatusInternalServerError, `{"error":"internal"}`)
+	rec = fC.do(http.MethodGet, "/api/contacts", "", ip, officerC, nil)
+	var listC []contactWithShareDTO
+	_ = json.Unmarshal(rec.Body.Bytes(), &listC)
+	if len(listC) != 1 {
+		t.Fatalf("C contacts after failed atomic copy = %d, want 1", len(listC))
 	}
 
 	// R2: Copying twice creates two independent contacts.
@@ -587,25 +720,38 @@ func TestSharedContactsCopyAndIndependence(t *testing.T) {
 	rec = fB.do(http.MethodGet, "/api/shared-contacts", "", ip, officerB, nil)
 	var page sharedContactPageDTO
 	_ = json.Unmarshal(rec.Body.Bytes(), &page)
-	if len(page.Items) != 1 || page.Items[0].Phone != "381 555-0000" {
-		t.Fatalf("shared entry altered by copy edit: %+v", page.Items)
+	if len(page.Items) != 2 {
+		t.Fatalf("shared items after copy edit = %+v, want 2", page.Items)
+	}
+	for _, it := range page.Items {
+		if it.ID == sh.ID && it.Phone != "381 555-0000" {
+			t.Fatalf("shared entry altered by copy edit: %+v", it)
+		}
 	}
 	rec = fA.do(http.MethodGet, "/api/contacts", "", ip, officerA, nil)
 	var listA []contactWithShareDTO
 	_ = json.Unmarshal(rec.Body.Bytes(), &listA)
-	if len(listA) != 1 || listA[0].Phone != "381 555-0000" {
-		t.Fatalf("A contact altered by B copy edit: %+v", listA)
+	for _, c := range listA {
+		if c.ID == cA.ID && c.Phone != "381 555-0000" {
+			t.Fatalf("A contact altered by B copy edit: %+v", c)
+		}
 	}
 
 	// R2 + R3: A withdraws -> leaves shared directory, copy in B remains, and copying withdrawn returns 404.
 	wantResponse(t, fA.do(http.MethodDelete, "/api/contacts/"+cA.ID+"/share", "", ip, officerA, nil), http.StatusNoContent, "")
 	wantResponse(t, fB.do(http.MethodPost, "/api/shared-contacts/"+sh.ID+"/copy", "", ip, officerB, nil), http.StatusNotFound, `{"error":"not_found"}`)
 
+	// R1 + R2: Admin remove -> copying removed returns 404 and B's copy survives.
+	if err := contacts.RemoveShared(ctx, tdb.Super, shSon.ID, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	wantResponse(t, fB.do(http.MethodPost, "/api/shared-contacts/"+shSon.ID+"/copy", "", ip, officerB, nil), http.StatusNotFound, `{"error":"not_found"}`)
+
 	rec = fB.do(http.MethodGet, "/api/contacts", "", ip, officerB, nil)
 	var listB []contactWithShareDTO
 	_ = json.Unmarshal(rec.Body.Bytes(), &listB)
-	if len(listB) != 2 {
-		t.Fatalf("B contacts after A withdraw = %d, want 2", len(listB))
+	if len(listB) != 3 {
+		t.Fatalf("B contacts after A withdraw and admin remove = %d, want 3", len(listB))
 	}
 }
 
@@ -647,6 +793,22 @@ func TestSharedContactsWithdrawAndReshareHTTP(t *testing.T) {
 	wantResponse(t, fA.do(http.MethodDelete, "/api/contacts/"+cA.ID+"/share", "", ip, officerA, nil), http.StatusNoContent, "")
 	wantResponse(t, fA.do(http.MethodDelete, "/api/contacts/"+cA.ID+"/share", "", ip, officerA, nil), http.StatusNotFound, `{"error":"not_shared"}`)
 
+	// R3 negative: withdrawing a rejected-only share -> 404 not_shared and writes no withdrawal row.
+	rec = fA.do(http.MethodPost, "/api/contacts/"+cA.ID+"/share", "", ip, officerA, nil)
+	if rec.Code != http.StatusCreated {
+		t.Fatal(rec.Body.String())
+	}
+	var rejShare shareResponseDTO
+	_ = json.Unmarshal(rec.Body.Bytes(), &rejShare)
+	if err := contacts.RejectShared(ctx, tdb.Super, rejShare.ID, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	wantResponse(t, fA.do(http.MethodDelete, "/api/contacts/"+cA.ID+"/share", "", ip, officerA, nil), http.StatusNotFound, `{"error":"not_shared"}`)
+	var withdrawCount int
+	if err := tdb.Super.QueryRow(ctx, `SELECT count(*) FROM shared_contact_withdrawals WHERE shared_contact_id = $1`, rejShare.ID).Scan(&withdrawCount); err != nil || withdrawCount != 0 {
+		t.Fatalf("withdrawals for rejected = %d (err=%v), want 0", withdrawCount, err)
+	}
+
 	// Re-share and approve v1.
 	rec = fA.do(http.MethodPost, "/api/contacts/"+cA.ID+"/share", "", ip, officerA, nil)
 	if rec.Code != http.StatusCreated {
@@ -661,7 +823,17 @@ func TestSharedContactsWithdrawAndReshareHTTP(t *testing.T) {
 	// R3 negative cross-tenant: School B cannot withdraw School A's approved shared contact.
 	wantResponse(t, fB.do(http.MethodDelete, "/api/contacts/"+cA.ID+"/share", "", ip, officerB, nil), http.StatusNotFound, `{"error":"not_found"}`)
 
-	// R4: Ana edits phone -> shared search keeps old phone; own contact reports shareOutdated=true.
+	// R4: Editing only notes keeps shareOutdated=false; editing phone sets shareOutdated=true and leaves search unchanged.
+	rec = fA.do(http.MethodPatch, "/api/contacts/"+cA.ID, `{"notes":"Solo nota interna"}`, ip, officerA, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch notes = %d body=%s", rec.Code, rec.Body)
+	}
+	var patchedNotes contactWithShareDTO
+	_ = json.Unmarshal(rec.Body.Bytes(), &patchedNotes)
+	if patchedNotes.ShareOutdated || !patchedNotes.HasApprovedShare || patchedNotes.ShareStatus == nil || *patchedNotes.ShareStatus != "approved" {
+		t.Fatalf("notes-only patch = %+v, want shareOutdated=false hasApprovedShare=true shareStatus=approved", patchedNotes)
+	}
+
 	rec = fA.do(http.MethodPatch, "/api/contacts/"+cA.ID, `{"phone":"381 200-0002"}`, ip, officerA, nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("patch = %d body=%s", rec.Code, rec.Body)
@@ -690,8 +862,8 @@ func TestSharedContactsWithdrawAndReshareHTTP(t *testing.T) {
 	}
 	wantResponse(t, fA.do(http.MethodPost, "/api/contacts/"+cA.ID+"/share", "", ip, officerA, nil), http.StatusConflict, `{"error":"already_pending"}`)
 	var linkCount int
-	if err := tdb.Super.QueryRow(ctx, `SELECT count(*) FROM shared_contact_links WHERE tenant_id = $1 AND contact_id = $2`, fA.tenant, cA.ID).Scan(&linkCount); err != nil || linkCount != 3 {
-		t.Fatalf("links after 409 already_pending = %d (err=%v), want 3", linkCount, err)
+	if err := tdb.Super.QueryRow(ctx, `SELECT count(*) FROM shared_contact_links WHERE tenant_id = $1 AND contact_id = $2`, fA.tenant, cA.ID).Scan(&linkCount); err != nil || linkCount != 4 {
+		t.Fatalf("links after 409 already_pending = %d (err=%v), want 4", linkCount, err)
 	}
 
 	rec = fB.do(http.MethodGet, "/api/shared-contacts", "", ip, officerB, nil)
@@ -716,16 +888,138 @@ func TestSharedContactsWithdrawAndReshareHTTP(t *testing.T) {
 		t.Fatalf("listA after approve v2 = %+v", listA)
 	}
 
-	// R3: Withdraw approved -> 204 and disappears from search for all schools.
+	// R3 + R5: Withdrawing while approved v2 AND pending v3 both exist withdraws both, empties search, and v3 can no longer be approved.
+	rec = fA.do(http.MethodPatch, "/api/contacts/"+cA.ID, `{"phone":"381 300-0003"}`, ip, officerA, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch before v3 = %d body=%s", rec.Code, rec.Body)
+	}
+	rec = fA.do(http.MethodPost, "/api/contacts/"+cA.ID+"/share", "", ip, officerA, nil)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("re-share v3 = %d body=%s", rec.Code, rec.Body)
+	}
+	var v3 shareResponseDTO
+	_ = json.Unmarshal(rec.Body.Bytes(), &v3)
+
 	wantResponse(t, fA.do(http.MethodDelete, "/api/contacts/"+cA.ID+"/share", "", ip, officerA, nil), http.StatusNoContent, "")
-	for _, tok := range []string{officerA, officerB} {
-		rec = fA.do(http.MethodGet, "/api/shared-contacts", "", ip, tok, nil)
-		if tok == officerB {
-			rec = fB.do(http.MethodGet, "/api/shared-contacts", "", ip, tok, nil)
-		}
+	for _, tc := range []struct {
+		f   *fixture
+		tok string
+	}{{fA, officerA}, {fB, officerB}} {
+		rec = tc.f.do(http.MethodGet, "/api/shared-contacts", "", ip, tc.tok, nil)
 		_ = json.Unmarshal(rec.Body.Bytes(), &page)
 		if len(page.Items) != 0 {
 			t.Fatalf("withdrawn still visible: %+v", page.Items)
 		}
+	}
+	if err := contacts.ApproveShared(ctx, tdb.Super, v3.ID, time.Now()); err == nil {
+		t.Fatalf("expected error approving withdrawn v3, got nil")
+	}
+
+	// R3 negative: withdrawing an admin-removed-only share -> 404 not_shared and writes no withdrawal row.
+	rec = fA.do(http.MethodPost, "/api/contacts/"+cA.ID+"/share", "", ip, officerA, nil)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("re-share v4 = %d body=%s", rec.Code, rec.Body)
+	}
+	var v4 shareResponseDTO
+	_ = json.Unmarshal(rec.Body.Bytes(), &v4)
+	if err := contacts.ApproveShared(ctx, tdb.Super, v4.ID, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := contacts.RemoveShared(ctx, tdb.Super, v4.ID, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	wantResponse(t, fA.do(http.MethodDelete, "/api/contacts/"+cA.ID+"/share", "", ip, officerA, nil), http.StatusNotFound, `{"error":"not_shared"}`)
+	if err := tdb.Super.QueryRow(ctx, `SELECT count(*) FROM shared_contact_withdrawals WHERE shared_contact_id = $1`, v4.ID).Scan(&withdrawCount); err != nil || withdrawCount != 0 {
+		t.Fatalf("withdrawals for admin-removed = %d (err=%v), want 0", withdrawCount, err)
+	}
+}
+
+func TestSharedContactsConcurrentWithdrawRemoveRace(t *testing.T) {
+	ctx := integration(t)
+	fA := newFixture(t, ctx)
+	fB := newFixture(t, ctx)
+	headingsA := seedHeadingsForTenant(t, ctx, fA.tenant)
+	_, officerA, _, _ := fA.signInMFA(t, ctx, "officer")
+	_, officerB, _, _ := fB.signInMFA(t, ctx, "officer")
+	const ip = "198.51.100.46"
+
+	t.Cleanup(func() {
+		_, _ = tdb.Super.Exec(context.Background(), `
+			DELETE FROM shared_contacts
+			WHERE id IN (SELECT shared_contact_id FROM shared_contact_links WHERE tenant_id = $1)`, fA.tenant)
+	})
+
+	for round := range 8 {
+		rec := fA.do(http.MethodPost, "/api/contacts", fmt.Sprintf(`{"name":"Carrera Retiro %d","headingId":"%s"}`, round, headingsA["gazebos"]), ip, officerA, nil)
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("round %d create = %d body=%s", round, rec.Code, rec.Body)
+		}
+		var cA contactWithShareDTO
+		_ = json.Unmarshal(rec.Body.Bytes(), &cA)
+
+		rec = fA.do(http.MethodPost, "/api/contacts/"+cA.ID+"/share", "", ip, officerA, nil)
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("round %d share = %d body=%s", round, rec.Code, rec.Body)
+		}
+		var sh shareResponseDTO
+		_ = json.Unmarshal(rec.Body.Bytes(), &sh)
+		if err := contacts.ApproveShared(ctx, tdb.Super, sh.ID, time.Now()); err != nil {
+			t.Fatalf("round %d approve: %v", round, err)
+		}
+
+		start := make(chan struct{})
+		var httpRecCode int
+		var httpRecBody string
+		var removeErr error
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			<-start
+			r := fA.do(http.MethodDelete, "/api/contacts/"+cA.ID+"/share", "", ip, officerA, nil)
+			httpRecCode = r.Code
+			httpRecBody = r.Body.String()
+		}()
+		go func() {
+			defer wg.Done()
+			<-start
+			removeErr = contacts.RemoveShared(ctx, tdb.Super, sh.ID, time.Now())
+		}()
+		close(start)
+		wg.Wait()
+
+		switch httpRecCode {
+		case http.StatusNoContent:
+			if httpRecBody != "" {
+				t.Fatalf("round %d 204 had body=%q", round, httpRecBody)
+			}
+		case http.StatusNotFound:
+			if strings.TrimSpace(httpRecBody) != `{"error":"not_shared"}` {
+				t.Fatalf("round %d 404 body=%s, want not_shared", round, httpRecBody)
+			}
+		default:
+			t.Fatalf("round %d DELETE /contacts/{id}/share status = %d body=%s, want 204 or 404 (never 500)", round, httpRecCode, httpRecBody)
+		}
+		if removeErr != nil {
+			t.Fatalf("round %d RemoveShared err = %v", round, removeErr)
+		}
+
+		for _, tc := range []struct {
+			name string
+			f    *fixture
+			tok  string
+		}{{"A", fA, officerA}, {"B", fB, officerB}} {
+			r := tc.f.do(http.MethodGet, "/api/shared-contacts", "", ip, tc.tok, nil)
+			if r.Code != http.StatusOK {
+				t.Fatalf("round %d search %s = %d body=%s", round, tc.name, r.Code, r.Body)
+			}
+			var page sharedContactPageDTO
+			_ = json.Unmarshal(r.Body.Bytes(), &page)
+			if len(page.Items) != 0 {
+				t.Fatalf("round %d search %s still had %+v", round, tc.name, page.Items)
+			}
+		}
+
+		wantResponse(t, fA.do(http.MethodDelete, "/api/contacts/"+cA.ID+"/share", "", ip, officerA, nil), http.StatusNotFound, `{"error":"not_shared"}`)
 	}
 }
