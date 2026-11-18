@@ -216,24 +216,43 @@ func TestDuePaymentsR1RecordPayment(t *testing.T) {
 	p.wantLedger(t, after)
 }
 
+// R2: whichever of the two writes fails, neither the payment nor its Entry is left and the
+// balance stays the same. Each case fails one write for its own school only, with a trigger.
 func TestDuePaymentsR2PaymentAndEntryInOneTransaction(t *testing.T) {
-	p := newPayFixture(t)
-	// Make the second write (the payment row) fail for this school only, after its Entry was inserted.
-	trigger := fmt.Sprintf(`CREATE FUNCTION fail_payment_%[1]s() RETURNS trigger LANGUAGE plpgsql AS $$
-		BEGIN IF NEW.tenant_id = '%[2]s' THEN RAISE EXCEPTION 'forced failure'; END IF; RETURN NEW; END $$;
-		CREATE TRIGGER fail_payment_%[1]s BEFORE INSERT ON finance_due_payments FOR EACH ROW EXECUTE FUNCTION fail_payment_%[1]s();`,
-		strings.ReplaceAll(p.tenant, "-", ""), p.tenant)
-	if _, err := tdb.Super.Exec(p.ctx, trigger); err != nil {
-		t.Fatal(err)
+	for _, c := range []struct {
+		name, table, trigger string
+	}{
+		// The payment row fails after its Entry was inserted.
+		{"payment insert fails", "finance_due_payments", "CREATE TRIGGER %[1]s BEFORE INSERT ON finance_due_payments FOR EACH ROW EXECUTE FUNCTION %[1]s()"},
+		// The Entry (Movimiento) insert itself fails.
+		{"entry insert fails", "finance_entries", "CREATE TRIGGER %[1]s BEFORE INSERT ON finance_entries FOR EACH ROW EXECUTE FUNCTION %[1]s()"},
+		// The Entry fails at commit, once both the Entry and the payment rows were written.
+		{"entry fails at commit", "finance_entries", "CREATE CONSTRAINT TRIGGER %[1]s AFTER INSERT ON finance_entries DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION %[1]s()"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			p := newPayFixture(t)
+			name := "fail_write_" + strings.ReplaceAll(p.tenant, "-", "")
+			fn := fmt.Sprintf(`CREATE FUNCTION %s() RETURNS trigger LANGUAGE plpgsql AS $$
+				BEGIN IF NEW.tenant_id = '%s' THEN RAISE EXCEPTION 'forced failure'; END IF; RETURN NEW; END $$`, name, p.tenant)
+			if _, err := tdb.Super.Exec(p.ctx, fn); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() {
+				_, _ = tdb.Super.Exec(context.Background(), `DROP TRIGGER IF EXISTS `+name+` ON `+c.table+`; DROP FUNCTION `+name+`()`)
+			})
+			if _, err := tdb.Super.Exec(p.ctx, fmt.Sprintf(c.trigger, name)); err != nil {
+				t.Fatal(err)
+			}
+			before := p.ledger(t)
+			rec := p.pay(p.officer, p.betoID, 200000, payDate)
+			wantResponse(t, rec, http.StatusInternalServerError, `{"error":"internal"}`)
+			if strings.Contains(rec.Body.String(), "Beto Ficticio") {
+				t.Fatalf("error names the student: %s", rec.Body)
+			}
+			p.wantLedger(t, before)
+			p.wantBeto(t, "owing", 0)
+		})
 	}
-	t.Cleanup(func() {
-		name := "fail_payment_" + strings.ReplaceAll(p.tenant, "-", "")
-		_, _ = tdb.Super.Exec(context.Background(), `DROP TRIGGER `+name+` ON finance_due_payments; DROP FUNCTION `+name+`()`)
-	})
-	before := p.ledger(t)
-	wantResponse(t, p.pay(p.officer, p.betoID, 200000, payDate), http.StatusInternalServerError, `{"error":"internal"}`)
-	p.wantLedger(t, before)
-	p.wantBeto(t, "owing", 0)
 }
 
 func TestDuePaymentsR3PartialPayments(t *testing.T) {

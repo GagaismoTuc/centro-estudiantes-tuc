@@ -236,7 +236,8 @@ export function Dues() {
   const editForm = useFormErrors();
   const paymentForm = useFormErrors();
   const exemptForm = useFormErrors();
-  // After an exemption the form unmounts with focus inside it: move focus to the success message (CS-9).
+  // After a successful create, edit, delete, payment or exemption the focused form or dialog
+  // unmounts: move focus to the success message so it never stays on body (CS-9).
   const focusStatus = useRef(false);
 
   const failed = useCallback(
@@ -274,6 +275,7 @@ export function Dues() {
     setStatus(null);
     const result = await createDue(values);
     if (result.ok) {
+      focusStatus.current = true;
       setShowCreate(false);
       setDetail(result.data);
       setStatus({ tone: "ok", text: "Se creó la cuota." });
@@ -292,6 +294,7 @@ export function Dues() {
     setStatus(null);
     const result = await updateDue(editing.id, values);
     if (result.ok) {
+      focusStatus.current = true;
       setEditing(null);
       if (detail?.id === result.data.id) setDetail(result.data);
       setStatus({ tone: "ok", text: "Se actualizó la cuota." });
@@ -311,6 +314,7 @@ export function Dues() {
     setStatus(null);
     const result = await deleteDue(target.id);
     if (result.ok) {
+      focusStatus.current = true;
       if (detail?.id === target.id) {
         setDetail(null);
         setExempting(null);
@@ -319,6 +323,8 @@ export function Dues() {
       setStatus({ tone: "ok", text: "Se borró la cuota." });
       await load();
     } else {
+      // The dialog that held focus is gone and there is no form to mark: focus the message (CS-9).
+      focusStatus.current = true;
       failed(result.code);
     }
     pending.current = false;
@@ -348,6 +354,7 @@ export function Dues() {
     setStatus(null);
     const result = await recordDuePayment(detail.id, { rosterMemberId: paying.rosterMemberId, ...values });
     if (result.ok) {
+      focusStatus.current = true;
       setPaying(null);
       setStatus({ tone: "ok", text: "Se registró el pago." });
       const refreshed = await getDue(detail.id);
