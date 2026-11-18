@@ -47,7 +47,7 @@ func TestSharedContactsLifecycleMigration00035(t *testing.T) {
 	if err := env.super.QueryRow(ctx, `INSERT INTO contacts (tenant_id, heading_id, name) VALUES ($1, $2, 'Gazebos A') RETURNING id::text`, env.tenantA, headingA).Scan(&contactA); err != nil {
 		t.Fatal(err)
 	}
-	if err := env.super.QueryRow(ctx, `INSERT INTO shared_contacts (status, heading_name, name) VALUES ('approved', 'gazebos', 'Gazebos A') RETURNING id::text`, ).Scan(&approvedA); err != nil {
+	if err := env.super.QueryRow(ctx, `INSERT INTO shared_contacts (status, heading_name, name) VALUES ('approved', 'gazebos', 'Gazebos A') RETURNING id::text`).Scan(&approvedA); err != nil {
 		t.Fatal(err)
 	}
 	if err := env.super.QueryRow(ctx, `INSERT INTO shared_contacts (status, heading_name, name) VALUES ('pending', 'gazebos', 'Gazebos A Pendiente') RETURNING id::text`).Scan(&pendingA); err != nil {
