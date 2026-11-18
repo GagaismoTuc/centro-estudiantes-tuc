@@ -372,7 +372,10 @@ test("R2 and R3 detail upload shows Spanish error and moves focus to invalid inp
   const errMsg = await screen.findByText("El archivo tiene que ser JPG, PNG o PDF.");
   expect(input.getAttribute("aria-invalid")).toBe("true");
   expect(input.getAttribute("aria-describedby")).toContain(errMsg.id);
-  expect(document.activeElement).toBe(input);
+  await waitFor(() => {
+    expect((input as HTMLInputElement).disabled).toBe(false);
+    expect(document.activeElement).toBe(input);
+  });
 
   // Empty file rejected cleanly.
   fireEvent.change(input, {
@@ -380,4 +383,5 @@ test("R2 and R3 detail upload shows Spanish error and moves focus to invalid inp
   });
   expect(await screen.findByText(/est\u00e1 vac\u00edo/)).toBeTruthy();
   expect(input.getAttribute("aria-invalid")).toBe("true");
+  await waitFor(() => expect(document.activeElement).toBe(input));
 });

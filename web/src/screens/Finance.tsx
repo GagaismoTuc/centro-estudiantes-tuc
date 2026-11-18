@@ -66,9 +66,16 @@ export function Finance() {
   const pending = useRef(false);
   const categoryRef = useRef<HTMLSelectElement>(null);
   const detailFileRef = useRef<HTMLInputElement>(null);
+  const focusDetailFile = useRef(false);
   const [categoryError, setCategoryError] = useState("");
   const [confirmReverse, setConfirmReverse] = useState<Entry | null>(null);
   const form = useFormErrors();
+
+  useEffect(() => {
+    if (!focusDetailFile.current || busy || !detailReceiptError) return;
+    focusDetailFile.current = false;
+    detailFileRef.current?.focus();
+  }, [busy, detailReceiptError]);
 
   const failed = useCallback((code: string) => {
     if (code === "mfa_required" || code === "unauthenticated") void refresh();
@@ -180,8 +187,8 @@ export function Finance() {
     setDetailReceiptError("");
     const failDetailReceipt = (code: string) => {
       if (code === "mfa_required" || code === "unauthenticated") void refresh();
+      focusDetailFile.current = true;
       setDetailReceiptError(errorMessage(code, "finance"));
-      detailFileRef.current?.focus();
     };
     if (file.size === 0) {
       failDetailReceipt("empty_file");
