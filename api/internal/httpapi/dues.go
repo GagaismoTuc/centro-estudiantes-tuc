@@ -31,14 +31,24 @@ func writeDueError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusUnprocessableEntity, "invalid_date")
 	case errors.Is(err, finance.ErrFutureDate):
 		writeError(w, http.StatusUnprocessableEntity, "future_date")
-	case errors.Is(err, finance.ErrNotOwed):
-		writeError(w, http.StatusUnprocessableEntity, "not_owed")
 	case errors.Is(err, finance.ErrOverpayment):
 		writeError(w, http.StatusUnprocessableEntity, "overpayment")
+	case errors.Is(err, finance.ErrExempt):
+		writeError(w, http.StatusUnprocessableEntity, "exempt")
+	case errors.Is(err, finance.ErrHasPayments):
+		writeError(w, http.StatusConflict, "has_payments")
 	case errors.Is(err, finance.ErrEmptyRoster):
 		writeError(w, http.StatusUnprocessableEntity, "empty_roster")
 	case errors.Is(err, finance.ErrDueFrozen):
 		writeError(w, http.StatusConflict, "due_frozen")
+	case errors.Is(err, finance.ErrReasonRequired):
+		writeError(w, http.StatusUnprocessableEntity, "reason_required")
+	case errors.Is(err, finance.ErrReasonTooLong):
+		writeError(w, http.StatusUnprocessableEntity, "reason_too_long")
+	case errors.Is(err, finance.ErrNotOwed):
+		writeError(w, http.StatusUnprocessableEntity, "not_owed")
+	case errors.Is(err, finance.ErrAlreadyExempt):
+		writeError(w, http.StatusConflict, "already_exempt")
 	default:
 		// Never log database errors that may echo submitted names or amounts.
 		slog.Error("finance dues operation failed")
@@ -61,12 +71,17 @@ func dueSummaryResponse(d finance.Due) oapi.FinanceDueSummary {
 func dueDetailResponse(d finance.DueDetail) oapi.FinanceDueDetail {
 	members := make([]oapi.FinanceDueMember, 0, len(d.Members))
 	for _, m := range d.Members {
-		members = append(members, oapi.FinanceDueMember{
+		member := oapi.FinanceDueMember{
 			RosterMemberId: m.RosterMemberID,
 			FullName:       m.FullName,
 			Status:         oapi.FinanceDueStatus(m.Status),
 			PaidCents:      m.PaidCents,
-		})
+		}
+		if m.Status == finance.DueStatusExempt {
+			reason := m.ExemptionReason
+			member.ExemptionReason = &reason
+		}
+		members = append(members, member)
 	}
 	return oapi.FinanceDueDetail{
 		Id:          d.ID,
@@ -233,6 +248,35 @@ func (s *server) PatchFinanceDue(w http.ResponseWriter, r *http.Request, id stri
 	writeJSON(w, http.StatusOK, dueDetailResponse(due))
 }
 
+// PostFinanceDueExemptions exempts a Roster member from a Due. A missing or null reason is reason_required.
+func (s *server) PostFinanceDueExemptions(w http.ResponseWriter, r *http.Request, id string) {
+	sess, ok := rosterSession(w, r)
+	if !ok {
+		return
+	}
+	if err := s.finance.AuthorizeDueWrite(r.Context(), sess); err != nil {
+		writeDueError(w, err)
+		return
+	}
+	var req struct {
+		RosterMemberID string  `json:"rosterMemberId"`
+		Reason         *string `json:"reason"`
+	}
+	if !decodeStrict(w, r, &req) {
+		return
+	}
+	var reason string
+	if req.Reason != nil {
+		reason = *req.Reason
+	}
+	due, err := s.finance.CreateExemption(r.Context(), sess, id, req.RosterMemberID, reason)
+	if err != nil {
+		writeDueError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, dueDetailResponse(due))
+}
+
 func (s *server) DeleteFinanceDue(w http.ResponseWriter, r *http.Request, id string) {
 	sess, ok := rosterSession(w, r)
 	if !ok {
@@ -277,7 +321,8 @@ func (s *server) PostFinanceDuePayment(w http.ResponseWriter, r *http.Request, i
 var dueStatusCSV = map[string]string{finance.DueStatusOwing: "Debe", finance.DueStatusPaid: "Pagó", finance.DueStatusExempt: "Exento"}
 
 // GetFinanceDueMembersCsv writes the per-student list of a Due for spreadsheets in Argentina:
-// UTF-8 with a byte order mark, ";" as separator and decimal commas. It never carries the DNI.
+// UTF-8 with a byte order mark, ";" as separator and decimal commas, with the Exemption reason
+// (#79 R6). It never carries the DNI.
 func (s *server) GetFinanceDueMembersCsv(w http.ResponseWriter, r *http.Request, id string) {
 	sess, ok := rosterSession(w, r)
 	if !ok {
@@ -293,9 +338,13 @@ func (s *server) GetFinanceDueMembersCsv(w http.ResponseWriter, r *http.Request,
 	out := csv.NewWriter(&buf)
 	out.Comma = ';'
 	out.UseCRLF = true
-	_ = out.Write([]string{"Nombre", "Pagado", "Falta", "Estado"})
+	_ = out.Write([]string{"Nombre", "Pagado", "Falta", "Estado", "Motivo de exención"})
 	for _, m := range due.Members {
-		_ = out.Write([]string{csvText(m.FullName), csvPesos(m.PaidCents), csvPesos(max(due.AmountCents-m.PaidCents, 0)), dueStatusCSV[m.Status]})
+		owed := max(due.AmountCents-m.PaidCents, 0)
+		if m.Status == finance.DueStatusExempt {
+			owed = 0
+		}
+		_ = out.Write([]string{csvText(m.FullName), csvPesos(m.PaidCents), csvPesos(owed), dueStatusCSV[m.Status], csvText(m.ExemptionReason)})
 	}
 	out.Flush()
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")

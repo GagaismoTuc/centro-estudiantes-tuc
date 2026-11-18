@@ -24,6 +24,7 @@ const (
 )
 
 // Due summarizes a Student center fee obligation for Board, School admin, and Veedor views.
+// TotalCount and OwingCount leave exempt Roster members out of the denominator (A13).
 type Due struct {
 	ID          string
 	Name        string
@@ -35,11 +36,13 @@ type Due struct {
 }
 
 // DueMember holds one Roster member's payment status for a Due without exposing document numbers.
+// ExemptionReason is set only when Status is exempt; only Due readers (never Students) get it.
 type DueMember struct {
-	RosterMemberID string
-	FullName       string
-	Status         string
-	PaidCents      int64
+	RosterMemberID  string
+	FullName        string
+	Status          string
+	PaidCents       int64
+	ExemptionReason string
 }
 
 // DueDetail pairs a Due summary with its fixed snapshot of Roster members.
@@ -134,21 +137,27 @@ func buildDueDetail(ctx context.Context, tx pgx.Tx, tenantID string, due Due) (D
 	if err != nil {
 		return DueDetail{}, err
 	}
-	due.OwingCount = 0
+	due.OwingCount, due.TotalCount = 0, 0
 	for _, m := range members {
+		if m.Status == DueStatusExempt {
+			continue
+		}
+		due.TotalCount++
 		if m.Status == DueStatusOwing {
 			due.OwingCount++
 		}
 	}
-	due.TotalCount = len(members)
 	return DueDetail{Due: due, Members: members}, nil
 }
 
 func loadDueMembers(ctx context.Context, tx pgx.Tx, tenantID, dueID string, amountCents int64) ([]DueMember, error) {
 	rows, err := tx.Query(ctx, `
-		SELECT dm.roster_member_id::text, rm.full_name, `+paidSQL("dm.due_id", "dm.roster_member_id")+`
+		SELECT dm.roster_member_id::text, rm.full_name, `+paidSQL("dm.due_id", "dm.roster_member_id")+`,
+		       e.roster_member_id IS NOT NULL, COALESCE(e.reason, '')
 		FROM finance_due_members dm
 		JOIN roster_members rm ON rm.tenant_id = dm.tenant_id AND rm.id = dm.roster_member_id
+		LEFT JOIN finance_due_exemptions e
+			ON e.tenant_id = dm.tenant_id AND e.due_id = dm.due_id AND e.roster_member_id = dm.roster_member_id
 		WHERE dm.tenant_id = $1 AND dm.due_id = $2
 		ORDER BY rm.full_name ASC, rm.id ASC`, tenantID, dueID)
 	if err != nil {
@@ -158,10 +167,11 @@ func loadDueMembers(ctx context.Context, tx pgx.Tx, tenantID, dueID string, amou
 	members := []DueMember{}
 	for rows.Next() {
 		var m DueMember
-		if err := rows.Scan(&m.RosterMemberID, &m.FullName, &m.PaidCents); err != nil {
+		var exempt bool
+		if err := rows.Scan(&m.RosterMemberID, &m.FullName, &m.PaidCents, &exempt, &m.ExemptionReason); err != nil {
 			return nil, err
 		}
-		m.Status = dueStatus(amountCents, m.PaidCents)
+		m.Status = dueStatus(amountCents, m.PaidCents, exempt)
 		members = append(members, m)
 	}
 	if err := rows.Err(); err != nil {
@@ -220,10 +230,12 @@ func (s *Store) ListDues(ctx context.Context, sess auth.Session) (out []Due, err
 	err = s.withDueRole(ctx, sess, true, func(tx pgx.Tx) error {
 		rows, e := tx.Query(ctx, `
 			SELECT d.id::text, d.name, d.amount_cents, to_char(d.due_date, 'YYYY-MM-DD'), d.created_at,
-			       COUNT(dm.roster_member_id) FILTER (WHERE `+paidSQL("dm.due_id", "dm.roster_member_id")+` < d.amount_cents)::int,
-			       COUNT(dm.roster_member_id)::int
+			       COUNT(dm.roster_member_id) FILTER (WHERE e.roster_member_id IS NULL AND `+paidSQL("dm.due_id", "dm.roster_member_id")+` < d.amount_cents)::int,
+			       COUNT(dm.roster_member_id) FILTER (WHERE e.roster_member_id IS NULL)::int
 			FROM finance_dues d
 			LEFT JOIN finance_due_members dm ON dm.tenant_id = d.tenant_id AND dm.due_id = d.id
+			LEFT JOIN finance_due_exemptions e
+				ON e.tenant_id = dm.tenant_id AND e.due_id = dm.due_id AND e.roster_member_id = dm.roster_member_id
 			WHERE d.tenant_id = $1
 			GROUP BY d.id, d.name, d.amount_cents, d.due_date, d.created_at
 			ORDER BY d.due_date DESC, d.created_at DESC, d.id DESC`, sess.TenantID)
@@ -393,9 +405,12 @@ func (s *Store) ListMyDues(ctx context.Context, sess auth.Session) (out []MyDue,
 			return e
 		}
 		rows, e := tx.Query(ctx, `
-			SELECT d.id::text, d.name, d.amount_cents, to_char(d.due_date, 'YYYY-MM-DD'), `+paidSQL("d.id", "dm.roster_member_id")+`
+			SELECT d.id::text, d.name, d.amount_cents, to_char(d.due_date, 'YYYY-MM-DD'), `+paidSQL("d.id", "dm.roster_member_id")+`,
+			       e.roster_member_id IS NOT NULL
 			FROM finance_dues d
 			JOIN finance_due_members dm ON dm.tenant_id = d.tenant_id AND dm.due_id = d.id
+			LEFT JOIN finance_due_exemptions e
+				ON e.tenant_id = dm.tenant_id AND e.due_id = dm.due_id AND e.roster_member_id = dm.roster_member_id
 			WHERE d.tenant_id = $1 AND dm.roster_member_id = $2
 			ORDER BY d.due_date DESC, d.created_at DESC, d.id DESC`, sess.TenantID, rosterMemberID)
 		if e != nil {
@@ -404,10 +419,12 @@ func (s *Store) ListMyDues(ctx context.Context, sess auth.Session) (out []MyDue,
 		defer rows.Close()
 		for rows.Next() {
 			var d MyDue
-			if e := rows.Scan(&d.ID, &d.Name, &d.AmountCents, &d.DueDate, &d.PaidCents); e != nil {
+			var exempt bool
+			if e := rows.Scan(&d.ID, &d.Name, &d.AmountCents, &d.DueDate, &d.PaidCents, &exempt); e != nil {
 				return e
 			}
-			d.Status = dueStatus(d.AmountCents, d.PaidCents)
+			// The Student sees only that they are exempt, never the reason (ADR 0004).
+			d.Status = dueStatus(d.AmountCents, d.PaidCents, exempt)
 			out = append(out, d)
 		}
 		return rows.Err()

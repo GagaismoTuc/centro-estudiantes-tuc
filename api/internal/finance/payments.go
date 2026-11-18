@@ -10,8 +10,9 @@ import (
 )
 
 var (
-	ErrNotOwed     = errors.New("finance: roster member does not owe the due")
 	ErrOverpayment = errors.New("finance: payment exceeds what is owed")
+	ErrExempt      = errors.New("finance: roster member is exempt from the due")
+	ErrHasPayments = errors.New("finance: roster member has payments for the due")
 )
 
 // paymentDescriptionPrefix starts the description of a payment's Entry; the Due's name follows.
@@ -81,8 +82,14 @@ func (s *Store) RecordDuePayment(ctx context.Context, sess auth.Session, dueID s
 			return e
 		}
 		var paid int64
-		if e = tx.QueryRow(ctx, `SELECT `+paidSQL("$2", "$3"), sess.TenantID, dueID, in.RosterMemberID).Scan(&paid); e != nil {
+		var exempt bool
+		if e = tx.QueryRow(ctx, `SELECT `+paidSQL("$2", "$3")+`,
+			EXISTS (SELECT 1 FROM finance_due_exemptions WHERE tenant_id=$1 AND due_id=$2 AND roster_member_id=$3)`,
+			sess.TenantID, dueID, in.RosterMemberID).Scan(&paid, &exempt); e != nil {
 			return e
+		}
+		if exempt {
+			return ErrExempt
 		}
 		if in.AmountCents > dueAmount-paid {
 			return ErrOverpayment
@@ -123,17 +130,22 @@ func paymentDescription(dueName string) string {
 	return paymentDescriptionPrefix + string(runes)
 }
 
-// hasDueActivity reports whether a Due has a payment. A Due stays frozen after its payments were
-// reversed: there was money (#78 R8). shortcut: Exemptions (#79) will add their own check here.
+// hasDueActivity reports whether a Due has a payment or an Exemption. A Due stays frozen after its
+// payments were reversed: there was money (#78 R8).
 func hasDueActivity(ctx context.Context, tx pgx.Tx, tenantID, dueID string) (bool, error) {
 	var frozen bool
-	err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM finance_due_payments WHERE tenant_id=$1 AND due_id=$2)`, tenantID, dueID).Scan(&frozen)
+	err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM finance_due_payments WHERE tenant_id=$1 AND due_id=$2)
+		OR EXISTS (SELECT 1 FROM finance_due_exemptions WHERE tenant_id=$1 AND due_id=$2)`, tenantID, dueID).Scan(&frozen)
 	return frozen, err
 }
 
-// dueStatus is "paid" once a member's payments cover the Due's amount, else "owing".
-func dueStatus(amountCents, paid int64) string {
-	if paid >= amountCents {
+// dueStatus is "exempt" for an exempt member, "paid" once their payments cover the Due's amount,
+// else "owing".
+func dueStatus(amountCents, paid int64, exempt bool) string {
+	switch {
+	case exempt:
+		return DueStatusExempt
+	case paid >= amountCents:
 		return DueStatusPaid
 	}
 	return DueStatusOwing

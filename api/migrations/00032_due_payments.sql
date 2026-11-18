@@ -35,11 +35,8 @@ CREATE INDEX finance_due_payments_member_idx
 
 GRANT SELECT, INSERT ON finance_due_payments TO ce_app;
 
--- Concurrent payments for one Roster member serialize on that member's snapshot row with
--- SELECT ... FOR UPDATE, which PostgreSQL only allows with an UPDATE privilege on some column.
--- Changing roster_member_id adds nothing to the DELETE and INSERT ce_app already has on this
--- table, and the payments' foreign key rejects it once the member has a payment.
-GRANT UPDATE (roster_member_id) ON finance_due_members TO ce_app;
+-- Concurrent payments and Exemptions for one Roster member serialize on that member's snapshot row
+-- with SELECT ... FOR UPDATE; 00031 already grants ce_app the UPDATE (roster_member_id) it needs.
 
 ALTER TABLE finance_due_payments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE finance_due_payments FORCE ROW LEVEL SECURITY;
@@ -49,5 +46,4 @@ CREATE POLICY finance_due_payments_tenant_isolation ON finance_due_payments
     WITH CHECK (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid);
 
 -- +goose Down
-REVOKE UPDATE (roster_member_id) ON finance_due_members FROM ce_app;
 DROP TABLE finance_due_payments;

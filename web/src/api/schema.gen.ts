@@ -1216,6 +1216,28 @@ export interface paths {
         patch: operations["patchFinanceDue"];
         trace?: never;
     };
+    "/finance/dues/{id}/exemptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Exempt a roster member from a due, with a reason, as an officer with MFA
+         * @description Records that a roster member in the due's snapshot does not owe it. One exemption per due and roster member; it cannot be edited or removed, and it freezes the due's amount and due date. Error bodies never carry the reason or a name.
+         */
+        post: operations["postFinanceDueExemptions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/finance/dues/{id}/payments": {
         parameters: {
             query?: never;
@@ -1249,7 +1271,7 @@ export interface paths {
         };
         /**
          * Download the per-student list of a due as CSV
-         * @description Officers, school admins and veedors with a verified two-factor session. UTF-8 with a byte order mark, `;` as separator, one row per roster member of the due's snapshot: name, paid, owing and status. Never includes document numbers.
+         * @description Officers, school admins and veedors with a verified two-factor session. UTF-8 with a byte order mark, `;` as separator, one row per roster member of the due's snapshot: name, paid, owing, status and exemption reason. Never includes document numbers.
          */
         get: operations["getFinanceDueMembersCsv"];
         put?: never;
@@ -1390,6 +1412,11 @@ export interface components {
             amountCents?: number;
             dueDate?: string;
         };
+        NewFinanceDueExemption: {
+            rosterMemberId: string;
+            /** @description Trimmed; 1 to 500 characters. */
+            reason: string;
+        };
         /** @enum {string} */
         FinanceDueStatus: "owing" | "paid" | "exempt";
         FinanceDueMember: {
@@ -1401,6 +1428,8 @@ export interface components {
              */
             paidCents: number;
             status: components["schemas"]["FinanceDueStatus"];
+            /** @description Present only when status is `exempt`. Only officers, school admins and veedors read the due detail. */
+            exemptionReason?: string;
         };
         FinanceDueSummary: {
             id: string;
@@ -1410,7 +1439,9 @@ export interface components {
             dueDate: string;
             /** Format: date-time */
             createdAt: string;
+            /** @description Members who owe; exempt members are left out. */
             owingCount: number;
+            /** @description Members in the snapshot minus exempt members (the denominator). */
             totalCount: number;
         };
         FinanceDueDetail: {
@@ -1421,7 +1452,9 @@ export interface components {
             dueDate: string;
             /** Format: date-time */
             createdAt: string;
+            /** @description Members who owe; exempt members are left out. */
             owingCount: number;
+            /** @description Members in the snapshot minus exempt members (the denominator). */
             totalCount: number;
             members: components["schemas"]["FinanceDueMember"][];
         };
@@ -4999,6 +5032,68 @@ export interface operations {
             };
         };
     };
+    postFinanceDueExemptions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewFinanceDueExemption"];
+            };
+        };
+        responses: {
+            /** @description Exemption recorded; the due detail shows the member as `exempt` with the reason. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinanceDueDetail"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["DirectoryForbidden"];
+            /** @description Due or roster member not found in the active school (`not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotFoundError"];
+                };
+            };
+            /** @description Nothing is written. `already_exempt`: the roster member is already exempt from this due. `has_payments`: the roster member has payments for this due whose Entry was not reversed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "already_exempt" | "has_payments";
+                    };
+                };
+            };
+            /** @description Nothing is written. `reason_required`: reason missing, null, empty or only spaces. `reason_too_long`: more than 500 characters after trimming. `not_owed`: the roster member is not in the due's snapshot. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "reason_required" | "reason_too_long" | "not_owed";
+                    };
+                };
+            };
+        };
+    };
     postFinanceDuePayment: {
         parameters: {
             query?: never;
@@ -5035,7 +5130,7 @@ export interface operations {
                     "application/json": components["schemas"]["NotFoundError"];
                 };
             };
-            /** @description Nothing is written. `invalid_amount`: amount missing, zero or negative. `invalid_date` or `future_date`: the payment date. `not_owed`: the roster member is not in the due's snapshot. `overpayment`: the payment plus what was already paid exceeds the due's amount. */
+            /** @description Nothing is written. `invalid_amount`: amount missing, zero or negative. `invalid_date` or `future_date`: the payment date. `not_owed`: the roster member is not in the due's snapshot. `overpayment`: the payment plus what was already paid exceeds the due's amount. `exempt`: the roster member is exempt from the due. */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -5043,7 +5138,7 @@ export interface operations {
                 content: {
                     "application/json": {
                         /** @enum {string} */
-                        error: "invalid_amount" | "invalid_date" | "future_date" | "not_owed" | "overpayment";
+                        error: "invalid_amount" | "invalid_date" | "future_date" | "not_owed" | "overpayment" | "exempt";
                     };
                 };
             };

@@ -34,5 +34,12 @@ export function recordDuePayment(dueId: string, input: { rosterMemberId: string;
 /** The per-student list of a due as a CSV download; the session cookie authorizes it. */
 export const dueMembersCsvHref = (dueId: string) => `/api/finance/dues/${encodeURIComponent(dueId)}/members.csv`;
 
+export const exemptDueMember = (id: string, input: components["schemas"]["NewFinanceDueExemption"]) =>
+  moneyRequest<DueDetail>(`/finance/dues/${encodeURIComponent(id)}/exemptions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+
 export const deleteDue = (id: string) =>
   moneyRequest<undefined>(`/finance/dues/${encodeURIComponent(id)}`, { method: "DELETE" });

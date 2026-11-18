@@ -3,6 +3,7 @@ import {
   createDue,
   deleteDue,
   dueMembersCsvHref,
+  exemptDueMember,
   getDue,
   listDues,
   listMyDues,
@@ -13,7 +14,7 @@ import {
   type DueSummary,
   type MyDue,
 } from "../api/dues.ts";
-import { errorMessage } from "../api/errors.ts";
+import { errorMessage, type ErrorContext } from "../api/errors.ts";
 import { canReadDues, hasRole, useMe, useSession } from "../auth/session.tsx";
 import { ConfirmDialog } from "../components/ConfirmDialog.tsx";
 import { Field, FormStatus, useFormErrors, type Status } from "../components/Form.tsx";
@@ -39,7 +40,8 @@ function myDueText(due: MyDue): string {
   const formatted = pesos(due.amountCents);
   const formattedDate = dayMonthYear(due.dueDate);
   if (due.status === "paid") return `Pagada ${formatted} — vencía el ${formattedDate}`;
-  if (due.status === "exempt") return `Exenta ${formatted} — vencía el ${formattedDate}`;
+  // S6: the exempt student sees only "Exento", never the reason.
+  if (due.status === "exempt") return "Exento";
   if (due.paidCents !== "0") {
     return `Pagaste ${pesos(due.paidCents)} de ${formatted}, te falta ${pesos(owedCents(due.amountCents, due.paidCents))} — vence el ${formattedDate}`;
   }
@@ -151,6 +153,66 @@ function DueForm({ heading, submitLabel, busy, initial, form, onSubmit, onCancel
   );
 }
 
+type ExemptTarget = { rosterMemberId: string; fullName: string };
+
+const REASON_MAX = 500;
+
+type ExemptFormProps = {
+  member: ExemptTarget;
+  busy: boolean;
+  form: ReturnType<typeof useFormErrors>;
+  onSubmit: (reason: string) => void;
+  onCancel: () => void;
+};
+
+function ExemptForm({ member, busy, form, onSubmit, onCancel }: ExemptFormProps) {
+  const headingId = useId();
+  const [reason, setReason] = useState("");
+
+  function handleSubmit() {
+    if (!form.validate({
+      reason: (v) => {
+        const trimmed = v.trim();
+        if (!trimmed) return errorMessage("reason_required", "due-exemption");
+        // The API counts characters after trimming, not UTF-16 units.
+        return [...trimmed].length > REASON_MAX ? errorMessage("reason_too_long") : null;
+      },
+    })) {
+      return;
+    }
+    onSubmit(reason.trim());
+  }
+
+  return (
+    <form
+      aria-labelledby={headingId}
+      {...form.formProps}
+      onSubmit={(event) => {
+        event.preventDefault();
+        handleSubmit();
+      }}
+    >
+      <h3 id={headingId}>Eximir a {member.fullName}</h3>
+      <Field
+        label="Motivo"
+        hint="Hasta 500 caracteres. El alumno solo ve «Exento», no el motivo. La exención no se puede deshacer."
+        autoFocus
+        {...form.field("reason")}
+        value={reason}
+        onChange={(e) => setReason(e.target.value)}
+      />
+      <div className="panel__actions">
+        <button type="submit" className="button button--primary" disabled={busy}>
+          Confirmar exención
+        </button>
+        <button type="button" className="button button--secondary" disabled={busy} onClick={onCancel}>
+          Cancelar
+        </button>
+      </div>
+    </form>
+  );
+}
+
 export function Dues() {
   const me = useMe();
   const { refresh } = useSession();
@@ -166,17 +228,21 @@ export function Dues() {
   const [editing, setEditing] = useState<DueSummary | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<DueSummary | null>(null);
   const [paying, setPaying] = useState<DueMember | null>(null);
+  const [exempting, setExempting] = useState<ExemptTarget | null>(null);
   const [status, setStatus] = useState<Status>(null);
   const [busy, setBusy] = useState(false);
   const pending = useRef(false);
   const createForm = useFormErrors();
   const editForm = useFormErrors();
   const paymentForm = useFormErrors();
+  const exemptForm = useFormErrors();
+  // After an exemption the form unmounts with focus inside it: move focus to the success message (CS-9).
+  const focusStatus = useRef(false);
 
   const failed = useCallback(
-    (code: string, targetForm?: ReturnType<typeof useFormErrors>) => {
+    (code: string, targetForm?: ReturnType<typeof useFormErrors>, context?: ErrorContext) => {
       if (code === "mfa_required" || code === "unauthenticated") void refresh();
-      setStatus({ tone: "error", text: errorMessage(code) });
+      setStatus({ tone: "error", text: errorMessage(code, context) });
       targetForm?.failed(code);
     },
     [refresh],
@@ -245,7 +311,10 @@ export function Dues() {
     setStatus(null);
     const result = await deleteDue(target.id);
     if (result.ok) {
-      if (detail?.id === target.id) setDetail(null);
+      if (detail?.id === target.id) {
+        setDetail(null);
+        setExempting(null);
+      }
       if (editing?.id === target.id) setEditing(null);
       setStatus({ tone: "ok", text: "Se borró la cuota." });
       await load();
@@ -262,8 +331,12 @@ export function Dues() {
     setBusy(true);
     setPaying(null);
     const result = await getDue(id);
-    if (result.ok) setDetail(result.data);
-    else failed(result.code);
+    if (result.ok) {
+      setDetail(result.data);
+      setExempting(null);
+    } else {
+      failed(result.code);
+    }
     pending.current = false;
     setBusy(false);
   }
@@ -287,7 +360,33 @@ export function Dues() {
     setBusy(false);
   }
 
-  const activeForm = editing ? editForm : paying ? paymentForm : createForm;
+  async function handleExempt(reason: string) {
+    if (!detail || !exempting || pending.current) return;
+    pending.current = true;
+    setBusy(true);
+    setStatus(null);
+    const result = await exemptDueMember(detail.id, { rosterMemberId: exempting.rosterMemberId, reason });
+    if (result.ok) {
+      focusStatus.current = true;
+      setExempting(null);
+      setDetail(result.data);
+      setStatus({ tone: "ok", text: "Se registró la exención." });
+      await load();
+    } else {
+      // Messages are fixed text per code: never the reason or the student's name (S9).
+      failed(result.code, exemptForm, "due-exemption");
+    }
+    pending.current = false;
+    setBusy(false);
+  }
+
+  const activeForm = exempting ? exemptForm : editing ? editForm : paying ? paymentForm : createForm;
+
+  useEffect(() => {
+    if (!focusStatus.current) return;
+    focusStatus.current = false;
+    activeForm.statusProps.ref.current?.focus();
+  });
 
   return (
     <>
@@ -359,7 +458,7 @@ export function Dues() {
                     <strong>{due.name}</strong> — {pesos(due.amountCents)} — vence el {dayMonthYear(due.dueDate)}
                     <br />
                     <span className="muted small">
-                      {due.owingCount} de {due.totalCount} deben
+                      {due.totalCount - due.owingCount} de {due.totalCount} pagaron
                     </span>
                   </div>
                   <div className="panel__actions">
@@ -383,6 +482,7 @@ export function Dues() {
                           onClick={() => {
                             setShowCreate(false);
                             setPaying(null);
+                            setExempting(null);
                             editForm.clear();
                             setStatus(null);
                             setEditing(due);
@@ -415,7 +515,8 @@ export function Dues() {
             <div>
               <h2 id="due-detail-title">{detail.name}</h2>
               <p className="muted small">
-                {pesos(detail.amountCents)} — vence el {dayMonthYear(detail.dueDate)} · {detail.owingCount} de {detail.totalCount} deben
+                {pesos(detail.amountCents)} — vence el {dayMonthYear(detail.dueDate)} ·{" "}
+                {detail.totalCount - detail.owingCount} de {detail.totalCount} pagaron
               </p>
             </div>
             <div className="panel__actions">
@@ -427,6 +528,7 @@ export function Dues() {
                 className="button button--ghost button--small"
                 onClick={() => {
                   setPaying(null);
+                  setExempting(null);
                   setDetail(null);
                 }}
               >
@@ -440,16 +542,24 @@ export function Dues() {
                 <tr>
                   <th scope="col">Alumno</th>
                   <th scope="col">Estado</th>
-                  {isOfficer && <th scope="col">Pago</th>}
+                  {isOfficer && <th scope="col">Acciones</th>}
                 </tr>
               </thead>
               <tbody>
                 {detail.members.map((member) => (
                   <tr key={member.rosterMemberId}>
                     <th scope="row">{member.fullName}</th>
-                    <td data-label="Estado">{memberStatusText(member, detail.amountCents)}</td>
+                    <td data-label="Estado">
+                      <span>{memberStatusText(member, detail.amountCents)}</span>
+                      {member.status === "exempt" && member.exemptionReason && (
+                        <>
+                          <br />
+                          <span className="muted small">Motivo: {member.exemptionReason}</span>
+                        </>
+                      )}
+                    </td>
                     {isOfficer && (
-                      <td data-label="Pago">
+                      <td data-label="Acciones">
                         {member.status === "owing" && (
                           <button
                             type="button"
@@ -459,12 +569,32 @@ export function Dues() {
                             onClick={() => {
                               setShowCreate(false);
                               setEditing(null);
+                              setExempting(null);
                               paymentForm.clear();
                               setStatus(null);
                               setPaying(member);
                             }}
                           >
                             Registrar pago
+                          </button>
+                        )}{" "}
+                        {/* Members with payments are left out: the API answers has_payments (#79 R3). */}
+                        {member.status === "owing" && member.paidCents === "0" && (
+                          <button
+                            type="button"
+                            className="button button--secondary button--small"
+                            disabled={busy}
+                            aria-label={`Eximir a ${member.fullName}`}
+                            onClick={() => {
+                              setShowCreate(false);
+                              setEditing(null);
+                              setPaying(null);
+                              exemptForm.clear();
+                              setStatus(null);
+                              setExempting({ rosterMemberId: member.rosterMemberId, fullName: member.fullName });
+                            }}
+                          >
+                            Eximir
                           </button>
                         )}
                       </td>
@@ -474,6 +604,19 @@ export function Dues() {
               </tbody>
             </table>
           </div>
+          {isOfficer && exempting && (
+            <ExemptForm
+              key={exempting.rosterMemberId}
+              member={exempting}
+              busy={busy}
+              form={exemptForm}
+              onSubmit={(reason) => void handleExempt(reason)}
+              onCancel={() => {
+                setExempting(null);
+                exemptForm.clear();
+              }}
+            />
+          )}
         </section>
       )}
 

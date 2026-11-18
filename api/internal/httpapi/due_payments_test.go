@@ -404,9 +404,9 @@ func TestDuePaymentsR8FrozenWithPayment(t *testing.T) {
 func TestDuePaymentsR9MembersCSV(t *testing.T) {
 	p := newPayFixture(t)
 	p.payOK(t, 50000)
-	want := "\ufeffNombre;Pagado;Falta;Estado\r\n" +
-		"Ana Ficticia;0,00;2000,00;Debe\r\n" +
-		"Beto Ficticio;500,00;1500,00;Debe\r\n"
+	want := "\ufeffNombre;Pagado;Falta;Estado;Motivo de exención\r\n" +
+		"Ana Ficticia;0,00;2000,00;Debe;\r\n" +
+		"Beto Ficticio;500,00;1500,00;Debe;\r\n"
 	for name, token := range map[string]string{"officer": p.officer, "school_admin": p.adminMFA} {
 		t.Run(name, func(t *testing.T) {
 			rec := p.do(http.MethodGet, "/api/finance/dues/"+p.due+"/members.csv", "", "198.51.100.10", token, nil)
@@ -426,7 +426,7 @@ func TestDuePaymentsR9MembersCSV(t *testing.T) {
 	}
 	p.payOK(t, 150000)
 	rec := p.do(http.MethodGet, "/api/finance/dues/"+p.due+"/members.csv", "", "198.51.100.10", p.officer, nil)
-	if !strings.Contains(rec.Body.String(), "Beto Ficticio;2000,00;0,00;Pagó\r\n") {
+	if !strings.Contains(rec.Body.String(), "Beto Ficticio;2000,00;0,00;Pagó;\r\n") {
 		t.Fatalf("paid row missing: %q", rec.Body.String())
 	}
 
@@ -547,5 +547,97 @@ func TestDuePaymentsR13Privacy(t *testing.T) {
 		if strings.Contains(buf.String(), leak) {
 			t.Fatalf("logs leaked %q: %s", leak, buf.String())
 		}
+	}
+}
+
+// TestDuePaymentsWithExemptions covers what #79 left to whichever of #78 and #79 merged second:
+// #79 R3 (has_payments, exempt), #79 R4 (the paid count) and #79 R6 (the reason in the CSV).
+func TestDuePaymentsWithExemptions(t *testing.T) {
+	p := newPayFixture(t)
+	// A Due created after Carla's import: its snapshot holds Ana, Beto and Carla.
+	rec := p.do(http.MethodPost, "/api/finance/dues", `{"name":"Cuota de diciembre","amountCents":200000,"dueDate":"2026-12-31"}`, "198.51.100.10", p.officer, nil)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create due: %d %s", rec.Code, rec.Body)
+	}
+	var due paidDueJSON
+	if err := json.Unmarshal(rec.Body.Bytes(), &due); err != nil {
+		t.Fatal(err)
+	}
+	p.due = due.ID
+	var anaID string
+	for _, m := range due.Members {
+		if m.FullName == "Ana Ficticia" {
+			anaID = m.RosterMemberID
+		}
+	}
+	exempt := func(member string) *httptest.ResponseRecorder {
+		return p.do(http.MethodPost, "/api/finance/dues/"+p.due+"/exemptions", fmt.Sprintf(`{"rosterMemberId":%q,"reason":"Beca"}`, member), "198.51.100.10", p.officer, nil)
+	}
+	exemptions := func() (n int) {
+		t.Helper()
+		if err := tdb.Super.QueryRow(p.ctx, `SELECT count(*) FROM finance_due_exemptions WHERE tenant_id=$1`, p.tenant).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+
+	// #79 R3: a member with payments in force cannot be exempted; nothing changes.
+	pay := p.payOK(t, 50000)
+	before := p.ledger(t)
+	wantResponse(t, exempt(p.betoID), http.StatusConflict, `{"error":"has_payments"}`)
+	if n := exemptions(); n != 0 {
+		t.Fatalf("has_payments wrote %d exemptions", n)
+	}
+	p.wantLedger(t, before)
+	p.wantBeto(t, "owing", 50000)
+	// Once that payment's Entry is reversed, no payment is in force and the exemption goes through.
+	if rec := p.do(http.MethodPost, "/api/finance/entries/"+pay.EntryID+"/reversal", "", "198.51.100.10", p.officer, nil); rec.Code != http.StatusCreated {
+		t.Fatalf("reverse: %d %s", rec.Code, rec.Body)
+	}
+	if rec := exempt(p.betoID); rec.Code != http.StatusCreated {
+		t.Fatalf("exempt after reversal: %d %s", rec.Code, rec.Body)
+	}
+	p.wantBeto(t, "exempt", 0)
+
+	// #79 R3: a payment for an exempt member answers 422 exempt and writes no payment or Entry.
+	before = p.ledger(t)
+	wantResponse(t, p.pay(p.officer, p.betoID, 50000, payDate), http.StatusUnprocessableEntity, `{"error":"exempt"}`)
+	p.wantLedger(t, before)
+
+	// #79 R4: Ana paid and Beto is exempt, so "1 de 2 pagaron" and Carla is the only one who owes.
+	if rec := p.pay(p.officer, anaID, 200000, payDate); rec.Code != http.StatusCreated {
+		t.Fatalf("pay Ana: %d %s", rec.Code, rec.Body)
+	}
+	rec = p.do(http.MethodGet, "/api/finance/dues/"+p.due, "", "198.51.100.10", p.officer, nil)
+	var detail paidDueJSON
+	if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &detail) != nil {
+		t.Fatalf("detail: %d %s", rec.Code, rec.Body)
+	}
+	if paid := detail.TotalCount - detail.OwingCount; paid != 1 || detail.TotalCount != 2 {
+		t.Fatalf("detail counts: %d de %d pagaron (%s)", paid, detail.TotalCount, rec.Body)
+	}
+	for _, m := range detail.Members {
+		if (m.Status == "owing") != (m.RosterMemberID == p.carlaID) {
+			t.Fatalf("only Carla must owe: %+v", detail.Members)
+		}
+	}
+	var list []dueSummaryJSON
+	if rec := p.do(http.MethodGet, "/api/finance/dues", "", "198.51.100.10", p.officer, nil); json.Unmarshal(rec.Body.Bytes(), &list) != nil {
+		t.Fatalf("list: %s", rec.Body)
+	}
+	for _, d := range list {
+		if d.ID == p.due && (d.TotalCount-d.OwingCount != 1 || d.TotalCount != 2) {
+			t.Fatalf("list counts: %+v", d)
+		}
+	}
+
+	// #79 R6: the per-student CSV carries the exemption reason.
+	rec = p.do(http.MethodGet, "/api/finance/dues/"+p.due+"/members.csv", "", "198.51.100.10", p.adminMFA, nil)
+	want := "\ufeffNombre;Pagado;Falta;Estado;Motivo de exención\r\n" +
+		"Ana Ficticia;2000,00;0,00;Pagó;\r\n" +
+		"Beto Ficticio;0,00;0,00;Exento;Beca\r\n" +
+		"Carla Ficticia;0,00;2000,00;Debe;\r\n"
+	if rec.Code != http.StatusOK || rec.Body.String() != want {
+		t.Fatalf("csv: %d %q", rec.Code, rec.Body.String())
 	}
 }

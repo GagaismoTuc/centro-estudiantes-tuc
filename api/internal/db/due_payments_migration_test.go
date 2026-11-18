@@ -14,11 +14,11 @@ import (
 	"github.com/pressly/goose/v3"
 )
 
-// TestDuePaymentsMigration00030 covers R12 at the database: append-only grants, forced RLS and
+// TestDuePaymentsMigration00032 covers R12 at the database: append-only grants, forced RLS and
 // composite foreign keys to the Due snapshot and to a non-Reversal Entry; plus the row lock of R5.
-func TestDuePaymentsMigration00030(t *testing.T) {
-	if _, err := migrations.FS.ReadFile("00030_due_payments.sql"); err != nil {
-		t.Fatalf("due payments migration 00030 is missing: %v", err)
+func TestDuePaymentsMigration00032(t *testing.T) {
+	if _, err := migrations.FS.ReadFile("00032_due_payments.sql"); err != nil {
+		t.Fatalf("due payments migration 00032 is missing: %v", err)
 	}
 	ctx := context.Background()
 	env, stop, err := testdb.Start(ctx)
@@ -179,7 +179,7 @@ func TestDuePaymentsMigration00030(t *testing.T) {
 		t.Fatalf("lock member debt row as ce_app: %v", err)
 	}
 
-	// The lock grant is limited to roster_member_id: the tenant and the Due of a debt row stay fixed.
+	// The lock grant (00031) is limited to roster_member_id: the tenant and the Due of a debt row stay fixed.
 	var tenantUpdate, dueUpdate, memberUpdate bool
 	if err := env.Super.QueryRow(ctx, `SELECT has_column_privilege('ce_app','finance_due_members','tenant_id','UPDATE'),
 		has_column_privilege('ce_app','finance_due_members','due_id','UPDATE'),
@@ -196,14 +196,15 @@ func TestDuePaymentsMigration00030(t *testing.T) {
 	}
 
 	// DownTo/UpTo pin this migration: earlier or later ones must not shift what this test rolls back.
-	if _, err := p.DownTo(ctx, 27); err != nil {
-		t.Fatalf("down to 27: %v", err)
+	if _, err := p.DownTo(ctx, 31); err != nil {
+		t.Fatalf("down to 31: %v", err)
 	}
-	var exists bool
-	if err := env.Super.QueryRow(ctx, `SELECT to_regclass('public.finance_due_payments') IS NOT NULL`).Scan(&exists); err != nil || exists {
-		t.Fatalf("finance_due_payments still exists after down: exists=%v err=%v", exists, err)
+	var exists, lockGrant bool
+	if err := env.Super.QueryRow(ctx, `SELECT to_regclass('public.finance_due_payments') IS NOT NULL,
+		has_column_privilege('ce_app','finance_due_members','roster_member_id','UPDATE')`).Scan(&exists, &lockGrant); err != nil || exists || !lockGrant {
+		t.Fatalf("after down to 31: payments table exists=%v, 00031 lock grant kept=%v, err=%v", exists, lockGrant, err)
 	}
-	if _, err := p.UpTo(ctx, 30); err != nil {
-		t.Fatalf("reapply 00030: %v", err)
+	if _, err := p.UpTo(ctx, 32); err != nil {
+		t.Fatalf("reapply 00032: %v", err)
 	}
 }
