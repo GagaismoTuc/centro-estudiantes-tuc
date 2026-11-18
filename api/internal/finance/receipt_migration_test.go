@@ -15,11 +15,11 @@ import (
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/migrations"
 )
 
-// TestReceiptMigration checks, as the app role, the database guarantees of 00028 and that its
+// TestReceiptMigration checks, as the app role, the database guarantees of 00032 and that its
 // Down and Up apply cleanly.
 func TestReceiptMigration(t *testing.T) {
-	if _, err := migrations.FS.ReadFile("00028_finance_receipts.sql"); err != nil {
-		t.Fatalf("receipt migration 00028 is missing: %v", err)
+	if _, err := migrations.FS.ReadFile("00032_finance_receipts.sql"); err != nil {
+		t.Fatalf("receipt migration 00032 is missing: %v", err)
 	}
 	ctx := context.Background()
 	env, stop, err := testdb.Start(ctx)
@@ -124,7 +124,7 @@ func TestReceiptMigration(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := p.DownTo(ctx, 27); err != nil {
+		if _, err := p.DownTo(ctx, 31); err != nil {
 			t.Fatalf("down: %v", err)
 		}
 		var exists bool
