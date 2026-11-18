@@ -1110,6 +1110,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/finance/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Fund report (Informe de caja) for an inclusive date range
+         * @description Any member of the active school reads it (Officers, Students, School admins), with the same session the ledger listing needs. Computed on demand; nothing is written. Dates are inclusive and compare with each Entry's date; a Reversal counts on its own date.
+         */
+        get: operations["getFinanceReport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/finance/report.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Fund report as a CSV download
+         * @description Same readers and range rules as `/finance/report`. UTF-8 with BOM, `;` separator, CRLF line ends, amounts with decimal comma and no thousands separator. First a summary section (header `concepto;tipo;monto`, then `Saldo inicial`, one row per Category total with its `tipo` (`ingreso`/`gasto`) and `Saldo final`), an empty line, then the range's ledger with the same columns as `/finance/entries.csv`. A cell starting with `=`, `+`, `-` or `@` gets a leading `'`, except an amount.
+         */
+        get: operations["getFinanceReportCsv"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/finance/entries.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Fund ledger as a CSV download
+         * @description Same readers as `/finance/report`. Without `from` and `to` it exports the whole ledger; with either, both are required and validated like the report. Oldest first. Columns: `fecha;tipo;Categoría;descripción;monto;registrado por;revertido;con comprobante`, plus a trailing `alumno` column only for Officers and School admins with a two-factor session (never for Students). `monto` is signed (income +, expense −); `revertido` and `con comprobante` are `sí`/`no`. Same encoding and escaping as `/finance/report.csv`.
+         */
+        get: operations["getFinanceEntriesCsv"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/finance/entries/{entryId}": {
         parameters: {
             query?: never;
@@ -1145,6 +1205,55 @@ export interface paths {
          * @description Records, in one transaction, a Reversal: an entry with the same amount and category, the opposite direction, today's date in Argentina and the description "Reversión: " followed by the original's. Old entries may be reversed; the Reversal falls in the current period.
          */
         post: operations["postFinanceEntryReversal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/finance/entries/{entryId}/receipts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entryId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * List receipts of an entry in the active school
+         * @description Officers, school admins and veedors with a verified two-factor session.
+         */
+        get: operations["getFinanceEntryReceipts"];
+        put?: never;
+        /**
+         * Upload a receipt for an entry as an officer with MFA
+         * @description Accepts raw JPG, PNG or PDF bytes up to 10 MiB (10485760 bytes), validated by file signature.
+         */
+        post: operations["postFinanceEntryReceipts"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/finance/entries/{entryId}/receipts/{receiptId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entryId: string;
+                receiptId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Download one receipt as an attachment
+         * @description Officers, school admins and veedors with a verified two-factor session. Responds with the validated content type, `Content-Disposition: attachment; filename="comprobante-<receiptId>.<ext>"` and `X-Content-Type-Options: nosniff`.
+         */
+        get: operations["getFinanceEntryReceipt"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1381,6 +1490,8 @@ export interface components {
             recordedBy: string;
             /** Format: date-time */
             recordedAt: string;
+            /** @description True when at least one Receipt backs this entry. */
+            hasReceipt: boolean;
             /** @description Present when this entry is a Reversal; the id of the entry it reverses. */
             reversesId?: string;
             /** @description Present when this entry was reversed; the id of its Reversal. */
@@ -1395,6 +1506,55 @@ export interface components {
         FinanceEntryRosterMember: {
             id: string;
             fullName: string;
+        };
+        FinanceReceipt: {
+            id: string;
+            /** @enum {string} */
+            contentType: "image/jpeg" | "image/png" | "application/pdf";
+            sizeBytes: number;
+            /** Format: date-time */
+            uploadedAt: string;
+        };
+        FinanceCategoryTotal: {
+            categoryId: string;
+            name: string;
+            /** @enum {string} */
+            direction: "income" | "expense";
+            /**
+             * Format: int64
+             * @description Signed net of the Category's Entries in the range (income +, expense −); a Reversal counts with the opposite sign.
+             */
+            totalCents: number;
+        };
+        FinanceReport: {
+            /** @description YYYY-MM-DD, inclusive. */
+            from: string;
+            /** @description YYYY-MM-DD, inclusive. */
+            to: string;
+            /**
+             * Format: int64
+             * @description Balance of every Entry dated before `from`.
+             */
+            openingCents: number;
+            /**
+             * Format: int64
+             * @description openingCents + incomeCents + expenseCents.
+             */
+            closingCents: number;
+            /**
+             * Format: int64
+             * @description Sum of the income Categories' totals.
+             */
+            incomeCents: number;
+            /**
+             * Format: int64
+             * @description Sum of the expense Categories' totals (zero or negative unless reversed).
+             */
+            expenseCents: number;
+            /** @description Categories with Entries in the range; income first, then by name. */
+            totals: components["schemas"]["FinanceCategoryTotal"][];
+            /** @description Entries in the range, oldest first. */
+            entries: components["schemas"]["FinanceEntry"][];
         };
         FinanceBalance: {
             /** @description The exact sum; may exceed int64. */
@@ -1972,6 +2132,27 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
+        /** @description The user has no membership in the active school (`forbidden`). Nothing is read or written. */
+        MemberForbidden: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description `from` or `to` is missing or not a valid YYYY-MM-DD date, or `from` is after `to` (`invalid_range`). Nothing is read. */
+        InvalidRange: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    error: "invalid_range";
+                };
+            };
+        };
         /** @description The user lacks the required role in the active tenant (`forbidden`), or has a privileged role without a verified two-factor session (`mfa_required`). Nothing is read or written. */
         DirectoryForbidden: {
             headers: {
@@ -1982,7 +2163,12 @@ export interface components {
             };
         };
     };
-    parameters: never;
+    parameters: {
+        /** @description First day of the range (YYYY-MM-DD, inclusive). Missing or invalid answers `invalid_range`. */
+        ReportFrom: string;
+        /** @description Last day of the range (YYYY-MM-DD, inclusive). Missing or invalid answers `invalid_range`. */
+        ReportTo: string;
+    };
     requestBodies: never;
     headers: never;
     pathItems: never;
@@ -4733,6 +4919,90 @@ export interface operations {
             };
         };
     };
+    getFinanceReport: {
+        parameters: {
+            query?: {
+                /** @description First day of the range (YYYY-MM-DD, inclusive). Missing or invalid answers `invalid_range`. */
+                from?: components["parameters"]["ReportFrom"];
+                /** @description Last day of the range (YYYY-MM-DD, inclusive). Missing or invalid answers `invalid_range`. */
+                to?: components["parameters"]["ReportTo"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The report; a range without Entries has zero totals and opening equal to closing. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinanceReport"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["MemberForbidden"];
+            422: components["responses"]["InvalidRange"];
+        };
+    };
+    getFinanceReportCsv: {
+        parameters: {
+            query?: {
+                /** @description First day of the range (YYYY-MM-DD, inclusive). Missing or invalid answers `invalid_range`. */
+                from?: components["parameters"]["ReportFrom"];
+                /** @description Last day of the range (YYYY-MM-DD, inclusive). Missing or invalid answers `invalid_range`. */
+                to?: components["parameters"]["ReportTo"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Attachment `informe-de-caja-<from>-a-<to>.csv`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["MemberForbidden"];
+            422: components["responses"]["InvalidRange"];
+        };
+    };
+    getFinanceEntriesCsv: {
+        parameters: {
+            query?: {
+                /** @description First day of the range (YYYY-MM-DD, inclusive). Missing or invalid answers `invalid_range`. */
+                from?: components["parameters"]["ReportFrom"];
+                /** @description Last day of the range (YYYY-MM-DD, inclusive). Missing or invalid answers `invalid_range`. */
+                to?: components["parameters"]["ReportTo"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Attachment `libro-de-caja.csv`, or `libro-de-caja-<from>-a-<to>.csv` with a range. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["MemberForbidden"];
+            422: components["responses"]["InvalidRange"];
+        };
+    };
     getFinanceEntry: {
         parameters: {
             query?: never;
@@ -4807,6 +5077,151 @@ export interface operations {
                         /** @enum {string} */
                         error: "already_reversed" | "cannot_reverse_reversal";
                     };
+                };
+            };
+        };
+    };
+    getFinanceEntryReceipts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entryId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Receipts ordered by upload time ascending. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinanceReceipt"][];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            /** @description Entry not found in the active school (`not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotFoundError"];
+                };
+            };
+        };
+    };
+    postFinanceEntryReceipts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entryId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/octet-stream": string;
+            };
+        };
+        responses: {
+            /** @description Receipt stored; entry now has `hasReceipt` true. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinanceReceipt"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            /** @description Entry not found in the active school (`not_found`). Nothing is written. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotFoundError"];
+                };
+            };
+            /** @description File larger than 10 MiB (`file_too_large`). Nothing is written. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "file_too_large";
+                    };
+                };
+            };
+            /** @description Unsupported file signature; must be JPG, PNG or PDF (`unsupported_media_type`). Nothing is written. */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "unsupported_media_type";
+                    };
+                };
+            };
+            /** @description Empty file (`empty_file`). Nothing is written. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "empty_file";
+                    };
+                };
+            };
+        };
+    };
+    getFinanceEntryReceipt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entryId: string;
+                receiptId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Receipt file bytes. */
+            200: {
+                headers: {
+                    "Content-Disposition"?: string;
+                    "X-Content-Type-Options"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": string;
+                    "image/png": string;
+                    "application/pdf": string;
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            /** @description Entry or receipt not found in the active school (`not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotFoundError"];
                 };
             };
         };

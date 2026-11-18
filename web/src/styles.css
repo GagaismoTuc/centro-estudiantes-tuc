@@ -1502,6 +1502,30 @@ select[aria-invalid="true"] {
   gap: 0.5rem;
 }
 
+/* ---------- Fund report ---------- */
+/* Label and amount on one line; a long Category name wraps instead of overflowing at 360 px. */
+.report-summary,
+.report-list {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.report-summary > div,
+.report-list > li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0 1rem;
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+.report-summary dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ---------- Calculator ---------- */
 .calc-grid {
   display: grid;

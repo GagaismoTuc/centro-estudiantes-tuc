@@ -80,6 +80,24 @@ func (e ElectionState) Valid() bool {
 	}
 }
 
+// Defines values for FinanceCategoryTotalDirection.
+const (
+	FinanceCategoryTotalDirectionExpense FinanceCategoryTotalDirection = "expense"
+	FinanceCategoryTotalDirectionIncome  FinanceCategoryTotalDirection = "income"
+)
+
+// Valid indicates whether the value is a known member of the FinanceCategoryTotalDirection enum.
+func (e FinanceCategoryTotalDirection) Valid() bool {
+	switch e {
+	case FinanceCategoryTotalDirectionExpense:
+		return true
+	case FinanceCategoryTotalDirectionIncome:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for FinanceDueStatus.
 const (
 	FinanceDueStatusExempt FinanceDueStatus = "exempt"
@@ -95,6 +113,27 @@ func (e FinanceDueStatus) Valid() bool {
 	case FinanceDueStatusOwing:
 		return true
 	case FinanceDueStatusPaid:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for FinanceReceiptContentType.
+const (
+	Applicationpdf FinanceReceiptContentType = "application/pdf"
+	Imagejpeg      FinanceReceiptContentType = "image/jpeg"
+	Imagepng       FinanceReceiptContentType = "image/png"
+)
+
+// Valid indicates whether the value is a known member of the FinanceReceiptContentType enum.
+func (e FinanceReceiptContentType) Valid() bool {
+	switch e {
+	case Applicationpdf:
+		return true
+	case Imagejpeg:
+		return true
+	case Imagepng:
 		return true
 	default:
 		return false
@@ -160,16 +199,16 @@ func (e MfaState) Valid() bool {
 
 // Defines values for NewFinanceCategoryDirection.
 const (
-	Expense NewFinanceCategoryDirection = "expense"
-	Income  NewFinanceCategoryDirection = "income"
+	NewFinanceCategoryDirectionExpense NewFinanceCategoryDirection = "expense"
+	NewFinanceCategoryDirectionIncome  NewFinanceCategoryDirection = "income"
 )
 
 // Valid indicates whether the value is a known member of the NewFinanceCategoryDirection enum.
 func (e NewFinanceCategoryDirection) Valid() bool {
 	switch e {
-	case Expense:
+	case NewFinanceCategoryDirectionExpense:
 		return true
-	case Income:
+	case NewFinanceCategoryDirectionIncome:
 		return true
 	default:
 		return false
@@ -422,6 +461,21 @@ func (e InvalidElectionListError) Valid() bool {
 	case InvalidElectionListErrorInvalidCandidates:
 		return true
 	case InvalidElectionListErrorInvalidName:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InvalidRangeError.
+const (
+	InvalidRangeErrorInvalidRange InvalidRangeError = "invalid_range"
+)
+
+// Valid indicates whether the value is a known member of the InvalidRangeError enum.
+func (e InvalidRangeError) Valid() bool {
+	switch e {
+	case InvalidRangeErrorInvalidRange:
 		return true
 	default:
 		return false
@@ -1049,6 +1103,66 @@ func (e PostFinanceDuePayment422JSONResponseBodyError) Valid() bool {
 	}
 }
 
+// Defines values for GetFinanceEntriesCsv422JSONResponseBodyError.
+const (
+	GetFinanceEntriesCsv422JSONResponseBodyErrorInvalidRange GetFinanceEntriesCsv422JSONResponseBodyError = "invalid_range"
+)
+
+// Valid indicates whether the value is a known member of the GetFinanceEntriesCsv422JSONResponseBodyError enum.
+func (e GetFinanceEntriesCsv422JSONResponseBodyError) Valid() bool {
+	switch e {
+	case GetFinanceEntriesCsv422JSONResponseBodyErrorInvalidRange:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostFinanceEntryReceipts413JSONResponseBodyError.
+const (
+	FileTooLarge PostFinanceEntryReceipts413JSONResponseBodyError = "file_too_large"
+)
+
+// Valid indicates whether the value is a known member of the PostFinanceEntryReceipts413JSONResponseBodyError enum.
+func (e PostFinanceEntryReceipts413JSONResponseBodyError) Valid() bool {
+	switch e {
+	case FileTooLarge:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostFinanceEntryReceipts415JSONResponseBodyError.
+const (
+	UnsupportedMediaType PostFinanceEntryReceipts415JSONResponseBodyError = "unsupported_media_type"
+)
+
+// Valid indicates whether the value is a known member of the PostFinanceEntryReceipts415JSONResponseBodyError enum.
+func (e PostFinanceEntryReceipts415JSONResponseBodyError) Valid() bool {
+	switch e {
+	case UnsupportedMediaType:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostFinanceEntryReceipts422JSONResponseBodyError.
+const (
+	EmptyFile PostFinanceEntryReceipts422JSONResponseBodyError = "empty_file"
+)
+
+// Valid indicates whether the value is a known member of the PostFinanceEntryReceipts422JSONResponseBodyError enum.
+func (e PostFinanceEntryReceipts422JSONResponseBodyError) Valid() bool {
+	switch e {
+	case EmptyFile:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PostFinanceEntryReversal409JSONResponseBodyError.
 const (
 	AlreadyReversed       PostFinanceEntryReversal409JSONResponseBodyError = "already_reversed"
@@ -1061,6 +1175,36 @@ func (e PostFinanceEntryReversal409JSONResponseBodyError) Valid() bool {
 	case AlreadyReversed:
 		return true
 	case CannotReverseReversal:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetFinanceReport422JSONResponseBodyError.
+const (
+	GetFinanceReport422JSONResponseBodyErrorInvalidRange GetFinanceReport422JSONResponseBodyError = "invalid_range"
+)
+
+// Valid indicates whether the value is a known member of the GetFinanceReport422JSONResponseBodyError enum.
+func (e GetFinanceReport422JSONResponseBodyError) Valid() bool {
+	switch e {
+	case GetFinanceReport422JSONResponseBodyErrorInvalidRange:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetFinanceReportCsv422JSONResponseBodyError.
+const (
+	GetFinanceReportCsv422JSONResponseBodyErrorInvalidRange GetFinanceReportCsv422JSONResponseBodyError = "invalid_range"
+)
+
+// Valid indicates whether the value is a known member of the GetFinanceReportCsv422JSONResponseBodyError enum.
+func (e GetFinanceReportCsv422JSONResponseBodyError) Valid() bool {
+	switch e {
+	case GetFinanceReportCsv422JSONResponseBodyErrorInvalidRange:
 		return true
 	default:
 		return false
@@ -1409,6 +1553,19 @@ type FinanceCategory struct {
 	Reserved  bool   `json:"reserved"`
 }
 
+// FinanceCategoryTotal defines model for FinanceCategoryTotal.
+type FinanceCategoryTotal struct {
+	CategoryId string                        `json:"categoryId"`
+	Direction  FinanceCategoryTotalDirection `json:"direction"`
+	Name       string                        `json:"name"`
+
+	// TotalCents Signed net of the Category's Entries in the range (income +, expense −); a Reversal counts with the opposite sign.
+	TotalCents int64 `json:"totalCents"`
+}
+
+// FinanceCategoryTotalDirection defines model for FinanceCategoryTotal.Direction.
+type FinanceCategoryTotalDirection string
+
 // FinanceDueDetail defines model for FinanceDueDetail.
 type FinanceDueDetail struct {
 	AmountCents int64              `json:"amountCents"`
@@ -1467,14 +1624,17 @@ type FinanceDueSummary struct {
 
 // FinanceEntry defines model for FinanceEntry.
 type FinanceEntry struct {
-	AmountCents int64     `json:"amountCents"`
-	CategoryId  string    `json:"categoryId"`
-	Date        string    `json:"date"`
-	Description string    `json:"description"`
-	Direction   string    `json:"direction"`
-	Id          string    `json:"id"`
-	RecordedAt  time.Time `json:"recordedAt"`
-	RecordedBy  string    `json:"recordedBy"`
+	AmountCents int64  `json:"amountCents"`
+	CategoryId  string `json:"categoryId"`
+	Date        string `json:"date"`
+	Description string `json:"description"`
+	Direction   string `json:"direction"`
+
+	// HasReceipt True when at least one Receipt backs this entry.
+	HasReceipt bool      `json:"hasReceipt"`
+	Id         string    `json:"id"`
+	RecordedAt time.Time `json:"recordedAt"`
+	RecordedBy string    `json:"recordedBy"`
 
 	// ReversalId Present when this entry was reversed; the id of its Reversal.
 	ReversalId *string `json:"reversalId,omitempty"`
@@ -1496,6 +1656,44 @@ type FinanceEntry struct {
 type FinanceEntryRosterMember struct {
 	FullName string `json:"fullName"`
 	Id       string `json:"id"`
+}
+
+// FinanceReceipt defines model for FinanceReceipt.
+type FinanceReceipt struct {
+	ContentType FinanceReceiptContentType `json:"contentType"`
+	Id          string                    `json:"id"`
+	SizeBytes   int                       `json:"sizeBytes"`
+	UploadedAt  time.Time                 `json:"uploadedAt"`
+}
+
+// FinanceReceiptContentType defines model for FinanceReceipt.ContentType.
+type FinanceReceiptContentType string
+
+// FinanceReport defines model for FinanceReport.
+type FinanceReport struct {
+	// ClosingCents openingCents + incomeCents + expenseCents.
+	ClosingCents int64 `json:"closingCents"`
+
+	// Entries Entries in the range, oldest first.
+	Entries []FinanceEntry `json:"entries"`
+
+	// ExpenseCents Sum of the expense Categories' totals (zero or negative unless reversed).
+	ExpenseCents int64 `json:"expenseCents"`
+
+	// From YYYY-MM-DD, inclusive.
+	From string `json:"from"`
+
+	// IncomeCents Sum of the income Categories' totals.
+	IncomeCents int64 `json:"incomeCents"`
+
+	// OpeningCents Balance of every Entry dated before `from`.
+	OpeningCents int64 `json:"openingCents"`
+
+	// To YYYY-MM-DD, inclusive.
+	To string `json:"to"`
+
+	// Totals Categories with Entries in the range; income first, then by name.
+	Totals []FinanceCategoryTotal `json:"totals"`
 }
 
 // ForbiddenError defines model for ForbiddenError.
@@ -1819,6 +2017,12 @@ type UpdateFinanceDue struct {
 	Name        *string `json:"name,omitempty"`
 }
 
+// ReportFrom defines model for ReportFrom.
+type ReportFrom = string
+
+// ReportTo defines model for ReportTo.
+type ReportTo = string
+
 // BadRequest defines model for BadRequest.
 type BadRequest = Error
 
@@ -1879,8 +2083,19 @@ type InvalidElectionListError string
 // InvalidMfaCode defines model for InvalidMfaCode.
 type InvalidMfaCode = Error
 
+// InvalidRange defines model for InvalidRange.
+type InvalidRange struct {
+	Error InvalidRangeError `json:"error"`
+}
+
+// InvalidRangeError defines model for InvalidRange.Error.
+type InvalidRangeError string
+
 // InvalidToken defines model for InvalidToken.
 type InvalidToken = Error
+
+// MemberForbidden defines model for MemberForbidden.
+type MemberForbidden = Error
 
 // TooManyAttempts defines model for TooManyAttempts.
 type TooManyAttempts = Error
@@ -1996,8 +2211,53 @@ type PostFinanceDueExemptions422JSONResponseBodyError string
 // PostFinanceDuePayment422JSONResponseBodyError defines parameters for PostFinanceDuePayment.
 type PostFinanceDuePayment422JSONResponseBodyError string
 
+// GetFinanceEntriesCsvParams defines parameters for GetFinanceEntriesCsv.
+type GetFinanceEntriesCsvParams struct {
+	// From First day of the range (YYYY-MM-DD, inclusive). Missing or invalid answers `invalid_range`.
+	From *ReportFrom `form:"from,omitempty" json:"from,omitempty"`
+
+	// To Last day of the range (YYYY-MM-DD, inclusive). Missing or invalid answers `invalid_range`.
+	To *ReportTo `form:"to,omitempty" json:"to,omitempty"`
+}
+
+// GetFinanceEntriesCsv422JSONResponseBodyError defines parameters for GetFinanceEntriesCsv.
+type GetFinanceEntriesCsv422JSONResponseBodyError string
+
+// PostFinanceEntryReceipts413JSONResponseBodyError defines parameters for PostFinanceEntryReceipts.
+type PostFinanceEntryReceipts413JSONResponseBodyError string
+
+// PostFinanceEntryReceipts415JSONResponseBodyError defines parameters for PostFinanceEntryReceipts.
+type PostFinanceEntryReceipts415JSONResponseBodyError string
+
+// PostFinanceEntryReceipts422JSONResponseBodyError defines parameters for PostFinanceEntryReceipts.
+type PostFinanceEntryReceipts422JSONResponseBodyError string
+
 // PostFinanceEntryReversal409JSONResponseBodyError defines parameters for PostFinanceEntryReversal.
 type PostFinanceEntryReversal409JSONResponseBodyError string
+
+// GetFinanceReportParams defines parameters for GetFinanceReport.
+type GetFinanceReportParams struct {
+	// From First day of the range (YYYY-MM-DD, inclusive). Missing or invalid answers `invalid_range`.
+	From *ReportFrom `form:"from,omitempty" json:"from,omitempty"`
+
+	// To Last day of the range (YYYY-MM-DD, inclusive). Missing or invalid answers `invalid_range`.
+	To *ReportTo `form:"to,omitempty" json:"to,omitempty"`
+}
+
+// GetFinanceReport422JSONResponseBodyError defines parameters for GetFinanceReport.
+type GetFinanceReport422JSONResponseBodyError string
+
+// GetFinanceReportCsvParams defines parameters for GetFinanceReportCsv.
+type GetFinanceReportCsvParams struct {
+	// From First day of the range (YYYY-MM-DD, inclusive). Missing or invalid answers `invalid_range`.
+	From *ReportFrom `form:"from,omitempty" json:"from,omitempty"`
+
+	// To Last day of the range (YYYY-MM-DD, inclusive). Missing or invalid answers `invalid_range`.
+	To *ReportTo `form:"to,omitempty" json:"to,omitempty"`
+}
+
+// GetFinanceReportCsv422JSONResponseBodyError defines parameters for GetFinanceReportCsv.
+type GetFinanceReportCsv422JSONResponseBodyError string
 
 // DeleteMemberOfficer404JSONResponseBodyError defines parameters for DeleteMemberOfficer.
 type DeleteMemberOfficer404JSONResponseBodyError string
@@ -2343,12 +2603,30 @@ type ServerInterface interface {
 	// PostFinanceEntries Record an income or expense as an officer with MFA
 	// (POST /finance/entries)
 	PostFinanceEntries(w http.ResponseWriter, r *http.Request)
+	// GetFinanceEntriesCsv Fund ledger as a CSV download
+	// (GET /finance/entries.csv)
+	GetFinanceEntriesCsv(w http.ResponseWriter, r *http.Request, params GetFinanceEntriesCsvParams)
 	// GetFinanceEntry Get an entry in the active school
 	// (GET /finance/entries/{entryId})
 	GetFinanceEntry(w http.ResponseWriter, r *http.Request, entryId string)
+	// GetFinanceEntryReceipts List receipts of an entry in the active school
+	// (GET /finance/entries/{entryId}/receipts)
+	GetFinanceEntryReceipts(w http.ResponseWriter, r *http.Request, entryId string)
+	// PostFinanceEntryReceipts Upload a receipt for an entry as an officer with MFA
+	// (POST /finance/entries/{entryId}/receipts)
+	PostFinanceEntryReceipts(w http.ResponseWriter, r *http.Request, entryId string)
+	// GetFinanceEntryReceipt Download one receipt as an attachment
+	// (GET /finance/entries/{entryId}/receipts/{receiptId})
+	GetFinanceEntryReceipt(w http.ResponseWriter, r *http.Request, entryId string, receiptId string)
 	// PostFinanceEntryReversal Reverse an entry as any officer with MFA
 	// (POST /finance/entries/{entryId}/reversal)
 	PostFinanceEntryReversal(w http.ResponseWriter, r *http.Request, entryId string)
+	// GetFinanceReport Fund report (Informe de caja) for an inclusive date range
+	// (GET /finance/report)
+	GetFinanceReport(w http.ResponseWriter, r *http.Request, params GetFinanceReportParams)
+	// GetFinanceReportCsv Fund report as a CSV download
+	// (GET /finance/report.csv)
+	GetFinanceReportCsv(w http.ResponseWriter, r *http.Request, params GetFinanceReportCsvParams)
 	// GetHealth Liveness check
 	// (GET /health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
@@ -3898,6 +4176,52 @@ func (siw *ServerInterfaceWrapper) PostFinanceEntries(w http.ResponseWriter, r *
 	handler.ServeHTTP(w, r)
 }
 
+// GetFinanceEntriesCsv operation middleware
+func (siw *ServerInterfaceWrapper) GetFinanceEntriesCsv(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetFinanceEntriesCsvParams
+
+	// ------------- Optional query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetFinanceEntriesCsv(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetFinanceEntry operation middleware
 func (siw *ServerInterfaceWrapper) GetFinanceEntry(w http.ResponseWriter, r *http.Request) {
 
@@ -3924,6 +4248,93 @@ func (siw *ServerInterfaceWrapper) GetFinanceEntry(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// GetFinanceEntryReceipts operation middleware
+func (siw *ServerInterfaceWrapper) GetFinanceEntryReceipts(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "entryId" -------------
+	var entryId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "entryId", r.PathValue("entryId"), &entryId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "entryId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetFinanceEntryReceipts(w, r, entryId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostFinanceEntryReceipts operation middleware
+func (siw *ServerInterfaceWrapper) PostFinanceEntryReceipts(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "entryId" -------------
+	var entryId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "entryId", r.PathValue("entryId"), &entryId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "entryId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostFinanceEntryReceipts(w, r, entryId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetFinanceEntryReceipt operation middleware
+func (siw *ServerInterfaceWrapper) GetFinanceEntryReceipt(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "entryId" -------------
+	var entryId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "entryId", r.PathValue("entryId"), &entryId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "entryId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "receiptId" -------------
+	var receiptId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "receiptId", r.PathValue("receiptId"), &receiptId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "receiptId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetFinanceEntryReceipt(w, r, entryId, receiptId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // PostFinanceEntryReversal operation middleware
 func (siw *ServerInterfaceWrapper) PostFinanceEntryReversal(w http.ResponseWriter, r *http.Request) {
 
@@ -3941,6 +4352,98 @@ func (siw *ServerInterfaceWrapper) PostFinanceEntryReversal(w http.ResponseWrite
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostFinanceEntryReversal(w, r, entryId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetFinanceReport operation middleware
+func (siw *ServerInterfaceWrapper) GetFinanceReport(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetFinanceReportParams
+
+	// ------------- Optional query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetFinanceReport(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetFinanceReportCsv operation middleware
+func (siw *ServerInterfaceWrapper) GetFinanceReportCsv(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetFinanceReportCsvParams
+
+	// ------------- Optional query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetFinanceReportCsv(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4347,8 +4850,14 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/balance", wrapper.GetFinanceBalance)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/entries", wrapper.GetFinanceEntries)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/finance/entries", wrapper.PostFinanceEntries)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/report", wrapper.GetFinanceReport)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/report.csv", wrapper.GetFinanceReportCsv)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/entries.csv", wrapper.GetFinanceEntriesCsv)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/entries/{entryId}", wrapper.GetFinanceEntry)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/finance/entries/{entryId}/reversal", wrapper.PostFinanceEntryReversal)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/entries/{entryId}/receipts", wrapper.GetFinanceEntryReceipts)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/finance/entries/{entryId}/receipts", wrapper.PostFinanceEntryReceipts)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/entries/{entryId}/receipts/{receiptId}", wrapper.GetFinanceEntryReceipt)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/dues", wrapper.GetFinanceDues)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/finance/dues", wrapper.PostFinanceDues)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/dues/mine", wrapper.GetMyFinanceDues)

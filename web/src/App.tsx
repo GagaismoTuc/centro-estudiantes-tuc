@@ -17,6 +17,7 @@ import { SharedDirectory } from "./screens/SharedDirectory.tsx";
 import { Home } from "./screens/Home.tsx";
 import { EventBudgets } from "./screens/EventBudgets.tsx";
 import { Finance } from "./screens/Finance.tsx";
+import { FundReport } from "./screens/FundReport.tsx";
 import { Dues } from "./screens/Dues.tsx";
 import { MfaEnroll } from "./screens/MfaEnroll.tsx";
 import { MfaVerify } from "./screens/MfaVerify.tsx";
@@ -47,6 +48,7 @@ const publicRoutes: Record<string, () => JSX.Element> = {
 const shellRoutes: Record<string, { page: string; Screen: () => JSX.Element }> = {
   "/": { page: "Inicio", Screen: Home },
   "/caja": { page: "Caja", Screen: Finance },
+  "/caja/informe": { page: "Informe", Screen: FundReport },
   "/cuotas": { page: "Cuotas", Screen: Dues },
   "/padron": { page: "Padrón", Screen: Roster },
   "/miembros": { page: "Miembros", Screen: Members },

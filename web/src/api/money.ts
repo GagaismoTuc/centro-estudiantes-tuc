@@ -1,5 +1,8 @@
 export type MoneyResult<T> = { ok: true; data: T } | { ok: false; code: string };
 
+// Money keys whose int64 cents must reach the screen as exact decimal strings.
+const MONEY_KEYS = new Set(['"amountCents"', '"balanceCents"', '"openingCents"', '"closingCents"', '"incomeCents"', '"expenseCents"', '"totalCents"', '"paidCents"']);
+
 // Preserve the decimal tokens before JSON.parse rounds integers beyond 2^53.
 export function exactMoneyJSON(text: string): unknown {
   if (!text) return undefined;
@@ -15,7 +18,7 @@ export function exactMoneyJSON(text: string): unknown {
     out += token;
     let j = i;
     while (/\s/.test(text[j] ?? "")) j++;
-    if (text[j] !== ":" || !['"amountCents"', '"balanceCents"', '"paidCents"'].includes(token)) continue;
+    if (text[j] !== ":" || !MONEY_KEYS.has(token)) continue;
     j++;
     while (/\s/.test(text[j] ?? "")) j++;
     const number = /^-?\d+/.exec(text.slice(j));

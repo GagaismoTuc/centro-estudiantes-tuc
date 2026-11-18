@@ -1,14 +1,11 @@
 package httpapi
 
 import (
-	"bytes"
 	"encoding/csv"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
-	"strings"
 
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/auth"
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/finance"
@@ -333,32 +330,15 @@ func (s *server) GetFinanceDueMembersCsv(w http.ResponseWriter, r *http.Request,
 		writeDueError(w, err)
 		return
 	}
-	var buf bytes.Buffer
-	buf.WriteString("\ufeff") // byte order mark
-	out := csv.NewWriter(&buf)
-	out.Comma = ';'
-	out.UseCRLF = true
-	_ = out.Write([]string{"Nombre", "Pagado", "Falta", "Estado", "Motivo de exención"})
-	for _, m := range due.Members {
-		owed := max(due.AmountCents-m.PaidCents, 0)
-		if m.Status == finance.DueStatusExempt {
-			owed = 0
-		}
-		_ = out.Write([]string{csvText(m.FullName), csvPesos(m.PaidCents), csvPesos(owed), dueStatusCSV[m.Status], csvText(m.ExemptionReason)})
-	}
-	out.Flush()
-	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
-	w.Header().Set("Content-Disposition", `attachment; filename="cuota.csv"`)
 	w.Header().Set("Cache-Control", "no-store")
-	_, _ = w.Write(buf.Bytes())
-}
-
-func csvPesos(cents int64) string { return fmt.Sprintf("%d,%02d", cents/100, cents%100) }
-
-// csvText keeps a spreadsheet from running a Roster name as a formula.
-func csvText(v string) string {
-	if v != "" && strings.ContainsRune("=+-@\t\r", rune(v[0])) {
-		return "'" + v
-	}
-	return v
+	writeCSV(w, "cuota.csv", func(out *csv.Writer) {
+		_ = out.Write([]string{"Nombre", "Pagado", "Falta", "Estado", "Motivo de exención"})
+		for _, m := range due.Members {
+			owed := max(due.AmountCents-m.PaidCents, 0)
+			if m.Status == finance.DueStatusExempt {
+				owed = 0
+			}
+			_ = out.Write([]string{csvText(m.FullName), csvAmount(m.PaidCents), csvAmount(owed), dueStatusCSV[m.Status], csvText(m.ExemptionReason)})
+		}
+	})
 }

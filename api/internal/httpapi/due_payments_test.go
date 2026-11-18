@@ -486,6 +486,27 @@ func TestDuePaymentsR10StudentView(t *testing.T) {
 	}
 }
 
+// The Fund report and the ledger exports (#75) read the same Entries: a Student never gets who
+// paid, and the Board's ledger CSV fills the "alumno" column.
+func TestDuePaymentsR10ReportAndLedgerExports(t *testing.T) {
+	p := newPayFixture(t)
+	p.payOK(t, 50000)
+	const report = "/api/finance/report?from=2026-11-01&to=2026-11-30"
+	for _, path := range []string{report, "/api/finance/report.csv?from=2026-11-01&to=2026-11-30", "/api/finance/entries.csv"} {
+		rec := p.do(http.MethodGet, path, "", "198.51.100.10", p.beto, nil)
+		if rec.Code != http.StatusOK || strings.Contains(rec.Body.String(), "Beto Ficticio") || strings.Contains(rec.Body.String(), p.betoID) || strings.Contains(rec.Body.String(), "rosterMember") {
+			t.Fatalf("student %s names the payer: %d %s", path, rec.Code, rec.Body)
+		}
+	}
+	if rec := p.do(http.MethodGet, report, "", "198.51.100.10", p.officer, nil); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"rosterMember":{"fullName":"Beto Ficticio"`) {
+		t.Fatalf("officer report misses the payer: %d %s", rec.Code, rec.Body)
+	}
+	rec := p.do(http.MethodGet, "/api/finance/entries.csv", "", "198.51.100.10", p.officer, nil)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), ";500,00;Ana Ficticia;no;no;Beto Ficticio\r\n") {
+		t.Fatalf("officer ledger csv misses the payer: %d %q", rec.Code, rec.Body)
+	}
+}
+
 func TestDuePaymentsR11WriteAuthorization(t *testing.T) {
 	p := newPayFixture(t)
 	_, officerNoMFA := p.signIn(t, p.ctx, "officer")
