@@ -9,23 +9,22 @@ import (
 func TestDetectReceiptType(t *testing.T) {
 	t.Run("R2 accepts JPG, PNG, and PDF by magic bytes", func(t *testing.T) {
 		cases := []struct {
-			name    string
-			data    []byte
-			wantCT  string
-			wantExt string
+			name   string
+			data   []byte
+			wantCT string
 		}{
-			{"jpg", []byte{0xFF, 0xD8, 0xFF, 0xE0, 0x00}, "image/jpeg", "jpg"},
-			{"png", []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00}, "image/png", "png"},
-			{"pdf", []byte("%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF\n"), "application/pdf", "pdf"},
+			{"jpg", []byte{0xFF, 0xD8, 0xFF, 0xE0, 0x00}, "image/jpeg"},
+			{"png", []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00}, "image/png"},
+			{"pdf", []byte("%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF\n"), "application/pdf"},
 		}
 		for _, tc := range cases {
 			t.Run(tc.name, func(t *testing.T) {
-				ct, ext, err := DetectReceiptType(tc.data)
+				ct, err := DetectReceiptType(tc.data)
 				if err != nil {
 					t.Fatalf("unexpected error: %v", err)
 				}
-				if ct != tc.wantCT || ext != tc.wantExt {
-					t.Fatalf("got (%q, %q), want (%q, %q)", ct, ext, tc.wantCT, tc.wantExt)
+				if ct != tc.wantCT {
+					t.Fatalf("got %q, want %q", ct, tc.wantCT)
 				}
 			})
 		}
@@ -47,7 +46,7 @@ func TestDetectReceiptType(t *testing.T) {
 		}
 		for _, tc := range cases {
 			t.Run(tc.name, func(t *testing.T) {
-				_, _, err := DetectReceiptType(tc.data)
+				_, err := DetectReceiptType(tc.data)
 				if !errors.Is(err, ErrUnsupportedMediaType) {
 					t.Fatalf("got %v, want ErrUnsupportedMediaType", err)
 				}
@@ -56,24 +55,24 @@ func TestDetectReceiptType(t *testing.T) {
 	})
 
 	t.Run("R3 empty and size boundary", func(t *testing.T) {
-		if _, _, err := DetectReceiptType(nil); !errors.Is(err, ErrEmptyFile) {
+		if _, err := DetectReceiptType(nil); !errors.Is(err, ErrEmptyFile) {
 			t.Fatalf("empty nil: got %v, want ErrEmptyFile", err)
 		}
-		if _, _, err := DetectReceiptType([]byte{}); !errors.Is(err, ErrEmptyFile) {
+		if _, err := DetectReceiptType([]byte{}); !errors.Is(err, ErrEmptyFile) {
 			t.Fatalf("empty slice: got %v, want ErrEmptyFile", err)
 		}
 
 		exact := make([]byte, MaxReceiptBytes)
 		copy(exact, []byte("%PDF-1.4\n"))
-		ct, ext, err := DetectReceiptType(exact)
-		if err != nil || ct != "application/pdf" || ext != "pdf" {
-			t.Fatalf("exact max (%d bytes): got (%q, %q, %v)", len(exact), ct, ext, err)
+		ct, err := DetectReceiptType(exact)
+		if err != nil || ct != "application/pdf" {
+			t.Fatalf("exact max (%d bytes): got (%q, %v)", len(exact), ct, err)
 		}
 
 		over := make([]byte, MaxReceiptBytes+1)
 		copy(over, bytes.Repeat([]byte("a"), 16))
 		copy(over, []byte("%PDF-1.4\n"))
-		if _, _, err := DetectReceiptType(over); !errors.Is(err, ErrFileTooLarge) {
+		if _, err := DetectReceiptType(over); !errors.Is(err, ErrFileTooLarge) {
 			t.Fatalf("over max (%d bytes): got %v, want ErrFileTooLarge", len(over), err)
 		}
 	})

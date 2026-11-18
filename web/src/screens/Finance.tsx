@@ -11,7 +11,7 @@ import {
   type FinanceReceipt,
 } from "../api/finance.ts";
 import type { components } from "../api/schema.gen.ts";
-import { canReadContacts, hasRole, useMe, useSession } from "../auth/session.tsx";
+import { canReadReceipts, hasRole, useMe, useSession } from "../auth/session.tsx";
 import { ConfirmDialog } from "../components/ConfirmDialog.tsx";
 import { Field, FormStatus, useFormErrors, type Status } from "../components/Form.tsx";
 import { PageTitle, useDocumentTitle } from "../components/Page.tsx";
@@ -26,27 +26,11 @@ const MAX_RECEIPT_BYTES = 10 * 1024 * 1024;
 const ACCEPTED_RECEIPTS = ".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf";
 const R5_UPLOAD_FAILED = "El movimiento se guard\u00f3, pero el comprobante no. Volv\u00e9 a subirlo desde el detalle.";
 
-function receiptTypeLabel(contentType: FinanceReceipt["contentType"]): string {
-  switch (contentType) {
-    case "image/jpeg":
-      return "JPG";
-    case "image/png":
-      return "PNG";
-    case "application/pdf":
-      return "PDF";
-  }
-}
-
-function receiptExt(contentType: FinanceReceipt["contentType"]): string {
-  switch (contentType) {
-    case "image/jpeg":
-      return "jpg";
-    case "image/png":
-      return "png";
-    case "application/pdf":
-      return "pdf";
-  }
-}
+const receiptFormats: Record<FinanceReceipt["contentType"], { label: string; ext: string }> = {
+  "image/jpeg": { label: "JPG", ext: "jpg" },
+  "image/png": { label: "PNG", ext: "png" },
+  "application/pdf": { label: "PDF", ext: "pdf" },
+};
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -60,7 +44,7 @@ export function Finance() {
   const me = useMe();
   const { refresh } = useSession();
   const isOfficer = hasRole(me, "officer");
-  const canViewReceipts = canReadContacts(me);
+  const canViewReceipts = canReadReceipts(me);
   const createFileId = useId();
   const detailFileId = useId();
 
@@ -76,10 +60,12 @@ export function Finance() {
   const [description, setDescription] = useState("");
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [detail, setDetail] = useState<EntryDetail | null>(null);
+  const [detailReceiptError, setDetailReceiptError] = useState("");
   const [status, setStatus] = useState<Status>(null);
   const [busy, setBusy] = useState(false);
   const pending = useRef(false);
   const categoryRef = useRef<HTMLSelectElement>(null);
+  const detailFileRef = useRef<HTMLInputElement>(null);
   const [categoryError, setCategoryError] = useState("");
   const [confirmReverse, setConfirmReverse] = useState<Entry | null>(null);
   const form = useFormErrors();
@@ -177,6 +163,7 @@ export function Finance() {
     pending.current = true;
     setBusy(true);
     setStatus(null);
+    setDetailReceiptError("");
     const res = await entryReceipts(target.id);
     if (res.ok) {
       setDetail({ entry: target, receipts: res.data });
@@ -190,14 +177,18 @@ export function Finance() {
 
   async function uploadFromDetail(target: Entry, file: File) {
     if (pending.current) return;
+    setDetailReceiptError("");
+    const failDetailReceipt = (code: string) => {
+      if (code === "mfa_required" || code === "unauthenticated") void refresh();
+      setDetailReceiptError(errorMessage(code, "finance"));
+      detailFileRef.current?.focus();
+    };
     if (file.size === 0) {
-      failed("empty_file");
-      form.failed("empty_file");
+      failDetailReceipt("empty_file");
       return;
     }
     if (file.size > MAX_RECEIPT_BYTES) {
-      failed("file_too_large");
-      form.failed("file_too_large");
+      failDetailReceipt("file_too_large");
       return;
     }
     pending.current = true;
@@ -216,8 +207,7 @@ export function Finance() {
       }
       await load();
     } else {
-      failed(res.code);
-      form.failed(res.code);
+      failDetailReceipt(res.code);
     }
     pending.current = false;
     setBusy(false);
@@ -326,7 +316,7 @@ export function Finance() {
               {categories.find((c) => c.id === detail.entry.categoryId)?.name} — {detail.entry.date}
             </p>
           </div>
-          <button type="button" className="button button--ghost button--small" onClick={() => setDetail(null)}>
+          <button type="button" className="button button--ghost button--small" onClick={() => { setDetail(null); setDetailReceiptError(""); }}>
             Cerrar detalle
           </button>
         </div>
@@ -338,12 +328,12 @@ export function Finance() {
             {detail.receipts.map((receipt, index) => (
               <li key={receipt.id}>
                 <div>
-                  <strong>Comprobante {index + 1}</strong> — {receiptTypeLabel(receipt.contentType)} ({formatSize(receipt.sizeBytes)})
+                  <strong>Comprobante {index + 1}</strong> — {receiptFormats[receipt.contentType].label} ({formatSize(receipt.sizeBytes)})
                 </div>
                 <a
                   className="button button--secondary button--small"
                   href={`/api/finance/entries/${detail.entry.id}/receipts/${receipt.id}`}
-                  download={`comprobante-${receipt.id}.${receiptExt(receipt.contentType)}`}
+                  download={`comprobante-${receipt.id}.${receiptFormats[receipt.contentType].ext}`}
                 >
                   Descargar comprobante {index + 1}
                 </a>
@@ -354,12 +344,14 @@ export function Finance() {
         {isOfficer && (
           <div className="field">
             <input
+              ref={detailFileRef}
               id={detailFileId}
               className="file-input"
               type="file"
               accept={ACCEPTED_RECEIPTS}
               disabled={busy}
-              aria-describedby={`${detailFileId}-hint`}
+              aria-invalid={!!detailReceiptError || undefined}
+              aria-describedby={detailReceiptError ? `${detailFileId}-error ${detailFileId}-hint` : `${detailFileId}-hint`}
               onChange={(event) => {
                 const file = event.target.files?.[0];
                 event.target.value = "";
@@ -369,6 +361,11 @@ export function Finance() {
             <label htmlFor={detailFileId} className="button button--secondary file-button">
               Subir comprobante
             </label>
+            {detailReceiptError && (
+              <p id={`${detailFileId}-error`} role="alert">
+                {detailReceiptError}
+              </p>
+            )}
             <p className="field__hint" id={`${detailFileId}-hint`}>
               {"JPG, PNG o PDF de hasta 10 MB. Pod\u00e9s sumar m\u00e1s de uno; no se reemplazan ni se borran."}
             </p>

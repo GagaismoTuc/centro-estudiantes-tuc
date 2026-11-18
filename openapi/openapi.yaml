@@ -2463,17 +2463,35 @@ paths:
           description: File larger than 10 MiB (`file_too_large`). Nothing is written.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/Error" }
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [file_too_large]
         "415":
           description: Unsupported file signature; must be JPG, PNG or PDF (`unsupported_media_type`). Nothing is written.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/Error" }
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [unsupported_media_type]
         "422":
           description: Empty file (`empty_file`). Nothing is written.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/Error" }
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [empty_file]
   /finance/entries/{entryId}/receipts/{receiptId}:
     parameters:
       - name: entryId

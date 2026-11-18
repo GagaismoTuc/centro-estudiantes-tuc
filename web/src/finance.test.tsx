@@ -355,7 +355,7 @@ test("R1, R6, and R7 detail downloads and uploads respect roles", async () => {
   expect(sentTo(sent, "POST /finance/entries/e1/receipts")).toHaveLength(1);
 });
 
-test("R2 and R3 detail upload shows Spanish error and moves focus to message", async () => {
+test("R2 and R3 detail upload shows Spanish error and moves focus to invalid input", async () => {
   mockApi({
     "GET /auth/me": ok(me({ role: "officer", mfa: "satisfied" })),
     ...reads,
@@ -370,11 +370,14 @@ test("R2 and R3 detail upload shows Spanish error and moves focus to message", a
     target: { files: [new File(["GIF89a"], "anim.gif", { type: "image/gif" })] },
   });
   const errMsg = await screen.findByText("El archivo tiene que ser JPG, PNG o PDF.");
-  await waitFor(() => expect(document.activeElement?.contains(errMsg)).toBe(true));
+  expect(input.getAttribute("aria-invalid")).toBe("true");
+  expect(input.getAttribute("aria-describedby")).toContain(errMsg.id);
+  expect(document.activeElement).toBe(input);
 
   // Empty file rejected cleanly.
   fireEvent.change(input, {
     target: { files: [new File([], "vacio.pdf", { type: "application/pdf" })] },
   });
   expect(await screen.findByText(/est\u00e1 vac\u00edo/)).toBeTruthy();
+  expect(input.getAttribute("aria-invalid")).toBe("true");
 });

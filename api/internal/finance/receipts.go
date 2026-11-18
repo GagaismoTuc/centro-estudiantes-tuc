@@ -37,22 +37,22 @@ type Receipt struct {
 
 // DetectReceiptType validates receipt size and identifies JPG, PNG, or PDF solely from leading
 // file-signature bytes, ignoring declared filenames and Content-Type headers.
-func DetectReceiptType(data []byte) (contentType, ext string, err error) {
+func DetectReceiptType(data []byte) (string, error) {
 	if len(data) == 0 {
-		return "", "", ErrEmptyFile
+		return "", ErrEmptyFile
 	}
 	if len(data) > MaxReceiptBytes {
-		return "", "", ErrFileTooLarge
+		return "", ErrFileTooLarge
 	}
 	switch {
 	case bytes.HasPrefix(data, jpgMagic):
-		return "image/jpeg", "jpg", nil
+		return "image/jpeg", nil
 	case bytes.HasPrefix(data, pngMagic):
-		return "image/png", "png", nil
+		return "image/png", nil
 	case bytes.HasPrefix(data, pdfMagic):
-		return "application/pdf", "pdf", nil
+		return "application/pdf", nil
 	default:
-		return "", "", ErrUnsupportedMediaType
+		return "", ErrUnsupportedMediaType
 	}
 }
 
@@ -101,23 +101,30 @@ func (s *Store) withReceiptReader(ctx context.Context, sess auth.Session, fn fun
 	})
 }
 
+func ensureEntryExists(ctx context.Context, tx pgx.Tx, tenantID, entryID string) error {
+	if !uuidPattern.MatchString(entryID) {
+		return ErrNotFound
+	}
+	var exists bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM finance_entries WHERE tenant_id=$1 AND id=$2)`, tenantID, entryID).Scan(&exists); err != nil {
+		return err
+	}
+	if !exists {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // AddReceipt validates and stores a Receipt for entryID inside one tenant-scoped transaction.
 func (s *Store) AddReceipt(ctx context.Context, sess auth.Session, entryID string, data []byte) (Receipt, error) {
 	var out Receipt
 	err := s.withMember(ctx, sess, true, func(tx pgx.Tx) error {
-		if !uuidPattern.MatchString(entryID) {
-			return ErrNotFound
+		if err := ensureEntryExists(ctx, tx, sess.TenantID, entryID); err != nil {
+			return err
 		}
-		contentType, _, err := DetectReceiptType(data)
+		contentType, err := DetectReceiptType(data)
 		if err != nil {
 			return err
-		}
-		var exists bool
-		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM finance_entries WHERE tenant_id=$1 AND id=$2)`, sess.TenantID, entryID).Scan(&exists); err != nil {
-			return err
-		}
-		if !exists {
-			return ErrNotFound
 		}
 		uploadedAt := s.now()
 		out = Receipt{
@@ -141,15 +148,8 @@ func (s *Store) AddReceipt(ctx context.Context, sess auth.Session, entryID strin
 func (s *Store) ListReceipts(ctx context.Context, sess auth.Session, entryID string) ([]Receipt, error) {
 	out := []Receipt{}
 	err := s.withReceiptReader(ctx, sess, func(tx pgx.Tx) error {
-		if !uuidPattern.MatchString(entryID) {
-			return ErrNotFound
-		}
-		var exists bool
-		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM finance_entries WHERE tenant_id=$1 AND id=$2)`, sess.TenantID, entryID).Scan(&exists); err != nil {
+		if err := ensureEntryExists(ctx, tx, sess.TenantID, entryID); err != nil {
 			return err
-		}
-		if !exists {
-			return ErrNotFound
 		}
 		rows, err := tx.Query(ctx,
 			`SELECT id::text, content_type, size_bytes, uploaded_at

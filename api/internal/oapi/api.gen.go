@@ -1001,6 +1001,51 @@ func (e PatchFinanceDue422JSONResponseBodyError) Valid() bool {
 	}
 }
 
+// Defines values for PostFinanceEntryReceipts413JSONResponseBodyError.
+const (
+	FileTooLarge PostFinanceEntryReceipts413JSONResponseBodyError = "file_too_large"
+)
+
+// Valid indicates whether the value is a known member of the PostFinanceEntryReceipts413JSONResponseBodyError enum.
+func (e PostFinanceEntryReceipts413JSONResponseBodyError) Valid() bool {
+	switch e {
+	case FileTooLarge:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostFinanceEntryReceipts415JSONResponseBodyError.
+const (
+	UnsupportedMediaType PostFinanceEntryReceipts415JSONResponseBodyError = "unsupported_media_type"
+)
+
+// Valid indicates whether the value is a known member of the PostFinanceEntryReceipts415JSONResponseBodyError enum.
+func (e PostFinanceEntryReceipts415JSONResponseBodyError) Valid() bool {
+	switch e {
+	case UnsupportedMediaType:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostFinanceEntryReceipts422JSONResponseBodyError.
+const (
+	EmptyFile PostFinanceEntryReceipts422JSONResponseBodyError = "empty_file"
+)
+
+// Valid indicates whether the value is a known member of the PostFinanceEntryReceipts422JSONResponseBodyError enum.
+func (e PostFinanceEntryReceipts422JSONResponseBodyError) Valid() bool {
+	switch e {
+	case EmptyFile:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PostFinanceEntryReversal409JSONResponseBodyError.
 const (
 	AlreadyReversed       PostFinanceEntryReversal409JSONResponseBodyError = "already_reversed"
@@ -1901,6 +1946,15 @@ type PatchFinanceDue409JSONResponseBodyError string
 
 // PatchFinanceDue422JSONResponseBodyError defines parameters for PatchFinanceDue.
 type PatchFinanceDue422JSONResponseBodyError string
+
+// PostFinanceEntryReceipts413JSONResponseBodyError defines parameters for PostFinanceEntryReceipts.
+type PostFinanceEntryReceipts413JSONResponseBodyError string
+
+// PostFinanceEntryReceipts415JSONResponseBodyError defines parameters for PostFinanceEntryReceipts.
+type PostFinanceEntryReceipts415JSONResponseBodyError string
+
+// PostFinanceEntryReceipts422JSONResponseBodyError defines parameters for PostFinanceEntryReceipts.
+type PostFinanceEntryReceipts422JSONResponseBodyError string
 
 // PostFinanceEntryReversal409JSONResponseBodyError defines parameters for PostFinanceEntryReversal.
 type PostFinanceEntryReversal409JSONResponseBodyError string

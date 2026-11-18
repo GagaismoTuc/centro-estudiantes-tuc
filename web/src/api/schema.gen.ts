@@ -4836,7 +4836,10 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Error"];
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "file_too_large";
+                    };
                 };
             };
             /** @description Unsupported file signature; must be JPG, PNG or PDF (`unsupported_media_type`). Nothing is written. */
@@ -4845,7 +4848,10 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Error"];
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "unsupported_media_type";
+                    };
                 };
             };
             /** @description Empty file (`empty_file`). Nothing is written. */
@@ -4854,7 +4860,10 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Error"];
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "empty_file";
+                    };
                 };
             };
         };

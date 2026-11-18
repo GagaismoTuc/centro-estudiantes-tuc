@@ -247,6 +247,10 @@ func TestFinanceReceipts(t *testing.T) {
 			t.Fatalf("exact 10 MiB: %d %s", rExact.Code, rExact.Body)
 		}
 
+		// Exact 10 MiB + 1 byte (10,485,761 bytes) rejected with 413 file_too_large.
+		overOne := makeMinimalJPG(finance.MaxReceiptBytes + 1)
+		wantResponse(t, upload(secondEntry, overOne, ana, nil), 413, `{"error":"file_too_large"}`)
+
 		// 10 MiB + 1 byte streamed: server must reject 413 file_too_large without draining a 20 MiB stream.
 		stream := &trackingReader{prefix: []byte{0xFF, 0xD8, 0xFF}, total: 20 << 20}
 		req := httptest.NewRequest(http.MethodPost, "/api/finance/entries/"+secondEntry+"/receipts", stream)

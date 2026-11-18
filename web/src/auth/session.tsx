@@ -21,6 +21,9 @@ export function canReadContacts(me: Me): boolean {
 /** Reports whether the signed-in user may view per-student Due lists (R4). */
 export const canReadDues = canReadContacts;
 
+/** Reports whether the signed-in user may view and download entry Receipts (R7). */
+export const canReadReceipts = canReadContacts;
+
 export type Session =
   | { status: "loading" }
   | { status: "anon" }
