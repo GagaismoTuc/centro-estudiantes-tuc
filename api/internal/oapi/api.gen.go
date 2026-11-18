@@ -101,6 +101,27 @@ func (e FinanceDueStatus) Valid() bool {
 	}
 }
 
+// Defines values for FinanceReceiptContentType.
+const (
+	Applicationpdf FinanceReceiptContentType = "application/pdf"
+	Imagejpeg      FinanceReceiptContentType = "image/jpeg"
+	Imagepng       FinanceReceiptContentType = "image/png"
+)
+
+// Valid indicates whether the value is a known member of the FinanceReceiptContentType enum.
+func (e FinanceReceiptContentType) Valid() bool {
+	switch e {
+	case Applicationpdf:
+		return true
+	case Imagejpeg:
+		return true
+	case Imagepng:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ForbiddenErrorError.
 const (
 	ForbiddenErrorErrorForbidden   ForbiddenErrorError = "forbidden"
@@ -1375,14 +1396,17 @@ type FinanceDueSummary struct {
 
 // FinanceEntry defines model for FinanceEntry.
 type FinanceEntry struct {
-	AmountCents int64     `json:"amountCents"`
-	CategoryId  string    `json:"categoryId"`
-	Date        string    `json:"date"`
-	Description string    `json:"description"`
-	Direction   string    `json:"direction"`
-	Id          string    `json:"id"`
-	RecordedAt  time.Time `json:"recordedAt"`
-	RecordedBy  string    `json:"recordedBy"`
+	AmountCents int64  `json:"amountCents"`
+	CategoryId  string `json:"categoryId"`
+	Date        string `json:"date"`
+	Description string `json:"description"`
+	Direction   string `json:"direction"`
+
+	// HasReceipt True when at least one Receipt backs this entry.
+	HasReceipt bool      `json:"hasReceipt"`
+	Id         string    `json:"id"`
+	RecordedAt time.Time `json:"recordedAt"`
+	RecordedBy string    `json:"recordedBy"`
 
 	// ReversalId Present when this entry was reversed; the id of its Reversal.
 	ReversalId *string `json:"reversalId,omitempty"`
@@ -1396,6 +1420,17 @@ type FinanceEntry struct {
 	// ReversesId Present when this entry is a Reversal; the id of the entry it reverses.
 	ReversesId *string `json:"reversesId,omitempty"`
 }
+
+// FinanceReceipt defines model for FinanceReceipt.
+type FinanceReceipt struct {
+	ContentType FinanceReceiptContentType `json:"contentType"`
+	Id          string                    `json:"id"`
+	SizeBytes   int                       `json:"sizeBytes"`
+	UploadedAt  time.Time                 `json:"uploadedAt"`
+}
+
+// FinanceReceiptContentType defines model for FinanceReceipt.ContentType.
+type FinanceReceiptContentType string
 
 // ForbiddenError defines model for ForbiddenError.
 type ForbiddenError struct {
@@ -2202,6 +2237,15 @@ type ServerInterface interface {
 	// GetFinanceEntry Get an entry in the active school
 	// (GET /finance/entries/{entryId})
 	GetFinanceEntry(w http.ResponseWriter, r *http.Request, entryId string)
+	// GetFinanceEntryReceipts List receipts of an entry in the active school
+	// (GET /finance/entries/{entryId}/receipts)
+	GetFinanceEntryReceipts(w http.ResponseWriter, r *http.Request, entryId string)
+	// PostFinanceEntryReceipts Upload a receipt for an entry as an officer with MFA
+	// (POST /finance/entries/{entryId}/receipts)
+	PostFinanceEntryReceipts(w http.ResponseWriter, r *http.Request, entryId string)
+	// GetFinanceEntryReceipt Download one receipt as an attachment
+	// (GET /finance/entries/{entryId}/receipts/{receiptId})
+	GetFinanceEntryReceipt(w http.ResponseWriter, r *http.Request, entryId string, receiptId string)
 	// PostFinanceEntryReversal Reverse an entry as any officer with MFA
 	// (POST /finance/entries/{entryId}/reversal)
 	PostFinanceEntryReversal(w http.ResponseWriter, r *http.Request, entryId string)
@@ -3702,6 +3746,93 @@ func (siw *ServerInterfaceWrapper) GetFinanceEntry(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// GetFinanceEntryReceipts operation middleware
+func (siw *ServerInterfaceWrapper) GetFinanceEntryReceipts(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "entryId" -------------
+	var entryId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "entryId", r.PathValue("entryId"), &entryId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "entryId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetFinanceEntryReceipts(w, r, entryId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostFinanceEntryReceipts operation middleware
+func (siw *ServerInterfaceWrapper) PostFinanceEntryReceipts(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "entryId" -------------
+	var entryId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "entryId", r.PathValue("entryId"), &entryId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "entryId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostFinanceEntryReceipts(w, r, entryId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetFinanceEntryReceipt operation middleware
+func (siw *ServerInterfaceWrapper) GetFinanceEntryReceipt(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "entryId" -------------
+	var entryId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "entryId", r.PathValue("entryId"), &entryId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "entryId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "receiptId" -------------
+	var receiptId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "receiptId", r.PathValue("receiptId"), &receiptId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "receiptId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetFinanceEntryReceipt(w, r, entryId, receiptId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // PostFinanceEntryReversal operation middleware
 func (siw *ServerInterfaceWrapper) PostFinanceEntryReversal(w http.ResponseWriter, r *http.Request) {
 
@@ -4127,6 +4258,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/finance/entries", wrapper.PostFinanceEntries)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/entries/{entryId}", wrapper.GetFinanceEntry)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/finance/entries/{entryId}/reversal", wrapper.PostFinanceEntryReversal)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/entries/{entryId}/receipts", wrapper.GetFinanceEntryReceipts)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/finance/entries/{entryId}/receipts", wrapper.PostFinanceEntryReceipts)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/entries/{entryId}/receipts/{receiptId}", wrapper.GetFinanceEntryReceipt)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/dues", wrapper.GetFinanceDues)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/finance/dues", wrapper.PostFinanceDues)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/dues/mine", wrapper.GetMyFinanceDues)

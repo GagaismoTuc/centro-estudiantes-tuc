@@ -1151,6 +1151,55 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/finance/entries/{entryId}/receipts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entryId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * List receipts of an entry in the active school
+         * @description Officers, school admins and veedors with a verified two-factor session.
+         */
+        get: operations["getFinanceEntryReceipts"];
+        put?: never;
+        /**
+         * Upload a receipt for an entry as an officer with MFA
+         * @description Accepts raw JPG, PNG or PDF bytes up to 10 MiB (10485760 bytes), validated by file signature.
+         */
+        post: operations["postFinanceEntryReceipts"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/finance/entries/{entryId}/receipts/{receiptId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entryId: string;
+                receiptId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Download one receipt as an attachment
+         * @description Officers, school admins and veedors with a verified two-factor session. Responds with the validated content type, `Content-Disposition: attachment; filename="comprobante-<receiptId>.<ext>"` and `X-Content-Type-Options: nosniff`.
+         */
+        get: operations["getFinanceEntryReceipt"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/finance/dues": {
         parameters: {
             query?: never;
@@ -1315,6 +1364,8 @@ export interface components {
             recordedBy: string;
             /** Format: date-time */
             recordedAt: string;
+            /** @description True when at least one Receipt backs this entry. */
+            hasReceipt: boolean;
             /** @description Present when this entry is a Reversal; the id of the entry it reverses. */
             reversesId?: string;
             /** @description Present when this entry was reversed; the id of its Reversal. */
@@ -1323,6 +1374,14 @@ export interface components {
             reversedBy?: string;
             /** @description Present when this entry was reversed; the Reversal's date (YYYY-MM-DD, Argentina). */
             reversedOn?: string;
+        };
+        FinanceReceipt: {
+            id: string;
+            /** @enum {string} */
+            contentType: "image/jpeg" | "image/png" | "application/pdf";
+            sizeBytes: number;
+            /** Format: date-time */
+            uploadedAt: string;
         };
         FinanceBalance: {
             /** @description The exact sum; may exceed int64. */
@@ -4698,6 +4757,142 @@ export interface operations {
                         /** @enum {string} */
                         error: "already_reversed" | "cannot_reverse_reversal";
                     };
+                };
+            };
+        };
+    };
+    getFinanceEntryReceipts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entryId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Receipts ordered by upload time ascending. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinanceReceipt"][];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            /** @description Entry not found in the active school (`not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotFoundError"];
+                };
+            };
+        };
+    };
+    postFinanceEntryReceipts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entryId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/octet-stream": string;
+            };
+        };
+        responses: {
+            /** @description Receipt stored; entry now has `hasReceipt` true. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinanceReceipt"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            /** @description Entry not found in the active school (`not_found`). Nothing is written. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotFoundError"];
+                };
+            };
+            /** @description File larger than 10 MiB (`file_too_large`). Nothing is written. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unsupported file signature; must be JPG, PNG or PDF (`unsupported_media_type`). Nothing is written. */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Empty file (`empty_file`). Nothing is written. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getFinanceEntryReceipt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entryId: string;
+                receiptId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Receipt file bytes. */
+            200: {
+                headers: {
+                    "Content-Disposition"?: string;
+                    "X-Content-Type-Options"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": string;
+                    "image/png": string;
+                    "application/pdf": string;
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            /** @description Entry or receipt not found in the active school (`not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotFoundError"];
                 };
             };
         };

@@ -638,7 +638,7 @@ func TestFinanceReversals(t *testing.T) {
 		}
 	})
 	t.Run("PRESERVE entries that are not reversals keep their shape", func(t *testing.T) {
-		plain := []string{"amountCents", "categoryId", "date", "description", "direction", "id", "recordedAt", "recordedBy"}
+		plain := []string{"amountCents", "categoryId", "date", "description", "direction", "hasReceipt", "id", "recordedAt", "recordedBy"}
 		keys := func(t *testing.T, raw []byte) string {
 			t.Helper()
 			var m map[string]json.RawMessage

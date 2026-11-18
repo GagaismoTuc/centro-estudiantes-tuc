@@ -43,12 +43,14 @@ type Entry struct {
 	// ReversesID is set on a Reversal. ReversalID, ReversedBy and ReversedOn are set on an entry
 	// that was reversed: its Reversal's id, recorder name and date.
 	ReversesID, ReversalID, ReversedBy, ReversedOn string
+	HasReceipt                                     bool
 }
 
 // entryColumns selects an Entry of finance_entries e, with its Reversal r (LEFT JOIN), in the
 // field order of Entry.
 const entryColumns = `e.id::text,e.category_id::text,e.direction,to_char(e.entry_date,'YYYY-MM-DD'),e.description,e.recorded_by_name,e.amount_cents,e.recorded_at,
-  COALESCE(e.reverses_id::text,''),COALESCE(r.id::text,''),COALESCE(r.recorded_by_name,''),COALESCE(to_char(r.entry_date,'YYYY-MM-DD'),'')
+  COALESCE(e.reverses_id::text,''),COALESCE(r.id::text,''),COALESCE(r.recorded_by_name,''),COALESCE(to_char(r.entry_date,'YYYY-MM-DD'),''),
+  EXISTS(SELECT 1 FROM finance_receipts fr WHERE fr.tenant_id=e.tenant_id AND fr.entry_id=e.id)
   FROM finance_entries e LEFT JOIN finance_entries r ON r.tenant_id=e.tenant_id AND r.reverses_id=e.id`
 
 type NewEntry struct {
@@ -190,7 +192,7 @@ func (s *Store) Reverse(ctx context.Context, sess auth.Session, id string) (out 
 			return ErrNotFound
 		}
 		var original Entry
-		e := tx.QueryRow(ctx, `SELECT `+entryColumns+` WHERE e.tenant_id=$1 AND e.id=$2`, sess.TenantID, id).Scan(&original.ID, &original.CategoryID, &original.Direction, &original.Date, &original.Description, &original.RecordedBy, &original.AmountCents, &original.RecordedAt, &original.ReversesID, &original.ReversalID, &original.ReversedBy, &original.ReversedOn)
+		e := tx.QueryRow(ctx, `SELECT `+entryColumns+` WHERE e.tenant_id=$1 AND e.id=$2`, sess.TenantID, id).Scan(&original.ID, &original.CategoryID, &original.Direction, &original.Date, &original.Description, &original.RecordedBy, &original.AmountCents, &original.RecordedAt, &original.ReversesID, &original.ReversalID, &original.ReversedBy, &original.ReversedOn, &original.HasReceipt)
 		if errors.Is(e, pgx.ErrNoRows) {
 			return ErrNotFound
 		}
@@ -241,7 +243,7 @@ func (s *Store) Get(ctx context.Context, sess auth.Session, id string) (out Entr
 		if !uuidPattern.MatchString(id) {
 			return ErrNotFound
 		}
-		e := tx.QueryRow(ctx, `SELECT `+entryColumns+` WHERE e.tenant_id=$1 AND e.id=$2`, sess.TenantID, id).Scan(&out.ID, &out.CategoryID, &out.Direction, &out.Date, &out.Description, &out.RecordedBy, &out.AmountCents, &out.RecordedAt, &out.ReversesID, &out.ReversalID, &out.ReversedBy, &out.ReversedOn)
+		e := tx.QueryRow(ctx, `SELECT `+entryColumns+` WHERE e.tenant_id=$1 AND e.id=$2`, sess.TenantID, id).Scan(&out.ID, &out.CategoryID, &out.Direction, &out.Date, &out.Description, &out.RecordedBy, &out.AmountCents, &out.RecordedAt, &out.ReversesID, &out.ReversalID, &out.ReversedBy, &out.ReversedOn, &out.HasReceipt)
 		if errors.Is(e, pgx.ErrNoRows) {
 			return ErrNotFound
 		}
