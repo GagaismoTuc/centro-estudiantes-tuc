@@ -117,11 +117,37 @@ func NewRouter(d Deps) http.Handler {
 		baseURL:      strings.TrimSuffix(d.BaseURL, "/"),
 		background:   d.Background,
 	}
+	// Go 1.22 ServeMux rejects registering both DELETE /api/contacts/headings/{id} and
+	// DELETE /api/contacts/{id}/share on the same mux because both match /api/contacts/headings/share.
+	mux := &conflictBypassMux{primary: http.NewServeMux(), secondary: http.NewServeMux()}
 	h := oapi.HandlerWithOptions(s, oapi.StdHTTPServerOptions{
 		BaseURL:    "/api",
-		BaseRouter: http.NewServeMux(),
+		BaseRouter: mux,
 	})
 	return http.NewCrossOriginProtection().Handler(s.withSession(h))
+}
+
+type conflictBypassMux struct {
+	primary   *http.ServeMux
+	secondary *http.ServeMux
+}
+
+func (m *conflictBypassMux) HandleFunc(pattern string, handler func(http.ResponseWriter, *http.Request)) {
+	if pattern == http.MethodDelete+" /api/contacts/{id}/share" {
+		m.secondary.HandleFunc(pattern, handler)
+		return
+	}
+	m.primary.HandleFunc(pattern, handler)
+}
+
+func (m *conflictBypassMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodDelete {
+		if _, pat := m.secondary.Handler(r); pat != "" {
+			m.secondary.ServeHTTP(w, r)
+			return
+		}
+	}
+	m.primary.ServeHTTP(w, r)
 }
 
 func (*server) GetHealth(w http.ResponseWriter, _ *http.Request) {

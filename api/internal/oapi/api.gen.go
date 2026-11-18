@@ -482,15 +482,33 @@ func (e InvalidRangeError) Valid() bool {
 	}
 }
 
+// Defines values for DeleteContactShare404JSONResponseBodyError.
+const (
+	DeleteContactShare404JSONResponseBodyErrorNotFound  DeleteContactShare404JSONResponseBodyError = "not_found"
+	DeleteContactShare404JSONResponseBodyErrorNotShared DeleteContactShare404JSONResponseBodyError = "not_shared"
+)
+
+// Valid indicates whether the value is a known member of the DeleteContactShare404JSONResponseBodyError enum.
+func (e DeleteContactShare404JSONResponseBodyError) Valid() bool {
+	switch e {
+	case DeleteContactShare404JSONResponseBodyErrorNotFound:
+		return true
+	case DeleteContactShare404JSONResponseBodyErrorNotShared:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PostContactShare409JSONResponseBodyError.
 const (
-	AlreadyShared PostContactShare409JSONResponseBodyError = "already_shared"
+	AlreadyPending PostContactShare409JSONResponseBodyError = "already_pending"
 )
 
 // Valid indicates whether the value is a known member of the PostContactShare409JSONResponseBodyError enum.
 func (e PostContactShare409JSONResponseBodyError) Valid() bool {
 	switch e {
-	case AlreadyShared:
+	case AlreadyPending:
 		return true
 	default:
 		return false
@@ -1314,19 +1332,21 @@ type CommissionMember struct {
 
 // Contact defines model for Contact.
 type Contact struct {
-	CreatedAt       time.Time        `json:"createdAt"`
-	Email           string           `json:"email"`
-	HeadingArchived bool             `json:"headingArchived"`
-	HeadingId       string           `json:"headingId"`
-	HeadingName     string           `json:"headingName"`
-	Id              string           `json:"id"`
-	Name            string           `json:"name"`
-	Notes           string           `json:"notes"`
-	Phone           string           `json:"phone"`
-	ReferencePrices []ReferencePrice `json:"referencePrices"`
-	ShareStatus     *ShareStatus     `json:"shareStatus,omitempty"`
-	UpdatedAt       time.Time        `json:"updatedAt"`
-	Zone            string           `json:"zone"`
+	CreatedAt        time.Time        `json:"createdAt"`
+	Email            string           `json:"email"`
+	HasApprovedShare *bool            `json:"hasApprovedShare,omitempty"`
+	HeadingArchived  bool             `json:"headingArchived"`
+	HeadingId        string           `json:"headingId"`
+	HeadingName      string           `json:"headingName"`
+	Id               string           `json:"id"`
+	Name             string           `json:"name"`
+	Notes            string           `json:"notes"`
+	Phone            string           `json:"phone"`
+	ReferencePrices  []ReferencePrice `json:"referencePrices"`
+	ShareOutdated    *bool            `json:"shareOutdated,omitempty"`
+	ShareStatus      *ShareStatus     `json:"shareStatus,omitempty"`
+	UpdatedAt        time.Time        `json:"updatedAt"`
+	Zone             string           `json:"zone"`
 }
 
 // ContactHeading defines model for ContactHeading.
@@ -2109,6 +2129,9 @@ type GetContactsParams struct {
 	Q         *string `form:"q,omitempty" json:"q,omitempty"`
 }
 
+// DeleteContactShare404JSONResponseBodyError defines parameters for DeleteContactShare.
+type DeleteContactShare404JSONResponseBodyError string
+
 // PostContactShare409JSONResponseBodyError defines parameters for PostContactShare.
 type PostContactShare409JSONResponseBodyError string
 
@@ -2471,6 +2494,9 @@ type ServerInterface interface {
 	// DeleteContactReferencePrice Delete a reference price from a contact
 	// (DELETE /contacts/{id}/reference-prices/{priceId})
 	DeleteContactReferencePrice(w http.ResponseWriter, r *http.Request, id string, priceId string)
+	// DeleteContactShare Withdraw a shared contact from the shared directory
+	// (DELETE /contacts/{id}/share)
+	DeleteContactShare(w http.ResponseWriter, r *http.Request, id string)
 	// PostContactShare Share a contact with the platform-wide shared directory
 	// (POST /contacts/{id}/share)
 	PostContactShare(w http.ResponseWriter, r *http.Request, id string)
@@ -2654,6 +2680,9 @@ type ServerInterface interface {
 	// GetSharedContacts Search approved contacts in the shared directory
 	// (GET /shared-contacts)
 	GetSharedContacts(w http.ResponseWriter, r *http.Request, params GetSharedContactsParams)
+	// PostSharedContactCopy Copy an approved shared contact into the active school's directory
+	// (POST /shared-contacts/{id}/copy)
+	PostSharedContactCopy(w http.ResponseWriter, r *http.Request, id string)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -3145,6 +3174,32 @@ func (siw *ServerInterfaceWrapper) DeleteContactReferencePrice(w http.ResponseWr
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.DeleteContactReferencePrice(w, r, id, priceId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteContactShare operation middleware
+func (siw *ServerInterfaceWrapper) DeleteContactShare(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteContactShare(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4660,6 +4715,32 @@ func (siw *ServerInterfaceWrapper) GetSharedContacts(w http.ResponseWriter, r *h
 	handler.ServeHTTP(w, r)
 }
 
+// PostSharedContactCopy operation middleware
+func (siw *ServerInterfaceWrapper) PostSharedContactCopy(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostSharedContactCopy(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -4822,8 +4903,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/contacts/{id}", wrapper.PatchContact)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/contacts/{id}/reference-prices", wrapper.PostContactReferencePrice)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/contacts/{id}/reference-prices/{priceId}", wrapper.DeleteContactReferencePrice)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/contacts/{id}/share", wrapper.DeleteContactShare)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/contacts/{id}/share", wrapper.PostContactShare)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/shared-contacts", wrapper.GetSharedContacts)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/shared-contacts/{id}/copy", wrapper.PostSharedContactCopy)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/roster/access-codes", wrapper.PostRosterAccessCodes)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/electoral-commission", wrapper.GetElectoralCommission)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/electoral-commission", wrapper.PutElectoralCommission)

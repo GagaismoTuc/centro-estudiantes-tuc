@@ -1295,7 +1295,9 @@ paths:
       summary: Share a contact with the platform-wide shared directory
       description: >
         Officers with a two-factor session only. Copies the shareable fields (excluding notes and
-        source school) into a pending shared-directory entry for Platform admin approval.
+        source school) into a pending shared-directory entry for Platform admin approval. Sharing a
+        contact that already has an approved entry creates a new pending version while keeping the
+        approved entry visible until the new version is approved.
       parameters:
         - name: id
           in: path
@@ -1320,7 +1322,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "409":
-          description: Contact already has a `pending` or `approved` share request (`already_shared`).
+          description: Contact already has a `pending` share request (`already_pending`).
           content:
             application/json:
               schema:
@@ -1329,7 +1331,37 @@ paths:
                 properties:
                   error:
                     type: string
-                    enum: [already_shared]
+                    enum: [already_pending]
+    delete:
+      operationId: deleteContactShare
+      summary: Withdraw a shared contact from the shared directory
+      description: >
+        Officers with a two-factor session only. Withdraws any pending or approved share requests
+        for the contact so it is no longer listed in the shared directory.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Share withdrawn.
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/DirectoryForbidden"
+        "404":
+          description: Contact not found (`not_found`) or not actively shared (`not_shared`).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [not_found, not_shared]
   /shared-contacts:
     get:
       operationId: getSharedContacts
@@ -1367,6 +1399,36 @@ paths:
           $ref: "#/components/responses/Unauthenticated"
         "403":
           $ref: "#/components/responses/DirectoryForbidden"
+  /shared-contacts/{id}/copy:
+    post:
+      operationId: postSharedContactCopy
+      summary: Copy an approved shared contact into the active school's directory
+      description: >
+        Officers with a two-factor session only. Creates an independent copy (without notes or
+        source school) under the active heading of matching name (case-insensitive) or "otros".
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "201":
+          description: Contact copied into the active school's directory.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Contact"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/DirectoryForbidden"
+        "404":
+          description: Shared contact not found or not approved (`not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /roster/access-codes:
     post:
       operationId: postRosterAccessCodes
@@ -3950,6 +4012,10 @@ components:
             $ref: "#/components/schemas/ReferencePrice"
         shareStatus:
           $ref: "#/components/schemas/ShareStatus"
+        hasApprovedShare:
+          type: boolean
+        shareOutdated:
+          type: boolean
         createdAt:
           type: string
           format: date-time

@@ -233,6 +233,31 @@ func (s *server) PostContactShare(w http.ResponseWriter, r *http.Request, id str
 	})
 }
 
+func (s *server) DeleteContactShare(w http.ResponseWriter, r *http.Request, id string) {
+	sess, ok := rosterSession(w, r)
+	if !ok {
+		return
+	}
+	if err := s.contacts.WithdrawShare(r.Context(), sess, id); err != nil {
+		writeContactsError(w, "withdraw shared contact", err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *server) PostSharedContactCopy(w http.ResponseWriter, r *http.Request, id string) {
+	sess, ok := rosterSession(w, r)
+	if !ok {
+		return
+	}
+	c, err := s.contacts.CopySharedContact(r.Context(), sess, id)
+	if err != nil {
+		writeContactsError(w, "copy shared contact", err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, toContactDTO(c))
+}
+
 func (s *server) GetSharedContacts(w http.ResponseWriter, r *http.Request, params oapi.GetSharedContactsParams) {
 	sess, ok := rosterSession(w, r)
 	if !ok {
@@ -286,8 +311,10 @@ func writeContactsError(w http.ResponseWriter, op string, err error) {
 		writeError(w, http.StatusForbidden, "mfa_required")
 	case errors.Is(err, contacts.ErrNotFound):
 		writeError(w, http.StatusNotFound, "not_found")
-	case errors.Is(err, contacts.ErrAlreadyShared):
-		writeError(w, http.StatusConflict, "already_shared")
+	case errors.Is(err, contacts.ErrNotShared):
+		writeError(w, http.StatusNotFound, "not_shared")
+	case errors.Is(err, contacts.ErrAlreadyPending):
+		writeError(w, http.StatusConflict, "already_pending")
 	case errors.Is(err, contacts.ErrInvalidPage):
 		writeError(w, http.StatusBadRequest, "bad_request")
 	case errors.Is(err, contacts.ErrHeadingExists):
@@ -345,20 +372,24 @@ func toContactDTO(c contacts.Contact) oapi.Contact {
 		st := oapi.ShareStatus(c.ShareStatus)
 		shareStatus = &st
 	}
+	hasApprovedShare := c.HasApprovedShare
+	shareOutdated := c.ShareOutdated
 	return oapi.Contact{
-		Id:              c.ID,
-		HeadingId:       c.HeadingID,
-		HeadingName:     c.HeadingName,
-		HeadingArchived: c.HeadingArchived,
-		Name:            c.Name,
-		Phone:           c.Phone,
-		Email:           c.Email,
-		Zone:            c.Zone,
-		Notes:           c.Notes,
-		ReferencePrices: prices,
-		ShareStatus:     shareStatus,
-		CreatedAt:       c.CreatedAt,
-		UpdatedAt:       c.UpdatedAt,
+		Id:               c.ID,
+		HeadingId:        c.HeadingID,
+		HeadingName:      c.HeadingName,
+		HeadingArchived:  c.HeadingArchived,
+		Name:             c.Name,
+		Phone:            c.Phone,
+		Email:            c.Email,
+		Zone:             c.Zone,
+		Notes:            c.Notes,
+		ReferencePrices:  prices,
+		ShareStatus:      shareStatus,
+		HasApprovedShare: &hasApprovedShare,
+		ShareOutdated:    &shareOutdated,
+		CreatedAt:        c.CreatedAt,
+		UpdatedAt:        c.UpdatedAt,
 	}
 }
 
