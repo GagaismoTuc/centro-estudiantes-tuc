@@ -1677,7 +1677,8 @@ paths:
                 $ref: "#/components/schemas/NotFoundError"
         "409":
           description: >
-            The election was annulled (`election_annulled`), or it is no longer a draft (`election_not_draft`).
+            The election was annulled (`election_annulled`), voting already started (`election_frozen`: from
+            `startsAt` on its configuration never changes), or it is no longer a draft (`election_not_draft`).
           content:
             application/json:
               schema:
@@ -1686,7 +1687,7 @@ paths:
                 properties:
                   error:
                     type: string
-                    enum: [election_annulled, election_not_draft]
+                    enum: [election_annulled, election_frozen, election_not_draft]
         "422":
           $ref: "#/components/responses/InvalidElectionDraft"
   /elections/{electionId}/annulment:
@@ -2129,6 +2130,175 @@ paths:
                   error:
                     type: string
                     enum: [reason_required]
+  /elections/{electionId}/vote:
+    parameters:
+      - name: electionId
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      operationId: postElectionVote
+      summary: Cast a secret ballot
+      description: >
+        A student of the election's Electorate (the whole roster of the school when voting opened) votes once,
+        for an approved list of the election or blank, while voting is open: from `startsAt` (inclusive) until
+        `endsAt` (exclusive). The Voter registry and the Ballot are written in one transaction; the Ballot keeps
+        no link to the voter, and nothing about the choice is logged. No second factor is needed beyond what the
+        session already requires. Checks, in order: `unauthenticated`, `not_found` (election or list unknown in
+        the active school, whether or not it exists in another), `forbidden` (no membership), `election_annulled`,
+        `election_not_open`, `no_approved_lists`, `not_in_electorate` (no roster entry, or added to the roster
+        after voting opened), `invalid_choice`, `already_voted`. Every error writes nothing; retrying a vote that
+        was stored answers `already_voted`. Responses carry `Cache-Control: no-store`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VoteRequest"
+      responses:
+        "204":
+          description: The vote was stored.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          description: >
+            `forbidden` (no membership in the active school) or `not_in_electorate` (the account is not linked to a
+            student of the Electorate: a school admin or officer without a roster entry, or a student added to the
+            roster after voting opened).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [forbidden, not_in_electorate]
+        "404":
+          description: No such election, or no such list, in the active school (`not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotFoundError"
+        "409":
+          description: >
+            Nothing was written. `election_annulled` (the election was annulled), `election_not_open` (before
+            `startsAt` or from `endsAt` on), `no_approved_lists` (no list was approved, so voting never opens) or
+            `already_voted` (this student already voted).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [election_annulled, election_not_open, no_approved_lists, already_voted]
+        "422":
+          description: >
+            Nothing was written. `invalid_choice`: `choice` missing, null or empty, neither `blank` nor a list id,
+            or a list of the election that is not approved (pending or rejected) or a list of another election.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [invalid_choice]
+  /elections/{electionId}/turnout:
+    parameters:
+      - name: electionId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getElectionTurnout
+      summary: How many students of the Electorate voted
+      description: >
+        Any member of the active school, from `startsAt` on: "X of Y voted" and whether the caller voted. It never
+        says who voted nor the votes per list. The first access after the start takes the Electorate snapshot. An
+        annulled election no longer shows its turnout (`election_annulled`). Responses carry
+        `Cache-Control: no-store`.
+      responses:
+        "200":
+          description: The turnout.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Turnout"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          description: The account has no membership in the active school (`forbidden`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForbiddenError"
+        "404":
+          description: No such election in the active school (`not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotFoundError"
+        "409":
+          description: >
+            `election_annulled` (the election was annulled), `election_not_open` (before `startsAt`) or
+            `no_approved_lists` (voting never opened).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [election_annulled, election_not_open, no_approved_lists]
+  /elections/{electionId}/results:
+    parameters:
+      - name: electionId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getElectionResults
+      summary: Votes per list of an election
+      description: >
+        Any member of the active school. Not available yet: publishing the result is a later feature, so every
+        election answers `results_not_available`; while voting is open nobody sees votes per list. Responses carry
+        `Cache-Control: no-store`.
+      responses:
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          description: The account has no membership in the active school (`forbidden`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForbiddenError"
+        "404":
+          description: No such election in the active school (`not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotFoundError"
+        "409":
+          description: The votes per list are not available (`results_not_available`).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [results_not_available]
   /finance/categories:
     get:
       operationId: getFinanceCategories
@@ -2856,9 +3026,10 @@ components:
                 enum: [invalid_name, invalid_candidates, candidate_in_commission, invalid_representative]
     ElectionListConflict:
       description: >
-        Nothing was written. `submission_closed` (outside the submission period), `list_name_taken` (another
-        non-rejected list in the election has that name), or `candidate_on_other_list` (a candidate is already
-        on a pending or approved list in the election).
+        Nothing was written. `election_frozen` (voting already started: from `startsAt` on the lists never change),
+        `submission_closed` (outside the submission period), `list_name_taken` (another non-rejected list in the
+        election has that name), or `candidate_on_other_list` (a candidate is already on a pending or approved
+        list in the election).
       content:
         application/json:
           schema:
@@ -2867,7 +3038,7 @@ components:
             properties:
               error:
                 type: string
-                enum: [submission_closed, list_name_taken, candidate_on_other_list]
+                enum: [election_frozen, submission_closed, list_name_taken, candidate_on_other_list]
     ElectionListEditConflict:
       description: >
         Nothing was written. Same conflicts as `ElectionListConflict`, plus `list_frozen` (approved) or
@@ -2880,11 +3051,11 @@ components:
             properties:
               error:
                 type: string
-                enum: [submission_closed, list_frozen, list_rejected, list_name_taken, candidate_on_other_list]
+                enum: [election_frozen, submission_closed, list_frozen, list_rejected, list_name_taken, candidate_on_other_list]
     ElectionListReviewConflict:
       description: >
-        Nothing was written. `submission_closed` (outside the submission period), `list_frozen` (already
-        approved), or `list_rejected` (already rejected).
+        Nothing was written. `election_frozen` (voting already started), `submission_closed` (outside the
+        submission period), `list_frozen` (already approved), or `list_rejected` (already rejected).
       content:
         application/json:
           schema:
@@ -2893,7 +3064,7 @@ components:
             properties:
               error:
                 type: string
-                enum: [submission_closed, list_frozen, list_rejected]
+                enum: [election_frozen, submission_closed, list_frozen, list_rejected]
     InvalidElectionDraft:
       description: >
         Nothing was written. `invalid_name`: name missing, null, blank or longer than 120 characters.
@@ -3299,6 +3470,29 @@ components:
         clock against the dates; every window includes its start and excludes its end.
         `draft` before `submissionStartsAt`, `submission` until `submissionEndsAt`, `scheduled` until `startsAt`,
         `open` until `endsAt`, `closed` from `endsAt` on.
+    VoteRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        choice:
+          type: string
+          nullable: true
+          description: >
+            The id of an approved list of the election, or `blank` for a Blank vote. Missing, null or empty answers
+            `invalid_choice`.
+    Turnout:
+      type: object
+      required: [voted, electorate, hasVoted]
+      properties:
+        voted:
+          type: integer
+          description: How many students of the Electorate voted (X).
+        electorate:
+          type: integer
+          description: The size of the Electorate, taken when voting opened (Y).
+        hasVoted:
+          type: boolean
+          description: Whether the caller voted; nobody learns whether anyone else did.
     AnnulmentRequest:
       type: object
       additionalProperties: false

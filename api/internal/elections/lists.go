@@ -512,6 +512,9 @@ func (s *Store) getElectionForSubmission(ctx context.Context, tx pgx.Tx, tenant,
 	if err != nil {
 		return Election{}, err
 	}
+	if e.PublishedAt == nil && e.AnnulledAt == nil && Frozen(s.now(), e) {
+		return Election{}, ErrElectionFrozen // S4: from StartsAt on the lists never change
+	}
 	if e.PublishedAt != nil || e.AnnulledAt != nil || State(s.now(), e) != StatusSubmission {
 		return Election{}, ErrSubmissionClosed
 	}

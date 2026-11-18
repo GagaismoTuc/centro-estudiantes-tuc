@@ -533,8 +533,9 @@ func TestElectionListSubmissionPeriod(t *testing.T) {
 	ls.clk.t = ls.subEnd
 	assertAllClosed("R7 at submissionEndsAt")
 
-	// Well after submissionEndsAt (during scheduled/open): all 6 actions return 409 submission_closed, no DB changes.
-	ls.clk.t = ls.subEnd.Add(time.Hour)
+	// After submissionEndsAt but before startsAt (scheduled): all 6 actions return 409 submission_closed,
+	// no DB changes. From startsAt on they return election_frozen (#56 S4, TestElectionConfigurationFrozenFromTheStart).
+	ls.clk.t = ls.subEnd.Add(30 * time.Minute)
 	assertAllClosed("R7 after submissionEndsAt")
 
 	// Sanity check: 1s before submissionEndsAt is still inside the period and succeeds.

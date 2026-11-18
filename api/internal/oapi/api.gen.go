@@ -329,6 +329,7 @@ func (e ShareStatus) Valid() bool {
 // Defines values for ElectionListConflictError.
 const (
 	ElectionListConflictErrorCandidateOnOtherList ElectionListConflictError = "candidate_on_other_list"
+	ElectionListConflictErrorElectionFrozen       ElectionListConflictError = "election_frozen"
 	ElectionListConflictErrorListNameTaken        ElectionListConflictError = "list_name_taken"
 	ElectionListConflictErrorSubmissionClosed     ElectionListConflictError = "submission_closed"
 )
@@ -337,6 +338,8 @@ const (
 func (e ElectionListConflictError) Valid() bool {
 	switch e {
 	case ElectionListConflictErrorCandidateOnOtherList:
+		return true
+	case ElectionListConflictErrorElectionFrozen:
 		return true
 	case ElectionListConflictErrorListNameTaken:
 		return true
@@ -350,6 +353,7 @@ func (e ElectionListConflictError) Valid() bool {
 // Defines values for ElectionListEditConflictError.
 const (
 	ElectionListEditConflictErrorCandidateOnOtherList ElectionListEditConflictError = "candidate_on_other_list"
+	ElectionListEditConflictErrorElectionFrozen       ElectionListEditConflictError = "election_frozen"
 	ElectionListEditConflictErrorListFrozen           ElectionListEditConflictError = "list_frozen"
 	ElectionListEditConflictErrorListNameTaken        ElectionListEditConflictError = "list_name_taken"
 	ElectionListEditConflictErrorListRejected         ElectionListEditConflictError = "list_rejected"
@@ -360,6 +364,8 @@ const (
 func (e ElectionListEditConflictError) Valid() bool {
 	switch e {
 	case ElectionListEditConflictErrorCandidateOnOtherList:
+		return true
+	case ElectionListEditConflictErrorElectionFrozen:
 		return true
 	case ElectionListEditConflictErrorListFrozen:
 		return true
@@ -376,6 +382,7 @@ func (e ElectionListEditConflictError) Valid() bool {
 
 // Defines values for ElectionListReviewConflictError.
 const (
+	ElectionListReviewConflictErrorElectionFrozen   ElectionListReviewConflictError = "election_frozen"
 	ElectionListReviewConflictErrorListFrozen       ElectionListReviewConflictError = "list_frozen"
 	ElectionListReviewConflictErrorListRejected     ElectionListReviewConflictError = "list_rejected"
 	ElectionListReviewConflictErrorSubmissionClosed ElectionListReviewConflictError = "submission_closed"
@@ -384,6 +391,8 @@ const (
 // Valid indicates whether the value is a known member of the ElectionListReviewConflictError enum.
 func (e ElectionListReviewConflictError) Valid() bool {
 	switch e {
+	case ElectionListReviewConflictErrorElectionFrozen:
+		return true
 	case ElectionListReviewConflictErrorListFrozen:
 		return true
 	case ElectionListReviewConflictErrorListRejected:
@@ -542,6 +551,7 @@ func (e PostElection422JSONResponseBodyError) Valid() bool {
 // Defines values for PutElection409JSONResponseBodyError.
 const (
 	PutElection409JSONResponseBodyErrorElectionAnnulled PutElection409JSONResponseBodyError = "election_annulled"
+	PutElection409JSONResponseBodyErrorElectionFrozen   PutElection409JSONResponseBodyError = "election_frozen"
 	PutElection409JSONResponseBodyErrorElectionNotDraft PutElection409JSONResponseBodyError = "election_not_draft"
 )
 
@@ -549,6 +559,8 @@ const (
 func (e PutElection409JSONResponseBodyError) Valid() bool {
 	switch e {
 	case PutElection409JSONResponseBodyErrorElectionAnnulled:
+		return true
+	case PutElection409JSONResponseBodyErrorElectionFrozen:
 		return true
 	case PutElection409JSONResponseBodyErrorElectionNotDraft:
 		return true
@@ -638,6 +650,7 @@ func (e GetElectionCandidates422JSONResponseBodyError) Valid() bool {
 // Defines values for PostCommissionElectionList409JSONResponseBodyError.
 const (
 	PostCommissionElectionList409JSONResponseBodyErrorCandidateOnOtherList PostCommissionElectionList409JSONResponseBodyError = "candidate_on_other_list"
+	PostCommissionElectionList409JSONResponseBodyErrorElectionFrozen       PostCommissionElectionList409JSONResponseBodyError = "election_frozen"
 	PostCommissionElectionList409JSONResponseBodyErrorListNameTaken        PostCommissionElectionList409JSONResponseBodyError = "list_name_taken"
 	PostCommissionElectionList409JSONResponseBodyErrorSubmissionClosed     PostCommissionElectionList409JSONResponseBodyError = "submission_closed"
 )
@@ -646,6 +659,8 @@ const (
 func (e PostCommissionElectionList409JSONResponseBodyError) Valid() bool {
 	switch e {
 	case PostCommissionElectionList409JSONResponseBodyErrorCandidateOnOtherList:
+		return true
+	case PostCommissionElectionList409JSONResponseBodyErrorElectionFrozen:
 		return true
 	case PostCommissionElectionList409JSONResponseBodyErrorListNameTaken:
 		return true
@@ -683,6 +698,7 @@ func (e PostCommissionElectionList422JSONResponseBodyError) Valid() bool {
 // Defines values for PostElectionList409JSONResponseBodyError.
 const (
 	PostElectionList409JSONResponseBodyErrorCandidateOnOtherList PostElectionList409JSONResponseBodyError = "candidate_on_other_list"
+	PostElectionList409JSONResponseBodyErrorElectionFrozen       PostElectionList409JSONResponseBodyError = "election_frozen"
 	PostElectionList409JSONResponseBodyErrorListNameTaken        PostElectionList409JSONResponseBodyError = "list_name_taken"
 	PostElectionList409JSONResponseBodyErrorSubmissionClosed     PostElectionList409JSONResponseBodyError = "submission_closed"
 )
@@ -691,6 +707,8 @@ const (
 func (e PostElectionList409JSONResponseBodyError) Valid() bool {
 	switch e {
 	case PostElectionList409JSONResponseBodyErrorCandidateOnOtherList:
+		return true
+	case PostElectionList409JSONResponseBodyErrorElectionFrozen:
 		return true
 	case PostElectionList409JSONResponseBodyErrorListNameTaken:
 		return true
@@ -725,6 +743,7 @@ func (e PostElectionList422JSONResponseBodyError) Valid() bool {
 // Defines values for PutElectionList409JSONResponseBodyError.
 const (
 	PutElectionList409JSONResponseBodyErrorCandidateOnOtherList PutElectionList409JSONResponseBodyError = "candidate_on_other_list"
+	PutElectionList409JSONResponseBodyErrorElectionFrozen       PutElectionList409JSONResponseBodyError = "election_frozen"
 	PutElectionList409JSONResponseBodyErrorListFrozen           PutElectionList409JSONResponseBodyError = "list_frozen"
 	PutElectionList409JSONResponseBodyErrorListNameTaken        PutElectionList409JSONResponseBodyError = "list_name_taken"
 	PutElectionList409JSONResponseBodyErrorListRejected         PutElectionList409JSONResponseBodyError = "list_rejected"
@@ -735,6 +754,8 @@ const (
 func (e PutElectionList409JSONResponseBodyError) Valid() bool {
 	switch e {
 	case PutElectionList409JSONResponseBodyErrorCandidateOnOtherList:
+		return true
+	case PutElectionList409JSONResponseBodyErrorElectionFrozen:
 		return true
 	case PutElectionList409JSONResponseBodyErrorListFrozen:
 		return true
@@ -772,6 +793,7 @@ func (e PutElectionList422JSONResponseBodyError) Valid() bool {
 
 // Defines values for PostApproveElectionList409JSONResponseBodyError.
 const (
+	PostApproveElectionList409JSONResponseBodyErrorElectionFrozen   PostApproveElectionList409JSONResponseBodyError = "election_frozen"
 	PostApproveElectionList409JSONResponseBodyErrorListFrozen       PostApproveElectionList409JSONResponseBodyError = "list_frozen"
 	PostApproveElectionList409JSONResponseBodyErrorListRejected     PostApproveElectionList409JSONResponseBodyError = "list_rejected"
 	PostApproveElectionList409JSONResponseBodyErrorSubmissionClosed PostApproveElectionList409JSONResponseBodyError = "submission_closed"
@@ -780,6 +802,8 @@ const (
 // Valid indicates whether the value is a known member of the PostApproveElectionList409JSONResponseBodyError enum.
 func (e PostApproveElectionList409JSONResponseBodyError) Valid() bool {
 	switch e {
+	case PostApproveElectionList409JSONResponseBodyErrorElectionFrozen:
+		return true
 	case PostApproveElectionList409JSONResponseBodyErrorListFrozen:
 		return true
 	case PostApproveElectionList409JSONResponseBodyErrorListRejected:
@@ -793,6 +817,7 @@ func (e PostApproveElectionList409JSONResponseBodyError) Valid() bool {
 
 // Defines values for PostRejectElectionList409JSONResponseBodyError.
 const (
+	PostRejectElectionList409JSONResponseBodyErrorElectionFrozen   PostRejectElectionList409JSONResponseBodyError = "election_frozen"
 	PostRejectElectionList409JSONResponseBodyErrorListFrozen       PostRejectElectionList409JSONResponseBodyError = "list_frozen"
 	PostRejectElectionList409JSONResponseBodyErrorListRejected     PostRejectElectionList409JSONResponseBodyError = "list_rejected"
 	PostRejectElectionList409JSONResponseBodyErrorSubmissionClosed PostRejectElectionList409JSONResponseBodyError = "submission_closed"
@@ -801,6 +826,8 @@ const (
 // Valid indicates whether the value is a known member of the PostRejectElectionList409JSONResponseBodyError enum.
 func (e PostRejectElectionList409JSONResponseBodyError) Valid() bool {
 	switch e {
+	case PostRejectElectionList409JSONResponseBodyErrorElectionFrozen:
+		return true
 	case PostRejectElectionList409JSONResponseBodyErrorListFrozen:
 		return true
 	case PostRejectElectionList409JSONResponseBodyErrorListRejected:
@@ -827,15 +854,108 @@ func (e PostRejectElectionList422JSONResponseBodyError) Valid() bool {
 	}
 }
 
+// Defines values for GetElectionResults409JSONResponseBodyError.
+const (
+	ResultsNotAvailable GetElectionResults409JSONResponseBodyError = "results_not_available"
+)
+
+// Valid indicates whether the value is a known member of the GetElectionResults409JSONResponseBodyError enum.
+func (e GetElectionResults409JSONResponseBodyError) Valid() bool {
+	switch e {
+	case ResultsNotAvailable:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetElectionTurnout409JSONResponseBodyError.
+const (
+	GetElectionTurnout409JSONResponseBodyErrorElectionAnnulled GetElectionTurnout409JSONResponseBodyError = "election_annulled"
+	GetElectionTurnout409JSONResponseBodyErrorElectionNotOpen  GetElectionTurnout409JSONResponseBodyError = "election_not_open"
+	GetElectionTurnout409JSONResponseBodyErrorNoApprovedLists  GetElectionTurnout409JSONResponseBodyError = "no_approved_lists"
+)
+
+// Valid indicates whether the value is a known member of the GetElectionTurnout409JSONResponseBodyError enum.
+func (e GetElectionTurnout409JSONResponseBodyError) Valid() bool {
+	switch e {
+	case GetElectionTurnout409JSONResponseBodyErrorElectionAnnulled:
+		return true
+	case GetElectionTurnout409JSONResponseBodyErrorElectionNotOpen:
+		return true
+	case GetElectionTurnout409JSONResponseBodyErrorNoApprovedLists:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostElectionVote403JSONResponseBodyError.
+const (
+	PostElectionVote403JSONResponseBodyErrorForbidden       PostElectionVote403JSONResponseBodyError = "forbidden"
+	PostElectionVote403JSONResponseBodyErrorNotInElectorate PostElectionVote403JSONResponseBodyError = "not_in_electorate"
+)
+
+// Valid indicates whether the value is a known member of the PostElectionVote403JSONResponseBodyError enum.
+func (e PostElectionVote403JSONResponseBodyError) Valid() bool {
+	switch e {
+	case PostElectionVote403JSONResponseBodyErrorForbidden:
+		return true
+	case PostElectionVote403JSONResponseBodyErrorNotInElectorate:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostElectionVote409JSONResponseBodyError.
+const (
+	PostElectionVote409JSONResponseBodyErrorAlreadyVoted     PostElectionVote409JSONResponseBodyError = "already_voted"
+	PostElectionVote409JSONResponseBodyErrorElectionAnnulled PostElectionVote409JSONResponseBodyError = "election_annulled"
+	PostElectionVote409JSONResponseBodyErrorElectionNotOpen  PostElectionVote409JSONResponseBodyError = "election_not_open"
+	PostElectionVote409JSONResponseBodyErrorNoApprovedLists  PostElectionVote409JSONResponseBodyError = "no_approved_lists"
+)
+
+// Valid indicates whether the value is a known member of the PostElectionVote409JSONResponseBodyError enum.
+func (e PostElectionVote409JSONResponseBodyError) Valid() bool {
+	switch e {
+	case PostElectionVote409JSONResponseBodyErrorAlreadyVoted:
+		return true
+	case PostElectionVote409JSONResponseBodyErrorElectionAnnulled:
+		return true
+	case PostElectionVote409JSONResponseBodyErrorElectionNotOpen:
+		return true
+	case PostElectionVote409JSONResponseBodyErrorNoApprovedLists:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostElectionVote422JSONResponseBodyError.
+const (
+	InvalidChoice PostElectionVote422JSONResponseBodyError = "invalid_choice"
+)
+
+// Valid indicates whether the value is a known member of the PostElectionVote422JSONResponseBodyError enum.
+func (e PostElectionVote422JSONResponseBodyError) Valid() bool {
+	switch e {
+	case InvalidChoice:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PutElectoralCommission409JSONResponseBodyError.
 const (
-	ElectionFrozen PutElectoralCommission409JSONResponseBodyError = "election_frozen"
+	PutElectoralCommission409JSONResponseBodyErrorElectionFrozen PutElectoralCommission409JSONResponseBodyError = "election_frozen"
 )
 
 // Valid indicates whether the value is a known member of the PutElectoralCommission409JSONResponseBodyError enum.
 func (e PutElectoralCommission409JSONResponseBodyError) Valid() bool {
 	switch e {
-	case ElectionFrozen:
+	case PutElectoralCommission409JSONResponseBodyErrorElectionFrozen:
 		return true
 	default:
 		return false
@@ -1933,6 +2053,18 @@ type TokenRequest struct {
 	Token string `json:"token"`
 }
 
+// Turnout defines model for Turnout.
+type Turnout struct {
+	// Electorate The size of the Electorate, taken when voting opened (Y).
+	Electorate int `json:"electorate"`
+
+	// HasVoted Whether the caller voted; nobody learns whether anyone else did.
+	HasVoted bool `json:"hasVoted"`
+
+	// Voted How many students of the Electorate voted (X).
+	Voted int `json:"voted"`
+}
+
 // UpdateContactRequest defines model for UpdateContactRequest.
 type UpdateContactRequest struct {
 	Email     *string `json:"email,omitempty"`
@@ -1948,6 +2080,12 @@ type UpdateFinanceDue struct {
 	AmountCents *int64  `json:"amountCents,omitempty"`
 	DueDate     *string `json:"dueDate,omitempty"`
 	Name        *string `json:"name,omitempty"`
+}
+
+// VoteRequest defines model for VoteRequest.
+type VoteRequest struct {
+	// Choice The id of an approved list of the election, or `blank` for a Blank vote. Missing, null or empty answers `invalid_choice`.
+	Choice *string `json:"choice,omitempty"`
 }
 
 // ReportFrom defines model for ReportFrom.
@@ -2098,6 +2236,21 @@ type PostRejectElectionList409JSONResponseBodyError string
 
 // PostRejectElectionList422JSONResponseBodyError defines parameters for PostRejectElectionList.
 type PostRejectElectionList422JSONResponseBodyError string
+
+// GetElectionResults409JSONResponseBodyError defines parameters for GetElectionResults.
+type GetElectionResults409JSONResponseBodyError string
+
+// GetElectionTurnout409JSONResponseBodyError defines parameters for GetElectionTurnout.
+type GetElectionTurnout409JSONResponseBodyError string
+
+// PostElectionVote403JSONResponseBodyError defines parameters for PostElectionVote.
+type PostElectionVote403JSONResponseBodyError string
+
+// PostElectionVote409JSONResponseBodyError defines parameters for PostElectionVote.
+type PostElectionVote409JSONResponseBodyError string
+
+// PostElectionVote422JSONResponseBodyError defines parameters for PostElectionVote.
+type PostElectionVote422JSONResponseBodyError string
 
 // PutElectoralCommission409JSONResponseBodyError defines parameters for PutElectoralCommission.
 type PutElectoralCommission409JSONResponseBodyError string
@@ -2282,6 +2435,9 @@ type PutElectionListJSONRequestBody = ElectionListRequest
 // PostRejectElectionListJSONRequestBody defines body for PostRejectElectionList for application/json ContentType.
 type PostRejectElectionListJSONRequestBody = RejectListRequest
 
+// PostElectionVoteJSONRequestBody defines body for PostElectionVote for application/json ContentType.
+type PostElectionVoteJSONRequestBody = VoteRequest
+
 // PutElectoralCommissionJSONRequestBody defines body for PutElectoralCommission for application/json ContentType.
 type PutElectoralCommissionJSONRequestBody = CommissionDesignation
 
@@ -2443,6 +2599,15 @@ type ServerInterface interface {
 	// PostRejectElectionList Reject a pending election list with a reason
 	// (POST /elections/{electionId}/lists/{listId}/reject)
 	PostRejectElectionList(w http.ResponseWriter, r *http.Request, electionId string, listId string)
+	// GetElectionResults Votes per list of an election
+	// (GET /elections/{electionId}/results)
+	GetElectionResults(w http.ResponseWriter, r *http.Request, electionId string)
+	// GetElectionTurnout How many students of the Electorate voted
+	// (GET /elections/{electionId}/turnout)
+	GetElectionTurnout(w http.ResponseWriter, r *http.Request, electionId string)
+	// PostElectionVote Cast a secret ballot
+	// (POST /elections/{electionId}/vote)
+	PostElectionVote(w http.ResponseWriter, r *http.Request, electionId string)
 	// GetElectoralCommission Read the active school's current Electoral commission
 	// (GET /electoral-commission)
 	GetElectoralCommission(w http.ResponseWriter, r *http.Request)
@@ -3472,6 +3637,84 @@ func (siw *ServerInterfaceWrapper) PostRejectElectionList(w http.ResponseWriter,
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostRejectElectionList(w, r, electionId, listId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetElectionResults operation middleware
+func (siw *ServerInterfaceWrapper) GetElectionResults(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "electionId" -------------
+	var electionId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "electionId", r.PathValue("electionId"), &electionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "electionId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetElectionResults(w, r, electionId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetElectionTurnout operation middleware
+func (siw *ServerInterfaceWrapper) GetElectionTurnout(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "electionId" -------------
+	var electionId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "electionId", r.PathValue("electionId"), &electionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "electionId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetElectionTurnout(w, r, electionId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostElectionVote operation middleware
+func (siw *ServerInterfaceWrapper) PostElectionVote(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "electionId" -------------
+	var electionId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "electionId", r.PathValue("electionId"), &electionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "electionId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostElectionVote(w, r, electionId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4711,6 +4954,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/elections/{electionId}/lists/{listId}", wrapper.PutElectionList)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/elections/{electionId}/lists/{listId}/approve", wrapper.PostApproveElectionList)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/elections/{electionId}/lists/{listId}/reject", wrapper.PostRejectElectionList)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/elections/{electionId}/vote", wrapper.PostElectionVote)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/elections/{electionId}/turnout", wrapper.GetElectionTurnout)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/elections/{electionId}/results", wrapper.GetElectionResults)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/categories", wrapper.GetFinanceCategories)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/finance/categories", wrapper.PostFinanceCategories)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/finance/categories/{id}", wrapper.DeleteFinanceCategory)
