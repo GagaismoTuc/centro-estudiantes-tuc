@@ -2472,6 +2472,131 @@ paths:
                   error:
                     type: string
                     enum: [already_reversed, cannot_reverse_reversal]
+  /finance/entries/{entryId}/receipts:
+    parameters:
+      - name: entryId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getFinanceEntryReceipts
+      summary: List receipts of an entry in the active school
+      description: Officers, school admins and veedors with a verified two-factor session.
+      responses:
+        "200":
+          description: Receipts ordered by upload time ascending.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FinanceReceipt"
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: Entry not found in the active school (`not_found`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotFoundError" }
+    post:
+      operationId: postFinanceEntryReceipts
+      summary: Upload a receipt for an entry as an officer with MFA
+      description: >
+        Accepts raw JPG, PNG or PDF bytes up to 10 MiB (10485760 bytes), validated by file signature.
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "201":
+          description: Receipt stored; entry now has `hasReceipt` true.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FinanceReceipt"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: Entry not found in the active school (`not_found`). Nothing is written.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotFoundError" }
+        "413":
+          description: File larger than 10 MiB (`file_too_large`). Nothing is written.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [file_too_large]
+        "415":
+          description: Unsupported file signature; must be JPG, PNG or PDF (`unsupported_media_type`). Nothing is written.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [unsupported_media_type]
+        "422":
+          description: Empty file (`empty_file`). Nothing is written.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [empty_file]
+  /finance/entries/{entryId}/receipts/{receiptId}:
+    parameters:
+      - name: entryId
+        in: path
+        required: true
+        schema: { type: string }
+      - name: receiptId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getFinanceEntryReceipt
+      summary: Download one receipt as an attachment
+      description: >
+        Officers, school admins and veedors with a verified two-factor session. Responds with the
+        validated content type, `Content-Disposition: attachment; filename="comprobante-<receiptId>.<ext>"`
+        and `X-Content-Type-Options: nosniff`.
+      responses:
+        "200":
+          description: Receipt file bytes.
+          headers:
+            Content-Disposition:
+              schema: { type: string }
+            X-Content-Type-Options:
+              schema: { type: string }
+          content:
+            image/jpeg:
+              schema: { type: string, format: binary }
+            image/png:
+              schema: { type: string, format: binary }
+            application/pdf:
+              schema: { type: string, format: binary }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: Entry or receipt not found in the active school (`not_found`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotFoundError" }
   /finance/dues:
     get:
       operationId: getFinanceDues
@@ -2960,7 +3085,7 @@ components:
         description: { type: string }
     FinanceEntry:
       type: object
-      required: [id, categoryId, direction, date, amountCents, description, recordedBy, recordedAt]
+      required: [id, categoryId, direction, date, amountCents, description, recordedBy, recordedAt, hasReceipt]
       properties:
         id: { type: string }
         categoryId: { type: string }
@@ -2970,6 +3095,9 @@ components:
         description: { type: string }
         recordedBy: { type: string }
         recordedAt: { type: string, format: date-time }
+        hasReceipt:
+          type: boolean
+          description: True when at least one Receipt backs this entry.
         reversesId:
           type: string
           description: Present when this entry is a Reversal; the id of the entry it reverses.
@@ -2982,6 +3110,16 @@ components:
         reversedOn:
           type: string
           description: Present when this entry was reversed; the Reversal's date (YYYY-MM-DD, Argentina).
+    FinanceReceipt:
+      type: object
+      required: [id, contentType, sizeBytes, uploadedAt]
+      properties:
+        id: { type: string }
+        contentType:
+          type: string
+          enum: [image/jpeg, image/png, application/pdf]
+        sizeBytes: { type: integer }
+        uploadedAt: { type: string, format: date-time }
     FinanceCategoryTotal:
       type: object
       required: [categoryId, name, direction, totalCents]

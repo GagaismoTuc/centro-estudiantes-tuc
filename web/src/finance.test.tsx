@@ -9,7 +9,7 @@ const categories = [
   { id: "c2", name: "Cuotas", direction: "income", active: true, reserved: true },
   { id: "c3", name: "Viajes", direction: "expense", active: true, reserved: false },
 ];
-const entry = { id: "e1", categoryId: "c1", direction: "income", date: "2026-11-10", amountCents: 200000, description: "Venta de tortas", recordedBy: "Ana Ficticia", recordedAt: "2026-11-14T12:00:00Z" };
+const entry = { id: "e1", categoryId: "c1", direction: "income", date: "2026-11-10", amountCents: 200000, description: "Venta de tortas", recordedBy: "Ana Ficticia", recordedAt: "2026-11-14T12:00:00Z", hasReceipt: false };
 const reads = { "GET /finance/categories": ok(categories), "GET /finance/balance": ok({ balanceCents: 200000 }), "GET /finance/entries": ok([entry]) };
 
 test("R15 students read the ledger and balance without an entry form", async () => {
@@ -255,4 +255,143 @@ test("R9 a failed reversal moves focus to the message", async () => {
   fireEvent.click(within(screen.getByRole("dialog", { name: "Revertir movimiento" })).getByRole("button", { name: "Revertir" }));
   const message = await screen.findByText(/ya fue revertido/);
   await waitFor(() => expect(document.activeElement?.contains(message)).toBe(true));
+});
+
+test("R1 and R5 creating a movement with a receipt uploads after saving and handles receipt failure", async () => {
+  const withReceipt = { ...entry, hasReceipt: true };
+  const uploaded = { id: "r1", contentType: "image/jpeg", sizeBytes: 12, uploadedAt: "2026-11-14T12:05:00Z" };
+  const sent = mockApi({
+    "GET /auth/me": ok(me({ role: "officer", mfa: "satisfied" })),
+    ...reads,
+    "GET /finance/entries": [ok([entry]), ok([withReceipt])],
+    "POST /finance/entries": ok(entry, 201),
+    "POST /finance/entries/e1/receipts": ok(uploaded, 201),
+  });
+  window.history.replaceState(null, "", "/caja");
+  const firstView = render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Nuevo movimiento" }));
+  await screen.findByRole("option", { name: "Ventas" });
+  fireEvent.change(screen.getByLabelText("Categor\u00eda"), { target: { value: "c1" } });
+  fireEvent.change(screen.getByLabelText("Fecha"), { target: { value: "2026-11-10" } });
+  fireEvent.change(screen.getByLabelText("Monto en pesos"), { target: { value: "2000" } });
+  fireEvent.change(screen.getByLabelText("Descripci\u00f3n"), { target: { value: "Venta de tortas" } });
+  const fileInput = screen.getByLabelText("Comprobante (opcional)") as HTMLInputElement;
+  fireEvent.change(fileInput, { target: { files: [new File([new Uint8Array([0xff, 0xd8, 0xff, 0xe0])], "ticket.jpg", { type: "image/jpeg" })] } });
+  fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+
+  await waitFor(() => expect(sentTo(sent, "POST /finance/entries/e1/receipts")).toHaveLength(1));
+  expect(sentTo(sent, "POST /finance/entries")).toHaveLength(1);
+  expect(await screen.findByText("Con comprobante")).toBeTruthy();
+  firstView.unmount();
+
+  // R5: entry succeeds (201) and receipt upload fails -> entry stays saved and exact R5 message appears.
+  const sentR5 = mockApi({
+    "GET /auth/me": ok(me({ role: "officer", mfa: "satisfied" })),
+    ...reads,
+    "GET /finance/entries": [ok([entry]), ok([entry])],
+    "POST /finance/entries": ok(entry, 201),
+    "POST /finance/entries/e1/receipts": fail(415, "unsupported_media_type"),
+  });
+  window.history.replaceState(null, "", "/caja"); render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Nuevo movimiento" }));
+  await screen.findByRole("option", { name: "Ventas" });
+  fireEvent.change(screen.getByLabelText("Categor\u00eda"), { target: { value: "c1" } });
+  fireEvent.change(screen.getByLabelText("Fecha"), { target: { value: "2026-11-10" } });
+  fireEvent.change(screen.getByLabelText("Monto en pesos"), { target: { value: "2000" } });
+  fireEvent.change(screen.getByLabelText("Descripci\u00f3n"), { target: { value: "Venta de tortas" } });
+  fireEvent.change(screen.getByLabelText("Comprobante (opcional)"), {
+    target: { files: [new File(["MZbad"], "factura.pdf", { type: "application/pdf" })] },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+
+  const r5Message = await screen.findByText("El movimiento se guard\u00f3, pero el comprobante no. Volv\u00e9 a subirlo desde el detalle.");
+  expect(r5Message).toBeTruthy();
+  expect(sentTo(sentR5, "POST /finance/entries")).toHaveLength(1);
+  expect(sentTo(sentR5, "POST /finance/entries/e1/receipts")).toHaveLength(1);
+  expect(screen.getByRole("button", { name: "Cerrar detalle" })).toBeTruthy();
+});
+
+test("R1, R6, and R7 detail downloads and uploads respect roles", async () => {
+  const backed = { ...entry, hasReceipt: true };
+  const r1 = { id: "r1", contentType: "image/jpeg", sizeBytes: 307200, uploadedAt: "2026-11-14T12:05:00Z" };
+  const r2 = { id: "r2", contentType: "application/pdf", sizeBytes: 1024, uploadedAt: "2026-11-14T12:06:00Z" };
+
+  // Student sees only "Con comprobante", no detail or download or upload.
+  mockApi({
+    "GET /auth/me": ok(me()),
+    ...reads,
+    "GET /finance/entries": ok([backed]),
+  });
+  window.history.replaceState(null, "", "/caja");
+  const studentView = render(<App />);
+  expect(await screen.findByText("Con comprobante")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: /Ver detalle/ })).toBeNull();
+  expect(screen.queryByLabelText("Subir comprobante")).toBeNull();
+  studentView.unmount();
+
+  // School admin and Veedor see detail and download link, without upload control.
+  for (const role of ["school_admin", "veedor"]) {
+    mockApi({
+      "GET /auth/me": ok(me({ role: role as never, roles: [role as never], mfa: "satisfied" })),
+      ...reads,
+      "GET /finance/entries": ok([backed]),
+      "GET /finance/entries/e1/receipts": ok([r1]),
+    });
+    window.history.replaceState(null, "", "/caja");
+    const view = render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: /Ver detalle/ }));
+    const link = await screen.findByRole("link", { name: "Descargar comprobante 1" });
+    expect(link.getAttribute("href")).toBe("/api/finance/entries/e1/receipts/r1");
+    expect(screen.queryByLabelText("Subir comprobante")).toBeNull();
+    view.unmount();
+  }
+
+  // Officer opens detail, sees existing receipt, and uploads a second receipt.
+  const sent = mockApi({
+    "GET /auth/me": ok(me({ role: "officer", mfa: "satisfied" })),
+    ...reads,
+    "GET /finance/entries": ok([backed]),
+    "GET /finance/entries/e1/receipts": [ok([r1]), ok([r1, r2])],
+    "POST /finance/entries/e1/receipts": ok(r2, 201),
+  });
+  window.history.replaceState(null, "", "/caja");
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: /Ver detalle/ }));
+  await screen.findByRole("link", { name: "Descargar comprobante 1" });
+  fireEvent.change(screen.getByLabelText("Subir comprobante"), {
+    target: { files: [new File(["%PDF-1.4\n"], "dorso.pdf", { type: "application/pdf" })] },
+  });
+  expect(await screen.findByRole("link", { name: "Descargar comprobante 2" })).toBeTruthy();
+  expect(sentTo(sent, "POST /finance/entries/e1/receipts")).toHaveLength(1);
+});
+
+test("R2 and R3 detail upload shows Spanish error and moves focus to invalid input", async () => {
+  mockApi({
+    "GET /auth/me": ok(me({ role: "officer", mfa: "satisfied" })),
+    ...reads,
+    "GET /finance/entries/e1/receipts": ok([]),
+    "POST /finance/entries/e1/receipts": fail(415, "unsupported_media_type"),
+  });
+  window.history.replaceState(null, "", "/caja");
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: /Ver detalle/ }));
+  const input = await screen.findByLabelText("Subir comprobante");
+  fireEvent.change(input, {
+    target: { files: [new File(["GIF89a"], "anim.gif", { type: "image/gif" })] },
+  });
+  const errMsg = await screen.findByText("El archivo tiene que ser JPG, PNG o PDF.");
+  expect(input.getAttribute("aria-invalid")).toBe("true");
+  expect(input.getAttribute("aria-describedby")).toContain(errMsg.id);
+  await waitFor(() => {
+    expect((input as HTMLInputElement).disabled).toBe(false);
+    expect(document.activeElement).toBe(input);
+  });
+
+  // Empty file rejected cleanly.
+  fireEvent.change(input, {
+    target: { files: [new File([], "vacio.pdf", { type: "application/pdf" })] },
+  });
+  expect(await screen.findByText(/est\u00e1 vac\u00edo/)).toBeTruthy();
+  expect(input.getAttribute("aria-invalid")).toBe("true");
+  await waitFor(() => expect(document.activeElement).toBe(input));
 });

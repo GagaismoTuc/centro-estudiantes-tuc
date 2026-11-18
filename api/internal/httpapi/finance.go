@@ -45,6 +45,12 @@ func writeFinanceError(w http.ResponseWriter, err error) {
 		writeError(w, 409, "already_reversed")
 	case errors.Is(err, finance.ErrReverseReversal):
 		writeError(w, 409, "cannot_reverse_reversal")
+	case errors.Is(err, finance.ErrEmptyFile):
+		writeError(w, 422, "empty_file")
+	case errors.Is(err, finance.ErrFileTooLarge):
+		writeError(w, 413, "file_too_large")
+	case errors.Is(err, finance.ErrUnsupportedMediaType):
+		writeError(w, 415, "unsupported_media_type")
 	default:
 		// Database errors can contain submitted values; never write them to logs.
 		slog.Error("finance operation failed")
@@ -59,7 +65,7 @@ func financeEntry(e finance.Entry) oapi.FinanceEntry {
 		return &v
 	}
 	return oapi.FinanceEntry{Id: e.ID, CategoryId: e.CategoryID, Direction: e.Direction, Date: e.Date, Description: e.Description, AmountCents: e.AmountCents, RecordedBy: e.RecordedBy, RecordedAt: e.RecordedAt,
-		ReversesId: optional(e.ReversesID), ReversalId: optional(e.ReversalID), ReversedBy: optional(e.ReversedBy), ReversedOn: optional(e.ReversedOn)}
+		HasReceipt: e.HasReceipt, ReversesId: optional(e.ReversesID), ReversalId: optional(e.ReversalID), ReversedBy: optional(e.ReversedBy), ReversedOn: optional(e.ReversedOn)}
 }
 func (s *server) GetFinanceCategories(w http.ResponseWriter, r *http.Request) {
 	sess, ok := rosterSession(w, r)

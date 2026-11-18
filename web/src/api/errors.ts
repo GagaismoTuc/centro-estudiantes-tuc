@@ -37,6 +37,8 @@ const messages: Record<string, string> = {
   cannot_reverse_reversal: "Una reversión no se puede revertir. Para corregirla, cargá un movimiento nuevo.",
   member_has_account: "Esa persona ya tiene una cuenta.",
   body_too_large: "El archivo es demasiado grande. El máximo es 1 MB.",
+  file_too_large: "El archivo es demasiado grande. El máximo es 10 MB.",
+  empty_file: "El archivo está vacío. Elegí otro comprobante.",
   unsupported_media_type: "El archivo tiene que ser CSV.",
   invalid_rows: "El archivo tiene filas con errores. No se cargó nada.",
   too_many_rows: "El archivo tiene más de 5000 filas. Dividilo en partes.",
@@ -86,6 +88,7 @@ const contextual: Record<ErrorContext, Record<string, string>> = {
     invalid_amount: "Ingres\u00e1 un monto positivo en centavos enteros.",
     invalid_date: "Eleg\u00ed una fecha v\u00e1lida.",
     description_required: "Escrib\u00ed una descripci\u00f3n.",
+    unsupported_media_type: "El archivo tiene que ser JPG, PNG o PDF.",
     invalid_range: "Revisá las fechas: elegí las dos y que la de inicio no sea posterior a la de fin.",
   },
   "due-exemption": {

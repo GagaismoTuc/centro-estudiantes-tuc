@@ -111,6 +111,7 @@ type reportBody struct {
 // reportEntry is the FinanceEntry shape the report returns, the same one the ledger lists.
 type reportEntry struct {
 	reversalEntry
+	HasReceipt bool      `json:"hasReceipt"`
 	RecordedAt time.Time `json:"recordedAt"`
 }
 
