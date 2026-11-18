@@ -120,6 +120,7 @@ const fieldsByCode: Record<string, string[]> = {
   invalid_amount: ["amount"],
   invalid_date: ["date", "dueDate"],
   future_date: ["date"],
+  invalid_range: ["from", "to"],
   description_required: ["description"],
   description_too_long: ["description"],
   invalid_credentials: ["email", "password", "currentPassword"],
