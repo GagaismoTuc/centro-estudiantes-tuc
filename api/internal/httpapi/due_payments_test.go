@@ -453,6 +453,17 @@ func TestDuePaymentsR10StudentView(t *testing.T) {
 			t.Fatalf("%s does not see the payer: %+v", name, e)
 		}
 	}
+	// Without a verified second factor, as for the per-student list, nobody sees who paid.
+	_, officerNoMFA := p.signIn(t, p.ctx, "officer")
+	_, adminNoMFA := p.signIn(t, p.ctx, "school_admin")
+	for name, token := range map[string]string{"officer without MFA": officerNoMFA, "school_admin without MFA": adminNoMFA} {
+		if e := p.entry(t, token, pay.EntryID); e.RosterMember != nil {
+			t.Fatalf("%s sees the payer: %+v", name, e)
+		}
+		if rec := p.do(http.MethodGet, "/api/finance/entries/"+pay.EntryID, "", "198.51.100.10", token, nil); rec.Code != http.StatusOK || strings.Contains(rec.Body.String(), "rosterMember") {
+			t.Fatalf("%s entry detail names the payer: %d %s", name, rec.Code, rec.Body)
+		}
+	}
 
 	rec := p.do(http.MethodGet, "/api/finance/dues/mine", "", "198.51.100.10", p.beto, nil)
 	var mine []struct {

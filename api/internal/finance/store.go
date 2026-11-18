@@ -246,10 +246,11 @@ func (s *Store) List(ctx context.Context, sess auth.Session) (out []Entry, err e
 }
 
 // hidePayers clears who paid from Due payment Entries unless the session may see it: Officers,
-// School admins and Veedores see it; Students do not (ADR 0004).
+// School admins and Veedores with a verified second factor, as for the per-student list (ADR 0004,
+// ADR 0001 2FA rule 5); Students never do.
 func hidePayers(ctx context.Context, tx pgx.Tx, sess auth.Session, entries []Entry) error {
 	sees, err := hasDueRole(ctx, tx, sess, dueReaderRoles)
-	if err != nil || sees {
+	if err != nil || (sees && auth.RequireMFA(sess) == nil) {
 		return err
 	}
 	for i := range entries {

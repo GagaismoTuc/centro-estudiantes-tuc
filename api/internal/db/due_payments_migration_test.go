@@ -179,6 +179,17 @@ func TestDuePaymentsMigration00030(t *testing.T) {
 		t.Fatalf("lock member debt row as ce_app: %v", err)
 	}
 
+	// The lock grant is limited to roster_member_id: the tenant and the Due of a debt row stay fixed.
+	var tenantUpdate, dueUpdate, memberUpdate bool
+	if err := env.Super.QueryRow(ctx, `SELECT has_column_privilege('ce_app','finance_due_members','tenant_id','UPDATE'),
+		has_column_privilege('ce_app','finance_due_members','due_id','UPDATE'),
+		has_column_privilege('ce_app','finance_due_members','roster_member_id','UPDATE')`).Scan(&tenantUpdate, &dueUpdate, &memberUpdate); err != nil {
+		t.Fatal(err)
+	}
+	if tenantUpdate || dueUpdate || !memberUpdate {
+		t.Fatalf("ce_app UPDATE on finance_due_members: tenant_id=%v due_id=%v roster_member_id=%v", tenantUpdate, dueUpdate, memberUpdate)
+	}
+
 	var count int
 	if err := env.Super.QueryRow(ctx, `SELECT count(*) FROM finance_due_payments`).Scan(&count); err != nil || count != 1 {
 		t.Fatalf("rejections wrote payments: count=%d err=%v", count, err)
