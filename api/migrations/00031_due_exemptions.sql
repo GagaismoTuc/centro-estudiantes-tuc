@@ -16,6 +16,9 @@ CREATE TABLE finance_due_exemptions (
     FOREIGN KEY (tenant_id, roster_member_id) REFERENCES roster_members (tenant_id, id)
 );
 
+CREATE INDEX finance_due_exemptions_roster_idx
+    ON finance_due_exemptions (tenant_id, roster_member_id);
+
 GRANT SELECT, INSERT ON finance_due_exemptions TO ce_app;
 
 -- Exemptions and #78's Due payments for one Roster member serialize on that member's snapshot row

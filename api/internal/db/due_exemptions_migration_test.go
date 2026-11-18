@@ -67,6 +67,19 @@ func TestDueExemptionsMigration00031(t *testing.T) {
 		t.Fatal("ce_app lacks UPDATE (roster_member_id) on finance_due_members")
 	}
 
+	// The composite FK to roster_members has a supporting index (the PK starts with due_id).
+	rosterIndex := func() string {
+		t.Helper()
+		var def string
+		if err := env.Super.QueryRow(ctx, `SELECT coalesce((SELECT indexdef FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'finance_due_exemptions_roster_idx'), '')`).Scan(&def); err != nil {
+			t.Fatal(err)
+		}
+		return def
+	}
+	if def := rosterIndex(); !strings.HasSuffix(def, "ON public.finance_due_exemptions USING btree (tenant_id, roster_member_id)") {
+		t.Fatalf("finance_due_exemptions_roster_idx = %q, want btree (tenant_id, roster_member_id)", def)
+	}
+
 	var schoolA, schoolB, userA, owedA, notOwedA, rosterB string
 	if err = env.Super.QueryRow(ctx, `INSERT INTO organizations(kind,name) VALUES ('school','Escuela A') RETURNING id::text`).Scan(&schoolA); err != nil {
 		t.Fatal(err)
@@ -191,5 +204,8 @@ func TestDueExemptionsMigration00031(t *testing.T) {
 	}
 	if err = env.Super.QueryRow(ctx, `SELECT to_regclass('public.finance_due_exemptions') IS NOT NULL`).Scan(&exemptions); err != nil || !exemptions {
 		t.Fatalf("after up: exemptions=%v err=%v", exemptions, err)
+	}
+	if def := rosterIndex(); !strings.HasSuffix(def, "ON public.finance_due_exemptions USING btree (tenant_id, roster_member_id)") {
+		t.Fatalf("after up: finance_due_exemptions_roster_idx = %q", def)
 	}
 }
