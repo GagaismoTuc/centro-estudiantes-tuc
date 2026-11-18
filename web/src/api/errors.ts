@@ -60,6 +60,8 @@ const messages: Record<string, string> = {
   mode_not_supported: "Por ahora solo se puede votar con voto secreto.",
   empty_roster: "El padrón está vacío. Cargá al menos un alumno antes de crear una cuota.",
   due_frozen: "Esta cuota ya tiene pagos o exenciones: solo podés cambiar el nombre.",
+  already_exempt: "Este alumno ya está exento.",
+  not_owed: "Este alumno no debe esta cuota.",
   election_annulled: "La elección fue anulada: ya no se puede cambiar.",
   election_published: "La votación ya terminó y el resultado está publicado: no se puede anular.",
   reason_required: "Escribí el motivo antes de anular la elección.",
@@ -77,13 +79,16 @@ const messages: Record<string, string> = {
 };
 
 /** Where the error happened, when the same code needs different advice. */
-export type ErrorContext = "finance" | "access-code" | "change-password" | "election-list" | "mfa" | "mfa-recovery" | "reset" | "verify";
+export type ErrorContext = "finance" | "due-exemption" | "access-code" | "change-password" | "election-list" | "mfa" | "mfa-recovery" | "reset" | "verify";
 
 const contextual: Record<ErrorContext, Record<string, string>> = {
   finance: {
     invalid_amount: "Ingres\u00e1 un monto positivo en centavos enteros.",
     invalid_date: "Eleg\u00ed una fecha v\u00e1lida.",
     description_required: "Escrib\u00ed una descripci\u00f3n.",
+  },
+  "due-exemption": {
+    reason_required: "Escribí el motivo de la exención.",
   },
   "access-code": {
     invalid_code: "El código no es válido, ya se usó o venció. Pedile uno nuevo a tu escuela.",
