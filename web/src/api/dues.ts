@@ -19,5 +19,12 @@ export function updateDue(id: string, input: { name: string; amountCents: string
   return sendMoneyJSON<DueDetail>(`/finance/dues/${encodeURIComponent(id)}`, "PATCH", amountCents, rest);
 }
 
+export const exemptDueMember = (id: string, input: components["schemas"]["NewFinanceDueExemption"]) =>
+  moneyRequest<DueDetail>(`/finance/dues/${encodeURIComponent(id)}/exemptions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+
 export const deleteDue = (id: string) =>
   moneyRequest<undefined>(`/finance/dues/${encodeURIComponent(id)}`, { method: "DELETE" });
