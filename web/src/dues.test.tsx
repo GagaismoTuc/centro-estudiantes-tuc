@@ -19,8 +19,8 @@ const dueSummary = {
 const dueDetail = {
   ...dueSummary,
   members: [
-    { rosterMemberId: "r1", fullName: "Ana Ficticia", status: "owing" },
-    { rosterMemberId: "r2", fullName: "Beto Ficticio", status: "owing" },
+    { rosterMemberId: "r1", fullName: "Ana Ficticia", status: "owing", paidCents: 0 },
+    { rosterMemberId: "r2", fullName: "Beto Ficticio", status: "owing", paidCents: 0 },
   ],
 };
 
@@ -30,6 +30,7 @@ const myDue = {
   amountCents: 200000,
   dueDate: "2026-11-30",
   status: "owing",
+  paidCents: 0,
 };
 
 test("R10 student sees Mis cuotas without full list or Nueva cuota", async () => {
@@ -216,4 +217,86 @@ test("PRESERVE navigation includes Cuotas link and navigates to /cuotas", async 
   expect(link.getAttribute("href")).toBe("/cuotas");
   fireEvent.click(link);
   expect(await screen.findByRole("heading", { name: "Mis cuotas" })).toBeTruthy();
+});
+
+const officerMe = () => me({ role: "officer", roles: ["student", "officer"], mfa: "satisfied" });
+
+const openPayment = async () => {
+  window.history.replaceState(null, "", "/cuotas");
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Ver detalle de Cuota de noviembre" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Registrar pago de Beto Ficticio" }));
+  return screen.getByLabelText("Monto en pesos") as HTMLInputElement;
+};
+
+test("R3 officer registers a partial payment and the detail shows Pagó $ 500,00 de $ 2.000,00", async () => {
+  const partial = {
+    ...dueDetail,
+    members: [dueDetail.members[0], { ...dueDetail.members[1], paidCents: 50000 }],
+  };
+  const sent = mockApi({
+    "GET /auth/me": ok(officerMe()),
+    "GET /finance/dues": ok([dueSummary]),
+    "GET /finance/dues/mine": ok([]),
+    "GET /finance/dues/d1": [ok(dueDetail), ok(partial)],
+    "POST /finance/dues/d1/payments": ok({ id: "p1", dueId: "d1", rosterMemberId: "r2", entryId: "e1", amountCents: 50000, date: "2026-11-13" }, 201),
+  });
+  const amount = await openPayment();
+  expect(screen.getByRole("heading", { name: "Registrar pago de Beto Ficticio" })).toBeTruthy();
+  expect(amount.value).toBe("2000");
+  fireEvent.change(amount, { target: { value: "500" } });
+  fireEvent.change(screen.getByLabelText("Fecha del pago"), { target: { value: "2026-11-13" } });
+  fireEvent.click(screen.getByRole("button", { name: "Guardar pago" }));
+
+  expect(await screen.findByText("Pagó $ 500,00 de $ 2.000,00")).toBeTruthy();
+  expect(screen.getByText("Se registró el pago.")).toBeTruthy();
+  expect(sentTo(sent, "POST /finance/dues/d1/payments")).toHaveLength(1);
+  expect(sentTo(sent, "POST /finance/dues/d1/payments")[0]?.body).toEqual({ rosterMemberId: "r2", date: "2026-11-13", amountCents: 50000 });
+  expect(screen.queryByLabelText("Monto en pesos")).toBeNull();
+});
+
+test("R4 overpayment marks Monto en pesos invalid and moves focus to it", async () => {
+  mockApi({
+    "GET /auth/me": ok(officerMe()),
+    "GET /finance/dues": ok([dueSummary]),
+    "GET /finance/dues/mine": ok([]),
+    "GET /finance/dues/d1": ok(dueDetail),
+    "POST /finance/dues/d1/payments": fail(422, "overpayment"),
+  });
+  const amount = await openPayment();
+  fireEvent.change(amount, { target: { value: "2500" } });
+  fireEvent.click(screen.getByRole("button", { name: "Guardar pago" }));
+  expect(await screen.findByText("El pago supera lo que falta pagar de la cuota.")).toBeTruthy();
+  await waitFor(() => expect(document.activeElement).toBe(amount));
+  expect(amount.getAttribute("aria-invalid")).toBe("true");
+});
+
+test("R9 readers get the CSV link and only officers get Registrar pago", async () => {
+  for (const [role, canPay] of [["officer", true], ["school_admin", false]] as const) {
+    mockApi({
+      "GET /auth/me": ok(role === "officer" ? officerMe() : me({ role, mfa: "satisfied" })),
+      "GET /finance/dues": ok([dueSummary]),
+      "GET /finance/dues/mine": ok([]),
+      "GET /finance/dues/d1": ok(dueDetail),
+    });
+    window.history.replaceState(null, "", "/cuotas");
+    const { unmount } = render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Ver detalle de Cuota de noviembre" }));
+    const link = (await screen.findByRole("link", { name: "Descargar CSV" })) as HTMLAnchorElement;
+    expect(link.getAttribute("href")).toBe("/api/finance/dues/d1/members.csv");
+    expect(link.hasAttribute("download")).toBe(true);
+    expect(screen.queryByRole("button", { name: "Registrar pago de Beto Ficticio" }) !== null).toBe(canPay);
+    unmount();
+  }
+});
+
+test("R10 student sees what they paid and what is left in Mis cuotas", async () => {
+  mockApi({
+    "GET /auth/me": ok(me()),
+    "GET /finance/dues/mine": ok([{ ...myDue, paidCents: 50000 }, { ...myDue, id: "d2", name: "Cuota de octubre", status: "paid", paidCents: 200000 }]),
+  });
+  window.history.replaceState(null, "", "/cuotas");
+  render(<App />);
+  expect(await screen.findByText("Pagaste $ 500,00 de $ 2.000,00, te falta $ 1.500,00 — vence el 30/11/2026")).toBeTruthy();
+  expect(screen.getByText("Pagada $ 2.000,00 — vencía el 30/11/2026")).toBeTruthy();
 });

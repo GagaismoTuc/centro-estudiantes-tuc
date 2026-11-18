@@ -15,7 +15,7 @@ export function exactMoneyJSON(text: string): unknown {
     out += token;
     let j = i;
     while (/\s/.test(text[j] ?? "")) j++;
-    if (text[j] !== ":" || (token !== '"amountCents"' && token !== '"balanceCents"')) continue;
+    if (text[j] !== ":" || !['"amountCents"', '"balanceCents"', '"paidCents"'].includes(token)) continue;
     j++;
     while (/\s/.test(text[j] ?? "")) j++;
     const number = /^-?\d+/.exec(text.slice(j));
