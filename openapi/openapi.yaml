@@ -2687,6 +2687,65 @@ paths:
                   error:
                     type: string
                     enum: [due_frozen]
+  /finance/dues/{id}/exemptions:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      operationId: postFinanceDueExemptions
+      summary: Exempt a roster member from a due, with a reason, as an officer with MFA
+      description: >
+        Records that a roster member in the due's snapshot does not owe it. One exemption per due and roster
+        member; it cannot be edited or removed, and it freezes the due's amount and due date. Error bodies
+        never carry the reason or a name.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewFinanceDueExemption"
+      responses:
+        "201":
+          description: Exemption recorded; the due detail shows the member as `exempt` with the reason.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FinanceDueDetail"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/DirectoryForbidden" }
+        "404":
+          description: Due or roster member not found in the active school (`not_found`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotFoundError" }
+        "409":
+          description: The roster member is already exempt from this due (`already_exempt`). Nothing is written.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [already_exempt]
+        "422":
+          description: >
+            Nothing is written. `reason_required`: reason missing, null, empty or only spaces.
+            `reason_too_long`: more than 500 characters after trimming. `not_owed`: the roster member is not
+            in the due's snapshot.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [reason_required, reason_too_long, not_owed]
 components:
   responses:
     InvalidElectionList:
@@ -2983,6 +3042,13 @@ components:
         name: { type: string }
         amountCents: { type: integer, format: int64 }
         dueDate: { type: string }
+    NewFinanceDueExemption:
+      type: object
+      additionalProperties: false
+      required: [rosterMemberId, reason]
+      properties:
+        rosterMemberId: { type: string }
+        reason: { type: string, description: "Trimmed; 1 to 500 characters." }
     FinanceDueStatus:
       type: string
       enum: [owing, paid, exempt]
@@ -2994,6 +3060,9 @@ components:
         fullName: { type: string }
         status:
           $ref: "#/components/schemas/FinanceDueStatus"
+        exemptionReason:
+          type: string
+          description: Present only when status is `exempt`. Only officers, school admins and veedors read the due detail.
     FinanceDueSummary:
       type: object
       required: [id, name, amountCents, dueDate, createdAt, owingCount, totalCount]
@@ -3003,8 +3072,8 @@ components:
         amountCents: { type: integer, format: int64 }
         dueDate: { type: string }
         createdAt: { type: string, format: date-time }
-        owingCount: { type: integer }
-        totalCount: { type: integer }
+        owingCount: { type: integer, description: "Members who owe; exempt members are left out." }
+        totalCount: { type: integer, description: "Members in the snapshot minus exempt members (the denominator)." }
     FinanceDueDetail:
       type: object
       required: [id, name, amountCents, dueDate, createdAt, owingCount, totalCount, members]
@@ -3014,8 +3083,8 @@ components:
         amountCents: { type: integer, format: int64 }
         dueDate: { type: string }
         createdAt: { type: string, format: date-time }
-        owingCount: { type: integer }
-        totalCount: { type: integer }
+        owingCount: { type: integer, description: "Members who owe; exempt members are left out." }
+        totalCount: { type: integer, description: "Members in the snapshot minus exempt members (the denominator)." }
         members:
           type: array
           items:
