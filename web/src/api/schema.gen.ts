@@ -674,10 +674,14 @@ export interface paths {
         put?: never;
         /**
          * Share a contact with the platform-wide shared directory
-         * @description Officers with a two-factor session only. Copies the shareable fields (excluding notes and source school) into a pending shared-directory entry for Platform admin approval.
+         * @description Officers with a two-factor session only. Copies the shareable fields (excluding notes and source school) into a pending shared-directory entry for Platform admin approval. Sharing a contact that already has an approved entry creates a new pending version while keeping the approved entry visible until the new version is approved.
          */
         post: operations["postContactShare"];
-        delete?: never;
+        /**
+         * Withdraw a shared contact from the shared directory
+         * @description Officers with a two-factor session only. Withdraws any pending or approved share requests for the contact so it is no longer listed in the shared directory.
+         */
+        delete: operations["deleteContactShare"];
         options?: never;
         head?: never;
         patch?: never;
@@ -697,6 +701,26 @@ export interface paths {
         get: operations["getSharedContacts"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/shared-contacts/{id}/copy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Copy an approved shared contact into the active school's directory
+         * @description Officers with a two-factor session only. Creates an independent copy (without notes or source school) under the active heading of matching name (case-insensitive) or "otros".
+         */
+        post: operations["postSharedContactCopy"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1807,6 +1831,8 @@ export interface components {
             notes: string;
             referencePrices: components["schemas"]["ReferencePrice"][];
             shareStatus?: components["schemas"]["ShareStatus"];
+            hasApprovedShare?: boolean;
+            shareOutdated?: boolean;
             /** Format: date-time */
             createdAt: string;
             /** Format: date-time */
@@ -3599,7 +3625,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Contact already has a `pending` or `approved` share request (`already_shared`). */
+            /** @description Contact already has a `pending` share request (`already_pending`). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3607,7 +3633,41 @@ export interface operations {
                 content: {
                     "application/json": {
                         /** @enum {string} */
-                        error: "already_shared";
+                        error: "already_pending";
+                    };
+                };
+            };
+        };
+    };
+    deleteContactShare: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Share withdrawn. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["DirectoryForbidden"];
+            /** @description Contact not found (`not_found`) or not actively shared (`not_shared`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "not_found" | "not_shared";
                     };
                 };
             };
@@ -3638,6 +3698,39 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["DirectoryForbidden"];
+        };
+    };
+    postSharedContactCopy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Contact copied into the active school's directory. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Contact"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["DirectoryForbidden"];
+            /** @description Shared contact not found or not approved (`not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     postRosterAccessCodes: {

@@ -60,8 +60,10 @@ var (
 	ErrFutureDate = errors.New("contacts: future date")
 	// ErrInvalidDate means the reference price date is not a valid YYYY-MM-DD calendar date.
 	ErrInvalidDate = errors.New("contacts: invalid date")
-	// ErrAlreadyShared means the contact already has a pending or approved share request.
-	ErrAlreadyShared = errors.New("contacts: already shared")
+	// ErrAlreadyPending means the contact already has a pending share request.
+	ErrAlreadyPending = errors.New("contacts: already pending")
+	// ErrNotShared means the contact has no active pending or approved share request to withdraw.
+	ErrNotShared = errors.New("contacts: not shared")
 	// ErrInvalidPage means the requested page number is less than 1.
 	ErrInvalidPage = errors.New("contacts: invalid page")
 )
@@ -85,19 +87,21 @@ type ReferencePrice struct {
 
 // Contact is a provider entry in a school's contact directory.
 type Contact struct {
-	ID              string
-	HeadingID       string
-	HeadingName     string
-	HeadingArchived bool
-	Name            string
-	Phone           string
-	Email           string
-	Zone            string
-	Notes           string
-	ReferencePrices []ReferencePrice
-	ShareStatus     string
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	ID               string
+	HeadingID        string
+	HeadingName      string
+	HeadingArchived  bool
+	Name             string
+	Phone            string
+	Email            string
+	Zone             string
+	Notes            string
+	ReferencePrices  []ReferencePrice
+	ShareStatus      string
+	HasApprovedShare bool
+	ShareOutdated    bool
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 // CreateContactInput holds fields for creating a contact.
@@ -408,6 +412,9 @@ func (s *Store) ListContacts(ctx context.Context, sess auth.Session, headingID, 
 			); err != nil {
 				return err
 			}
+			if c.ShareStatus == "withdrawn" {
+				c.ShareStatus = ""
+			}
 			c.ReferencePrices = []ReferencePrice{}
 			byID[c.ID] = len(out)
 			ids = append(ids, c.ID)
@@ -440,7 +447,10 @@ func (s *Store) ListContacts(ctx context.Context, sess auth.Session, headingID, 
 				out[idx].ReferencePrices = append(out[idx].ReferencePrices, rp)
 			}
 		}
-		return pRows.Err()
+		if err := pRows.Err(); err != nil {
+			return err
+		}
+		return applyApprovedShareSnapshots(ctx, tx, sess.TenantID, ids, byID, out)
 	})
 	return out, err
 }
@@ -679,6 +689,9 @@ func loadContact(ctx context.Context, tx pgx.Tx, tenantID, id string) (Contact, 
 	if err != nil {
 		return Contact{}, err
 	}
+	if c.ShareStatus == "withdrawn" {
+		c.ShareStatus = ""
+	}
 	c.ReferencePrices = []ReferencePrice{}
 	rows, err := tx.Query(ctx, `
 		SELECT id::text, description, amount_cents, to_char(quoted_on, 'YYYY-MM-DD'), created_at
@@ -697,7 +710,14 @@ func loadContact(ctx context.Context, tx pgx.Tx, tenantID, id string) (Contact, 
 		}
 		c.ReferencePrices = append(c.ReferencePrices, rp)
 	}
-	return c, rows.Err()
+	if err := rows.Err(); err != nil {
+		return Contact{}, err
+	}
+	one := []Contact{c}
+	if err := applyApprovedShareSnapshots(ctx, tx, tenantID, []string{c.ID}, map[string]int{c.ID: 0}, one); err != nil {
+		return Contact{}, err
+	}
+	return one[0], nil
 }
 
 func validateOptionalEmail(s string) (string, error) {

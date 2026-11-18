@@ -87,14 +87,70 @@ func applySharedTransition(ctx context.Context, pool *pgxpool.Pool, id string, t
 		if current == tr.targetStatus {
 			return nil
 		}
+		// Converge cleanly if the owning school withdrew the shared contact concurrently with removal.
+		if tr.targetStatus == "removed" && current == "withdrawn" {
+			return nil
+		}
 		if current != tr.requiredFrom {
 			return fmt.Errorf("shared contact %s is not %s", id, tr.requiredFrom)
 		}
+		utcNow := now.UTC()
+		if tr.targetStatus == "approved" {
+			var tenantID, contactID string
+			linkErr := tx.QueryRow(ctx, `
+				SELECT tenant_id::text, contact_id::text
+				FROM shared_contact_links
+				WHERE shared_contact_id = $1`,
+				id,
+			).Scan(&tenantID, &contactID)
+			if linkErr != nil && !errors.Is(linkErr, pgx.ErrNoRows) {
+				return fmt.Errorf("read shared contact link %s: %w", id, linkErr)
+			}
+			if linkErr == nil {
+				oldRows, err := tx.Query(ctx, `
+					SELECT sc.id::text
+					FROM shared_contacts sc
+					JOIN shared_contact_links l ON l.shared_contact_id = sc.id
+					WHERE l.tenant_id = $1 AND l.contact_id = $2
+					  AND sc.id <> $3 AND sc.status = 'approved'
+					ORDER BY sc.id
+					FOR UPDATE OF sc`,
+					tenantID, contactID, id,
+				)
+				if err != nil {
+					return fmt.Errorf("lock prior approved shared contacts %s: %w", id, err)
+				}
+				var oldIDs []string
+				for oldRows.Next() {
+					var oid string
+					if err := oldRows.Scan(&oid); err != nil {
+						oldRows.Close()
+						return err
+					}
+					oldIDs = append(oldIDs, oid)
+				}
+				if err := oldRows.Err(); err != nil {
+					oldRows.Close()
+					return err
+				}
+				oldRows.Close()
+				if len(oldIDs) > 0 {
+					if _, err := tx.Exec(ctx, `
+						UPDATE shared_contacts
+						SET status = 'removed', removed_at = COALESCE(removed_at, $2)
+						WHERE id = ANY($1::uuid[])`,
+						oldIDs, utcNow,
+					); err != nil {
+						return fmt.Errorf("replace prior approved shared contacts %s: %w", id, err)
+					}
+				}
+			}
+		}
 		var execErr error
 		if tr.targetStatus == "removed" {
-			_, execErr = tx.Exec(ctx, `UPDATE shared_contacts SET status = 'removed', removed_at = $2 WHERE id = $1`, id, now.UTC())
+			_, execErr = tx.Exec(ctx, `UPDATE shared_contacts SET status = 'removed', removed_at = $2 WHERE id = $1`, id, utcNow)
 		} else {
-			_, execErr = tx.Exec(ctx, `UPDATE shared_contacts SET status = $2, reviewed_at = $3 WHERE id = $1`, id, tr.targetStatus, now.UTC())
+			_, execErr = tx.Exec(ctx, `UPDATE shared_contacts SET status = $2, reviewed_at = $3 WHERE id = $1`, id, tr.targetStatus, utcNow)
 		}
 		if execErr != nil {
 			return fmt.Errorf("update shared contact %s: %w", id, execErr)
