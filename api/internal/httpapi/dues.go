@@ -29,6 +29,14 @@ func writeDueError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusUnprocessableEntity, "empty_roster")
 	case errors.Is(err, finance.ErrDueFrozen):
 		writeError(w, http.StatusConflict, "due_frozen")
+	case errors.Is(err, finance.ErrReasonRequired):
+		writeError(w, http.StatusUnprocessableEntity, "reason_required")
+	case errors.Is(err, finance.ErrReasonTooLong):
+		writeError(w, http.StatusUnprocessableEntity, "reason_too_long")
+	case errors.Is(err, finance.ErrNotOwed):
+		writeError(w, http.StatusUnprocessableEntity, "not_owed")
+	case errors.Is(err, finance.ErrAlreadyExempt):
+		writeError(w, http.StatusConflict, "already_exempt")
 	default:
 		// Never log database errors that may echo submitted names or amounts.
 		slog.Error("finance dues operation failed")
@@ -51,11 +59,16 @@ func dueSummaryResponse(d finance.Due) oapi.FinanceDueSummary {
 func dueDetailResponse(d finance.DueDetail) oapi.FinanceDueDetail {
 	members := make([]oapi.FinanceDueMember, 0, len(d.Members))
 	for _, m := range d.Members {
-		members = append(members, oapi.FinanceDueMember{
+		member := oapi.FinanceDueMember{
 			RosterMemberId: m.RosterMemberID,
 			FullName:       m.FullName,
 			Status:         oapi.FinanceDueStatus(m.Status),
-		})
+		}
+		if m.Status == finance.DueStatusExempt {
+			reason := m.ExemptionReason
+			member.ExemptionReason = &reason
+		}
+		members = append(members, member)
 	}
 	return oapi.FinanceDueDetail{
 		Id:          d.ID,
@@ -219,6 +232,35 @@ func (s *server) PatchFinanceDue(w http.ResponseWriter, r *http.Request, id stri
 		return
 	}
 	writeJSON(w, http.StatusOK, dueDetailResponse(due))
+}
+
+// PostFinanceDueExemptions exempts a Roster member from a Due. A missing or null reason is reason_required.
+func (s *server) PostFinanceDueExemptions(w http.ResponseWriter, r *http.Request, id string) {
+	sess, ok := rosterSession(w, r)
+	if !ok {
+		return
+	}
+	if err := s.finance.AuthorizeDueWrite(r.Context(), sess); err != nil {
+		writeDueError(w, err)
+		return
+	}
+	var req struct {
+		RosterMemberID string  `json:"rosterMemberId"`
+		Reason         *string `json:"reason"`
+	}
+	if !decodeStrict(w, r, &req) {
+		return
+	}
+	var reason string
+	if req.Reason != nil {
+		reason = *req.Reason
+	}
+	due, err := s.finance.CreateExemption(r.Context(), sess, id, req.RosterMemberID, reason)
+	if err != nil {
+		writeDueError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, dueDetailResponse(due))
 }
 
 func (s *server) DeleteFinanceDue(w http.ResponseWriter, r *http.Request, id string) {
