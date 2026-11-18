@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
@@ -12,6 +13,43 @@ import (
 
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/contacts"
 )
+
+func decodeJSON[T any](t *testing.T, rec *httptest.ResponseRecorder, wantStatus int) T {
+	t.Helper()
+	if rec.Code != wantStatus {
+		t.Fatalf("status = %d, want %d (body %s)", rec.Code, wantStatus, rec.Body)
+	}
+	var out T
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("unmarshal body=%s: %v", rec.Body.String(), err)
+	}
+	return out
+}
+
+func requireByID[T any](t *testing.T, items []T, wantID string, getID func(T) string) T {
+	t.Helper()
+	for _, item := range items {
+		if getID(item) == wantID {
+			return item
+		}
+	}
+	t.Fatalf("item %q not found in %+v", wantID, items)
+	var zero T
+	return zero
+}
+
+func assertPricesMatch[T any](t *testing.T, label string, got []T, want []referencePriceDTO, fields func(T) (string, int64, string)) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("%s prices len = %d, want %d (%+v)", label, len(got), len(want), got)
+	}
+	for i, w := range want {
+		desc, cents, date := fields(got[i])
+		if desc != w.Description || cents != w.AmountCents || date != w.Date {
+			t.Fatalf("%s price[%d] = (%q, %d, %q), want (%q, %d, %q)", label, i, desc, cents, date, w.Description, w.AmountCents, w.Date)
+		}
+	}
+}
 
 type shareResponseDTO struct {
 	ID        string `json:"id"`
@@ -114,13 +152,8 @@ func TestSharedContactsLifecycleAndPrivacy(t *testing.T) {
 		}
 	}
 
-	rec = fA.do(http.MethodGet, "/api/contacts", "", ip, officerA, nil)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("list contacts = %d body=%s", rec.Code, rec.Body)
-	}
-	var listA []contactWithShareDTO
-	_ = json.Unmarshal(rec.Body.Bytes(), &listA)
-	if len(listA) != 1 || listA[0].ShareStatus == nil || *listA[0].ShareStatus != "pending" {
+	listA := decodeJSON[[]contactWithShareDTO](t, fA.do(http.MethodGet, "/api/contacts", "", ip, officerA, nil), http.StatusOK)
+	if len(listA) != 1 || listA[0].ID != cA.ID || listA[0].ShareStatus == nil || *listA[0].ShareStatus != "pending" {
 		t.Fatalf("listA = %+v, want shareStatus=pending", listA)
 	}
 
@@ -136,14 +169,11 @@ func TestSharedContactsLifecycleAndPrivacy(t *testing.T) {
 	if err := contacts.RejectShared(ctx, tdb.Super, share1.ID, time.Now()); err != nil {
 		t.Fatalf("reject: %v", err)
 	}
-	rec = fA.do(http.MethodGet, "/api/contacts", "", ip, officerA, nil)
-	_ = json.Unmarshal(rec.Body.Bytes(), &listA)
-	if len(listA) != 1 || listA[0].ShareStatus == nil || *listA[0].ShareStatus != "rejected" {
+	listA = decodeJSON[[]contactWithShareDTO](t, fA.do(http.MethodGet, "/api/contacts", "", ip, officerA, nil), http.StatusOK)
+	if len(listA) != 1 || listA[0].ID != cA.ID || listA[0].ShareStatus == nil || *listA[0].ShareStatus != "rejected" {
 		t.Fatalf("after reject listA = %+v, want shareStatus=rejected", listA)
 	}
-	rec = fB.do(http.MethodGet, "/api/shared-contacts", "", ip, officerB, nil)
-	var page sharedContactPageDTO
-	_ = json.Unmarshal(rec.Body.Bytes(), &page)
+	page := decodeJSON[sharedContactPageDTO](t, fB.do(http.MethodGet, "/api/shared-contacts", "", ip, officerB, nil), http.StatusOK)
 	if len(page.Items) != 0 {
 		t.Fatalf("rejected visible to B: %+v", page.Items)
 	}
@@ -151,20 +181,15 @@ func TestSharedContactsLifecycleAndPrivacy(t *testing.T) {
 	// Share again after rejection under the same frozen clock -> 201 pending with a new id, and
 	// shareStatus deterministically switches back to pending (no timestamp-tie flakiness).
 	rec = fA.do(http.MethodPost, "/api/contacts/"+cA.ID+"/share", "", ip, officerA, nil)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("re-share = %d body=%s", rec.Code, rec.Body)
-	}
-	var share2 shareResponseDTO
-	_ = json.Unmarshal(rec.Body.Bytes(), &share2)
+	share2 := decodeJSON[shareResponseDTO](t, rec, http.StatusCreated)
 	t.Cleanup(func() {
 		_, _ = tdb.Super.Exec(context.Background(), `DELETE FROM shared_contacts WHERE id = $1`, share2.ID)
 	})
 	if share2.ID == share1.ID || share2.Status != "pending" {
 		t.Fatalf("share2 = %+v vs share1 = %+v", share2, share1)
 	}
-	rec = fA.do(http.MethodGet, "/api/contacts", "", ip, officerA, nil)
-	_ = json.Unmarshal(rec.Body.Bytes(), &listA)
-	if len(listA) != 1 || listA[0].ShareStatus == nil || *listA[0].ShareStatus != "pending" {
+	listA = decodeJSON[[]contactWithShareDTO](t, fA.do(http.MethodGet, "/api/contacts", "", ip, officerA, nil), http.StatusOK)
+	if len(listA) != 1 || listA[0].ID != cA.ID || listA[0].ShareStatus == nil || *listA[0].ShareStatus != "pending" {
 		t.Fatalf("after re-share listA = %+v, want shareStatus=pending", listA)
 	}
 	wantResponse(t, fA.do(http.MethodPost, "/api/contacts/"+cA.ID+"/share", "", ip, officerA, nil), http.StatusConflict, `{"error":"already_pending"}`)
@@ -198,17 +223,12 @@ func TestSharedContactsLifecycleAndPrivacy(t *testing.T) {
 
 	// PRESERVE: PATCH own contact keeps shareStatus and does not mutate shared snapshot.
 	rec = fA.do(http.MethodPatch, "/api/contacts/"+cA.ID, `{"zone":"Tafí Viejo","notes":"Nota nueva"}`, ip, officerA, nil)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("patch contact = %d body=%s", rec.Code, rec.Body)
-	}
-	var patched contactWithShareDTO
-	_ = json.Unmarshal(rec.Body.Bytes(), &patched)
+	patched := decodeJSON[contactWithShareDTO](t, rec, http.StatusOK)
 	if patched.ShareStatus == nil || *patched.ShareStatus != "approved" {
 		t.Fatalf("patched shareStatus = %v, want approved", patched.ShareStatus)
 	}
-	rec = fB.do(http.MethodGet, "/api/shared-contacts", "", ip, officerB, nil)
-	_ = json.Unmarshal(rec.Body.Bytes(), &page)
-	if len(page.Items) != 1 || page.Items[0].Zone != "Yerba Buena" {
+	page = decodeJSON[sharedContactPageDTO](t, fB.do(http.MethodGet, "/api/shared-contacts", "", ip, officerB, nil), http.StatusOK)
+	if len(page.Items) != 1 || page.Items[0].ID != share2.ID || page.Items[0].Zone != "Yerba Buena" {
 		t.Fatalf("shared snapshot mutated after own patch: %+v", page.Items)
 	}
 
@@ -216,14 +236,12 @@ func TestSharedContactsLifecycleAndPrivacy(t *testing.T) {
 	if err := contacts.RemoveShared(ctx, tdb.Super, share2.ID, time.Now()); err != nil {
 		t.Fatalf("remove: %v", err)
 	}
-	rec = fB.do(http.MethodGet, "/api/shared-contacts", "", ip, officerB, nil)
-	_ = json.Unmarshal(rec.Body.Bytes(), &page)
+	page = decodeJSON[sharedContactPageDTO](t, fB.do(http.MethodGet, "/api/shared-contacts", "", ip, officerB, nil), http.StatusOK)
 	if len(page.Items) != 0 {
 		t.Fatalf("removed still visible: %+v", page.Items)
 	}
-	rec = fA.do(http.MethodGet, "/api/contacts", "", ip, officerA, nil)
-	_ = json.Unmarshal(rec.Body.Bytes(), &listA)
-	if len(listA) != 1 || listA[0].Notes != "Nota nueva" || len(listA[0].ReferencePrices) != 1 {
+	listA = decodeJSON[[]contactWithShareDTO](t, fA.do(http.MethodGet, "/api/contacts", "", ip, officerA, nil), http.StatusOK)
+	if len(listA) != 1 || listA[0].ID != cA.ID || listA[0].Notes != "Nota nueva" || len(listA[0].ReferencePrices) != 1 {
 		t.Fatalf("own contact altered after remove: %+v", listA)
 	}
 
@@ -596,9 +614,7 @@ func TestSharedContactsCopyAndIndependence(t *testing.T) {
 	}
 	wantResponse(t, fB.do(http.MethodPost, "/api/shared-contacts/"+shRej.ID+"/copy", "", ip, officerB, nil), http.StatusNotFound, `{"error":"not_found"}`)
 
-	rec = fB.do(http.MethodGet, "/api/contacts", "", ip, officerB, nil)
-	var emptyB []contactWithShareDTO
-	_ = json.Unmarshal(rec.Body.Bytes(), &emptyB)
+	emptyB := decodeJSON[[]contactWithShareDTO](t, fB.do(http.MethodGet, "/api/contacts", "", ip, officerB, nil), http.StatusOK)
 	if len(emptyB) != 0 {
 		t.Fatalf("rejected copies created %d contacts in B, want 0", len(emptyB))
 	}
@@ -611,44 +627,27 @@ func TestSharedContactsCopyAndIndependence(t *testing.T) {
 	}
 
 	// Capture A's reference price order (including frozen-clock same-date tie-break) to verify R1 preserves exact order.
-	rec = fA.do(http.MethodGet, "/api/contacts", "", ip, officerA, nil)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("get A contacts = %d body=%s", rec.Code, rec.Body)
-	}
-	var srcListA []contactWithShareDTO
-	_ = json.Unmarshal(rec.Body.Bytes(), &srcListA)
-	var srcCA contactWithShareDTO
-	for _, c := range srcListA {
-		if c.ID == cA.ID {
-			srcCA = c
-		}
-	}
+	srcListA := decodeJSON[[]contactWithShareDTO](t, fA.do(http.MethodGet, "/api/contacts", "", ip, officerA, nil), http.StatusOK)
+	srcCA := requireByID(t, srcListA, cA.ID, func(c contactWithShareDTO) string { return c.ID })
 	if len(srcCA.ReferencePrices) != 3 || srcCA.ReferencePrices[0].Description != "Gazebo 6×3" || srcCA.ShareOutdated {
 		t.Fatalf("srcCA = %+v", srcCA)
 	}
 
 	// R1 + R8: Beto Ficticio (Escuela B) copies "Gazebos Ficticios SRL" -> enters "otros" with all prices in order, without notes or school.
 	rec = fB.do(http.MethodPost, "/api/shared-contacts/"+sh.ID+"/copy", "", ip, officerB, nil)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("copy = %d body=%s", rec.Code, rec.Body)
-	}
+	copy1 := decodeJSON[contactWithShareDTO](t, rec, http.StatusCreated)
 	if strings.Contains(rec.Body.String(), fA.tenant) || strings.Contains(rec.Body.String(), fA.tenantName) || strings.Contains(rec.Body.String(), "Nota confidencial A") {
 		t.Fatalf("copy response leaked source school or notes: %s", rec.Body.String())
 	}
-	var copy1 contactWithShareDTO
-	_ = json.Unmarshal(rec.Body.Bytes(), &copy1)
 	if copy1.HeadingName != "otros" || copy1.HeadingID != headingsB["otros"] ||
 		copy1.Name != "Gazebos Ficticios SRL" || copy1.Phone != "381 555-0000" ||
 		copy1.Email != "ventas@gazebos-ficticios.example" || copy1.Zone != "Yerba Buena" ||
-		copy1.Notes != "" || copy1.ShareStatus != nil || len(copy1.ReferencePrices) != len(srcCA.ReferencePrices) {
+		copy1.Notes != "" || copy1.ShareStatus != nil {
 		t.Fatalf("copy1 = %+v", copy1)
 	}
-	for i, wantPrice := range srcCA.ReferencePrices {
-		gotPrice := copy1.ReferencePrices[i]
-		if gotPrice.Description != wantPrice.Description || gotPrice.AmountCents != wantPrice.AmountCents || gotPrice.Date != wantPrice.Date {
-			t.Fatalf("copy1 price[%d] = %+v, want %+v", i, gotPrice, wantPrice)
-		}
-	}
+	assertPricesMatch(t, "copy1", copy1.ReferencePrices, srcCA.ReferencePrices, func(p referencePriceDTO) (string, int64, string) {
+		return p.Description, p.AmountCents, p.Date
+	})
 	var bLinks int
 	if err := tdb.Super.QueryRow(ctx, `SELECT count(*) FROM shared_contact_links WHERE tenant_id = $1`, fB.tenant).Scan(&bLinks); err != nil || bLinks != 0 {
 		t.Fatalf("copying school received shared_contact_links rows = %d (err=%v), want 0", bLinks, err)
@@ -694,48 +693,51 @@ func TestSharedContactsCopyAndIndependence(t *testing.T) {
 		_, _ = tdb.Super.Exec(context.Background(), `DROP TRIGGER IF EXISTS http_copy_price_fail_probe_trig ON contact_reference_prices; DROP FUNCTION IF EXISTS http_copy_price_fail_probe()`)
 	})
 	wantResponse(t, fC.do(http.MethodPost, "/api/shared-contacts/"+sh.ID+"/copy", "", ip, officerC, nil), http.StatusInternalServerError, `{"error":"internal"}`)
-	rec = fC.do(http.MethodGet, "/api/contacts", "", ip, officerC, nil)
-	var listC []contactWithShareDTO
-	_ = json.Unmarshal(rec.Body.Bytes(), &listC)
-	if len(listC) != 1 {
-		t.Fatalf("C contacts after failed atomic copy = %d, want 1", len(listC))
+	listC := decodeJSON[[]contactWithShareDTO](t, fC.do(http.MethodGet, "/api/contacts", "", ip, officerC, nil), http.StatusOK)
+	if len(listC) != 1 || listC[0].ID != copyC.ID {
+		t.Fatalf("C contacts after failed atomic copy = %+v, want only %s", listC, copyC.ID)
 	}
 
 	// R2: Copying twice creates two independent contacts.
-	rec = fB.do(http.MethodPost, "/api/shared-contacts/"+sh.ID+"/copy", "", ip, officerB, nil)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("second copy = %d body=%s", rec.Code, rec.Body)
-	}
-	var copy2 contactWithShareDTO
-	_ = json.Unmarshal(rec.Body.Bytes(), &copy2)
+	copy2 := decodeJSON[contactWithShareDTO](t, fB.do(http.MethodPost, "/api/shared-contacts/"+sh.ID+"/copy", "", ip, officerB, nil), http.StatusCreated)
 	if copy2.ID == copy1.ID {
 		t.Fatalf("duplicate copy reused id %s", copy1.ID)
 	}
 
 	// R2: Editing B's copy does not alter shared entry or A's contact.
-	rec = fB.do(http.MethodPatch, "/api/contacts/"+copy1.ID, `{"phone":"381 999-9999"}`, ip, officerB, nil)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("patch copy = %d body=%s", rec.Code, rec.Body)
+	patchedCopy1 := decodeJSON[contactWithShareDTO](t, fB.do(http.MethodPatch, "/api/contacts/"+copy1.ID, `{"phone":"381 999-9999"}`, ip, officerB, nil), http.StatusOK)
+	if patchedCopy1.Phone != "381 999-9999" {
+		t.Fatalf("patched copy1 phone = %q, want 381 999-9999", patchedCopy1.Phone)
 	}
-	rec = fB.do(http.MethodGet, "/api/shared-contacts", "", ip, officerB, nil)
-	var page sharedContactPageDTO
-	_ = json.Unmarshal(rec.Body.Bytes(), &page)
+	page := decodeJSON[sharedContactPageDTO](t, fB.do(http.MethodGet, "/api/shared-contacts", "", ip, officerB, nil), http.StatusOK)
 	if len(page.Items) != 2 {
 		t.Fatalf("shared items after copy edit = %+v, want 2", page.Items)
 	}
-	for _, it := range page.Items {
-		if it.ID == sh.ID && it.Phone != "381 555-0000" {
-			t.Fatalf("shared entry altered by copy edit: %+v", it)
-		}
+	gotSh := requireByID(t, page.Items, sh.ID, func(it sharedContactDTO) string { return it.ID })
+	if gotSh.Name != "Gazebos Ficticios SRL" || gotSh.HeadingName != "gazebos" ||
+		gotSh.Phone != "381 555-0000" || gotSh.Email != "ventas@gazebos-ficticios.example" ||
+		gotSh.Zone != "Yerba Buena" {
+		t.Fatalf("shared entry altered by copy edit: %+v", gotSh)
 	}
-	rec = fA.do(http.MethodGet, "/api/contacts", "", ip, officerA, nil)
-	var listA []contactWithShareDTO
-	_ = json.Unmarshal(rec.Body.Bytes(), &listA)
-	for _, c := range listA {
-		if c.ID == cA.ID && c.Phone != "381 555-0000" {
-			t.Fatalf("A contact altered by B copy edit: %+v", c)
-		}
+	assertPricesMatch(t, "shared entry", gotSh.ReferencePrices, srcCA.ReferencePrices, func(p sharedReferencePriceDTO) (string, int64, string) {
+		return p.Description, p.AmountCents, p.Date
+	})
+	_ = requireByID(t, page.Items, shSon.ID, func(it sharedContactDTO) string { return it.ID })
+
+	listA := decodeJSON[[]contactWithShareDTO](t, fA.do(http.MethodGet, "/api/contacts", "", ip, officerA, nil), http.StatusOK)
+	if len(listA) != 3 {
+		t.Fatalf("A contacts after copy edit = %+v, want 3", listA)
 	}
+	gotCA := requireByID(t, listA, cA.ID, func(c contactWithShareDTO) string { return c.ID })
+	if gotCA.Name != "Gazebos Ficticios SRL" || gotCA.HeadingID != headingsA["gazebos"] ||
+		gotCA.Phone != "381 555-0000" || gotCA.Email != "ventas@gazebos-ficticios.example" ||
+		gotCA.Zone != "Yerba Buena" || gotCA.Notes != "Nota confidencial A" ||
+		gotCA.ShareOutdated || !gotCA.HasApprovedShare || gotCA.ShareStatus == nil || *gotCA.ShareStatus != "approved" {
+		t.Fatalf("A contact altered by B copy edit: %+v", gotCA)
+	}
+	assertPricesMatch(t, "A contact", gotCA.ReferencePrices, srcCA.ReferencePrices, func(p referencePriceDTO) (string, int64, string) {
+		return p.Description, p.AmountCents, p.Date
+	})
 
 	// R2 + R3: A withdraws -> leaves shared directory, copy in B remains, and copying withdrawn returns 404.
 	wantResponse(t, fA.do(http.MethodDelete, "/api/contacts/"+cA.ID+"/share", "", ip, officerA, nil), http.StatusNoContent, "")
@@ -747,11 +749,18 @@ func TestSharedContactsCopyAndIndependence(t *testing.T) {
 	}
 	wantResponse(t, fB.do(http.MethodPost, "/api/shared-contacts/"+shSon.ID+"/copy", "", ip, officerB, nil), http.StatusNotFound, `{"error":"not_found"}`)
 
-	rec = fB.do(http.MethodGet, "/api/contacts", "", ip, officerB, nil)
-	var listB []contactWithShareDTO
-	_ = json.Unmarshal(rec.Body.Bytes(), &listB)
+	listB := decodeJSON[[]contactWithShareDTO](t, fB.do(http.MethodGet, "/api/contacts", "", ip, officerB, nil), http.StatusOK)
 	if len(listB) != 3 {
 		t.Fatalf("B contacts after A withdraw and admin remove = %d, want 3", len(listB))
+	}
+	if gotCopy1 := requireByID(t, listB, copy1.ID, func(c contactWithShareDTO) string { return c.ID }); gotCopy1.Phone != "381 999-9999" {
+		t.Fatalf("copy1 altered after withdraw/remove: %+v", gotCopy1)
+	}
+	if gotCopy2 := requireByID(t, listB, copy2.ID, func(c contactWithShareDTO) string { return c.ID }); gotCopy2.Phone != "381 555-0000" {
+		t.Fatalf("copy2 altered after withdraw/remove: %+v", gotCopy2)
+	}
+	if gotCopySon := requireByID(t, listB, copySon.ID, func(c contactWithShareDTO) string { return c.ID }); gotCopySon.Phone != "381 444-0000" {
+		t.Fatalf("copySon altered after withdraw/remove: %+v", gotCopySon)
 	}
 }
 
@@ -824,39 +833,22 @@ func TestSharedContactsWithdrawAndReshareHTTP(t *testing.T) {
 	wantResponse(t, fB.do(http.MethodDelete, "/api/contacts/"+cA.ID+"/share", "", ip, officerB, nil), http.StatusNotFound, `{"error":"not_found"}`)
 
 	// R4: Editing only notes keeps shareOutdated=false; editing phone sets shareOutdated=true and leaves search unchanged.
-	rec = fA.do(http.MethodPatch, "/api/contacts/"+cA.ID, `{"notes":"Solo nota interna"}`, ip, officerA, nil)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("patch notes = %d body=%s", rec.Code, rec.Body)
-	}
-	var patchedNotes contactWithShareDTO
-	_ = json.Unmarshal(rec.Body.Bytes(), &patchedNotes)
+	patchedNotes := decodeJSON[contactWithShareDTO](t, fA.do(http.MethodPatch, "/api/contacts/"+cA.ID, `{"notes":"Solo nota interna"}`, ip, officerA, nil), http.StatusOK)
 	if patchedNotes.ShareOutdated || !patchedNotes.HasApprovedShare || patchedNotes.ShareStatus == nil || *patchedNotes.ShareStatus != "approved" {
 		t.Fatalf("notes-only patch = %+v, want shareOutdated=false hasApprovedShare=true shareStatus=approved", patchedNotes)
 	}
 
-	rec = fA.do(http.MethodPatch, "/api/contacts/"+cA.ID, `{"phone":"381 200-0002"}`, ip, officerA, nil)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("patch = %d body=%s", rec.Code, rec.Body)
-	}
-	var patched contactWithShareDTO
-	_ = json.Unmarshal(rec.Body.Bytes(), &patched)
+	patched := decodeJSON[contactWithShareDTO](t, fA.do(http.MethodPatch, "/api/contacts/"+cA.ID, `{"phone":"381 200-0002"}`, ip, officerA, nil), http.StatusOK)
 	if !patched.ShareOutdated || !patched.HasApprovedShare || patched.ShareStatus == nil || *patched.ShareStatus != "approved" {
 		t.Fatalf("patched = %+v, want shareOutdated=true hasApprovedShare=true shareStatus=approved", patched)
 	}
-	rec = fB.do(http.MethodGet, "/api/shared-contacts", "", ip, officerB, nil)
-	var page sharedContactPageDTO
-	_ = json.Unmarshal(rec.Body.Bytes(), &page)
-	if len(page.Items) != 1 || page.Items[0].Phone != "381 100-0001" {
-		t.Fatalf("shared search after edit = %+v, want old phone", page.Items)
+	page := decodeJSON[sharedContactPageDTO](t, fB.do(http.MethodGet, "/api/shared-contacts", "", ip, officerB, nil), http.StatusOK)
+	if len(page.Items) != 1 || page.Items[0].ID != v1.ID || page.Items[0].Phone != "381 100-0001" {
+		t.Fatalf("shared search after edit = %+v, want v1 old phone", page.Items)
 	}
 
 	// R5: Re-share while approved -> 201 pending v2; v1 stays visible; second re-share -> 409 already_pending.
-	rec = fA.do(http.MethodPost, "/api/contacts/"+cA.ID+"/share", "", ip, officerA, nil)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("re-share = %d body=%s", rec.Code, rec.Body)
-	}
-	var v2 shareResponseDTO
-	_ = json.Unmarshal(rec.Body.Bytes(), &v2)
+	v2 := decodeJSON[shareResponseDTO](t, fA.do(http.MethodPost, "/api/contacts/"+cA.ID+"/share", "", ip, officerA, nil), http.StatusCreated)
 	if v2.ID == v1.ID || v2.Status != "pending" {
 		t.Fatalf("v2 = %+v", v2)
 	}
@@ -866,8 +858,7 @@ func TestSharedContactsWithdrawAndReshareHTTP(t *testing.T) {
 		t.Fatalf("links after 409 already_pending = %d (err=%v), want 4", linkCount, err)
 	}
 
-	rec = fB.do(http.MethodGet, "/api/shared-contacts", "", ip, officerB, nil)
-	_ = json.Unmarshal(rec.Body.Bytes(), &page)
+	page = decodeJSON[sharedContactPageDTO](t, fB.do(http.MethodGet, "/api/shared-contacts", "", ip, officerB, nil), http.StatusOK)
 	if len(page.Items) != 1 || page.Items[0].ID != v1.ID {
 		t.Fatalf("shared search while v2 pending = %+v, want v1", page.Items)
 	}
@@ -876,15 +867,12 @@ func TestSharedContactsWithdrawAndReshareHTTP(t *testing.T) {
 	if err := contacts.ApproveShared(ctx, tdb.Super, v2.ID, time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	rec = fB.do(http.MethodGet, "/api/shared-contacts", "", ip, officerB, nil)
-	_ = json.Unmarshal(rec.Body.Bytes(), &page)
+	page = decodeJSON[sharedContactPageDTO](t, fB.do(http.MethodGet, "/api/shared-contacts", "", ip, officerB, nil), http.StatusOK)
 	if len(page.Items) != 1 || page.Items[0].ID != v2.ID || page.Items[0].Phone != "381 200-0002" {
 		t.Fatalf("shared search after approve v2 = %+v, want v2", page.Items)
 	}
-	rec = fA.do(http.MethodGet, "/api/contacts", "", ip, officerA, nil)
-	var listA []contactWithShareDTO
-	_ = json.Unmarshal(rec.Body.Bytes(), &listA)
-	if len(listA) != 1 || listA[0].ShareOutdated || listA[0].ShareStatus == nil || *listA[0].ShareStatus != "approved" {
+	listA := decodeJSON[[]contactWithShareDTO](t, fA.do(http.MethodGet, "/api/contacts", "", ip, officerA, nil), http.StatusOK)
+	if len(listA) != 1 || listA[0].ID != cA.ID || listA[0].ShareOutdated || listA[0].ShareStatus == nil || *listA[0].ShareStatus != "approved" {
 		t.Fatalf("listA after approve v2 = %+v", listA)
 	}
 
@@ -893,22 +881,16 @@ func TestSharedContactsWithdrawAndReshareHTTP(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("patch before v3 = %d body=%s", rec.Code, rec.Body)
 	}
-	rec = fA.do(http.MethodPost, "/api/contacts/"+cA.ID+"/share", "", ip, officerA, nil)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("re-share v3 = %d body=%s", rec.Code, rec.Body)
-	}
-	var v3 shareResponseDTO
-	_ = json.Unmarshal(rec.Body.Bytes(), &v3)
+	v3 := decodeJSON[shareResponseDTO](t, fA.do(http.MethodPost, "/api/contacts/"+cA.ID+"/share", "", ip, officerA, nil), http.StatusCreated)
 
 	wantResponse(t, fA.do(http.MethodDelete, "/api/contacts/"+cA.ID+"/share", "", ip, officerA, nil), http.StatusNoContent, "")
 	for _, tc := range []struct {
 		f   *fixture
 		tok string
 	}{{fA, officerA}, {fB, officerB}} {
-		rec = tc.f.do(http.MethodGet, "/api/shared-contacts", "", ip, tc.tok, nil)
-		_ = json.Unmarshal(rec.Body.Bytes(), &page)
-		if len(page.Items) != 0 {
-			t.Fatalf("withdrawn still visible: %+v", page.Items)
+		gotPage := decodeJSON[sharedContactPageDTO](t, tc.f.do(http.MethodGet, "/api/shared-contacts", "", ip, tc.tok, nil), http.StatusOK)
+		if len(gotPage.Items) != 0 {
+			t.Fatalf("withdrawn still visible: %+v", gotPage.Items)
 		}
 	}
 	if err := contacts.ApproveShared(ctx, tdb.Super, v3.ID, time.Now()); err == nil {
@@ -1010,11 +992,7 @@ func TestSharedContactsConcurrentWithdrawRemoveRace(t *testing.T) {
 			tok  string
 		}{{"A", fA, officerA}, {"B", fB, officerB}} {
 			r := tc.f.do(http.MethodGet, "/api/shared-contacts", "", ip, tc.tok, nil)
-			if r.Code != http.StatusOK {
-				t.Fatalf("round %d search %s = %d body=%s", round, tc.name, r.Code, r.Body)
-			}
-			var page sharedContactPageDTO
-			_ = json.Unmarshal(r.Body.Bytes(), &page)
+			page := decodeJSON[sharedContactPageDTO](t, r, http.StatusOK)
 			if len(page.Items) != 0 {
 				t.Fatalf("round %d search %s still had %+v", round, tc.name, page.Items)
 			}

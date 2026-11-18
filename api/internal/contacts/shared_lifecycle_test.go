@@ -209,6 +209,15 @@ func TestSharedContactsCopyStore(t *testing.T) {
 	if err != nil || len(bList) != 3 {
 		t.Fatalf("B contacts after remove = %d (err=%v), want 3", len(bList), err)
 	}
+	seenB := make(map[string]bool, len(bList))
+	for _, c := range bList {
+		seenB[c.ID] = true
+	}
+	for _, wantID := range []string{copyB1.ID, copyB2.ID, copySonB.ID} {
+		if !seenB[wantID] {
+			t.Fatalf("B contact %s missing after remove; got %+v", wantID, bList)
+		}
+	}
 }
 
 func TestSharedContactsWithdrawAndReshareStore(t *testing.T) {
