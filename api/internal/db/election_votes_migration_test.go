@@ -6,6 +6,7 @@ import (
 	"errors"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/db"
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/testdb"
@@ -144,9 +145,10 @@ func TestElectionVotesMigration00034(t *testing.T) {
 		}
 	})
 
-	// Seed two schools, each with an election, an approved list and two roster members.
+	// Seed schools, each with an election voting from start for 10 hours, an approved list and two
+	// roster members. The database clock decides whether a flush may run, so dates are real ones.
 	type fixture struct{ tenant, election, list, ana, beto string }
-	seed := func(name, doc string) fixture {
+	seed := func(name, doc string, start time.Time) fixture {
 		t.Helper()
 		var f fixture
 		if err := su.QueryRow(ctx, `INSERT INTO organizations(kind,name) VALUES ('school',$1) RETURNING id::text`, name).Scan(&f.tenant); err != nil {
@@ -163,7 +165,8 @@ func TestElectionVotesMigration00034(t *testing.T) {
 			t.Fatal(err)
 		}
 		if err := su.QueryRow(ctx, `INSERT INTO elections(tenant_id,commission_id,name,mode,submission_starts_at,submission_ends_at,starts_at,ends_at)
-			VALUES ($1,$2,'Elección','secret','2027-03-01','2027-03-06','2027-03-10 08:00','2027-03-10 18:00') RETURNING id::text`, f.tenant, commission).Scan(&f.election); err != nil {
+			VALUES ($1,$2,'Elección','secret',$3,$4,$5,$6) RETURNING id::text`, f.tenant, commission,
+			start.AddDate(0, 0, -9), start.AddDate(0, 0, -4), start, start.Add(10*time.Hour)).Scan(&f.election); err != nil {
 			t.Fatal(err)
 		}
 		if err := su.QueryRow(ctx, `INSERT INTO election_lists(tenant_id,election_id,name,representative_id,status) VALUES ($1,$2,'Lista Azul',$3,'approved') RETURNING id::text`,
@@ -172,8 +175,10 @@ func TestElectionVotesMigration00034(t *testing.T) {
 		}
 		return f
 	}
-	a := seed("Escuela A", "4000")
-	b := seed("Escuela B", "5000")
+	// A and B voted in March 2025: closed for the database clock, so their Ballots may be flushed.
+	closedStart := time.Date(2025, time.March, 10, 11, 0, 0, 0, time.UTC)
+	a := seed("Escuela A", "4000", closedStart)
+	b := seed("Escuela B", "5000", closedStart)
 	asApp := func(tenant string, fn func(pgx.Tx) error) error { return db.WithTenant(ctx, env.App, tenant, fn) }
 	exec := func(tenant, stmt string, args ...any) error {
 		return asApp(tenant, func(tx pgx.Tx) error { _, err := tx.Exec(ctx, stmt, args...); return err })
@@ -343,6 +348,72 @@ func TestElectionVotesMigration00034(t *testing.T) {
 		var pendingB int
 		if err := su.QueryRow(ctx, `SELECT count(*) FROM election_ballot_pending WHERE tenant_id = $1`, b.tenant).Scan(&pendingB); err != nil || pendingB != 1 {
 			t.Fatalf("B pending = %d (err=%v), want 1 (untouched)", pendingB, err)
+		}
+	})
+
+	t.Run("S10 no flush while open and voting dates frozen once started", func(t *testing.T) {
+		const notYet = "55000" // object_not_in_prerequisite_state
+		// C opened an hour ago by the database clock and is still open; D starts in a year.
+		c := seed("Escuela C", "6000", time.Now().Add(-time.Hour).Truncate(time.Minute))
+		d := seed("Escuela D", "7000", time.Now().AddDate(1, 0, 0).Truncate(time.Minute))
+		if err := snapshot(c); err != nil {
+			t.Fatal(err)
+		}
+		if err := exec(c.tenant, `SELECT election_ballot_cast($1, $2, $3)`, c.election, c.ana, c.list); err != nil {
+			t.Fatalf("cast C: %v", err)
+		}
+		counts := func() (pending, box int) {
+			t.Helper()
+			if err := su.QueryRow(ctx, `SELECT (SELECT count(*) FROM election_ballot_pending WHERE election_id = $1),
+			                                   (SELECT count(*) FROM election_ballots WHERE election_id = $1)`, c.election).Scan(&pending, &box); err != nil {
+				t.Fatal(err)
+			}
+			return pending, box
+		}
+		if p, bx := counts(); p != 1 || bx != 0 {
+			t.Fatalf("before the flush: pending %d box %d, want 1 and 0", p, bx)
+		}
+		err := exec(c.tenant, `SELECT election_ballots_flush($1)`, c.election)
+		if code(err) != notYet {
+			t.Fatalf("flush of an open election: got %v, want %s", err, notYet)
+		}
+		if p, bx := counts(); p != 1 || bx != 0 {
+			t.Fatalf("after the refused flush: pending %d box %d, want 1 and 0", p, bx)
+		}
+		dates := func(election string) (starts, ends time.Time) {
+			t.Helper()
+			if err := su.QueryRow(ctx, `SELECT starts_at, ends_at FROM elections WHERE id = $1`, election).Scan(&starts, &ends); err != nil {
+				t.Fatal(err)
+			}
+			return starts, ends
+		}
+		// Once started, neither date moves: moving starts_at to the future first would otherwise
+		// unfreeze ends_at, and moving ends_at to the past would unlock the flush.
+		for _, f := range []fixture{c, a} {
+			s0, e0 := dates(f.election)
+			for _, set := range []string{
+				`ends_at = now() - interval '1 minute'`,
+				`ends_at = ends_at + interval '1 hour'`,
+				`starts_at = now() + interval '1 day', ends_at = now() + interval '2 days'`,
+				`starts_at = starts_at + interval '1 minute'`,
+			} {
+				if err := exec(f.tenant, `UPDATE elections SET `+set+` WHERE id = $1`, f.election); code(err) != notYet {
+					t.Fatalf("UPDATE %s on a started election: got %v, want %s", set, err, notYet)
+				}
+			}
+			if s1, e1 := dates(f.election); !s1.Equal(s0) || !e1.Equal(e0) {
+				t.Fatalf("dates changed: %s-%s, want %s-%s", s1, e1, s0, e0)
+			}
+		}
+		// Other columns of a started election, and the dates of one not started yet, still change.
+		if err := exec(c.tenant, `UPDATE elections SET name = 'Elección 2' WHERE id = $1`, c.election); err != nil {
+			t.Fatalf("rename a started election: %v", err)
+		}
+		if err := exec(c.tenant, `UPDATE elections SET starts_at = starts_at, ends_at = ends_at WHERE id = $1`, c.election); err != nil {
+			t.Fatalf("rewrite the same dates of a started election: %v", err)
+		}
+		if err := exec(d.tenant, `UPDATE elections SET starts_at = starts_at + interval '1 hour', ends_at = ends_at + interval '2 hours' WHERE id = $1`, d.election); err != nil {
+			t.Fatalf("move the dates of a future election: %v", err)
 		}
 	})
 

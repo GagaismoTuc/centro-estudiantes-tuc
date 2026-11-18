@@ -99,20 +99,49 @@ CREATE POLICY election_ballots_tenant_isolation ON election_ballots TO ce_app, C
     USING (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid)
     WITH CHECK (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid);
 
+-- The functions' owner reads the election's dates under FORCE: same tenant rule, SELECT only.
+CREATE POLICY elections_ballot_functions_read ON elections FOR SELECT TO CURRENT_USER
+    USING (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid);
+
+-- Once an election started (by the database clock), its starts_at and ends_at never change: moving
+-- ends_at back would let election_ballots_flush run while voting is open, and moving starts_at to
+-- the future first would lift this freeze. ce_app may still update the election's other columns.
+-- +goose StatementBegin
+CREATE FUNCTION elections_freeze_voting_dates() RETURNS trigger
+    LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+    RAISE EXCEPTION 'election voting dates are frozen once it started' USING ERRCODE = 'object_not_in_prerequisite_state';
+END
+$$;
+-- +goose StatementEnd
+CREATE TRIGGER elections_freeze_voting_dates BEFORE UPDATE OF starts_at, ends_at ON elections FOR EACH ROW
+    WHEN (OLD.starts_at <= now() AND (NEW.starts_at IS DISTINCT FROM OLD.starts_at OR NEW.ends_at IS DISTINCT FROM OLD.ends_at))
+    EXECUTE FUNCTION elections_freeze_voting_dates();
+
 -- election_ballots_flush, called after the close, writes the whole box of the election at once: when
 -- Ballots are pending, it deletes the election's box and pending rows and inserts all of them again
 -- in random order with new ids, so the box's storage order is one uniform shuffle of every Ballot
--- (an early call while open is undone by the final one). It returns how many pending Ballots it
--- moved; with none pending it changes nothing and returns 0.
+-- (an early call is undone by the final one). It refuses (55000) while the election is open by the
+-- database clock: flushing after each vote would show per-list counts that, with the registry,
+-- tie the latest voter to their Ballot. It returns how many pending Ballots it moved; with none
+-- pending, or for an election not of the tenant, it changes nothing and returns 0.
 -- +goose StatementBegin
 CREATE FUNCTION election_ballots_flush(p_election uuid) RETURNS int
     LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE
     t uuid := nullif(current_setting('app.tenant_id', true), '')::uuid;
+    closes timestamptz;
     n int;
 BEGIN
     IF t IS NULL THEN
         RAISE EXCEPTION 'election_ballots_flush: no tenant set' USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    SELECT ends_at INTO closes FROM public.elections WHERE tenant_id = t AND id = p_election;
+    IF closes IS NULL THEN
+        RETURN 0;
+    END IF;
+    IF now() < closes THEN
+        RAISE EXCEPTION 'election_ballots_flush: election still open' USING ERRCODE = 'object_not_in_prerequisite_state';
     END IF;
     SELECT count(*) INTO n FROM public.election_ballot_pending WHERE tenant_id = t AND election_id = p_election;
     IF n = 0 THEN
@@ -159,6 +188,9 @@ GRANT EXECUTE ON FUNCTION election_ballots_flush(uuid) TO ce_app;
 GRANT EXECUTE ON FUNCTION election_ballot_cast(uuid, uuid, uuid) TO ce_app;
 
 -- +goose Down
+DROP TRIGGER elections_freeze_voting_dates ON elections;
+DROP FUNCTION elections_freeze_voting_dates();
+DROP POLICY elections_ballot_functions_read ON elections;
 DROP FUNCTION election_ballot_cast(uuid, uuid, uuid);
 DROP FUNCTION election_ballots_flush(uuid);
 DROP TABLE election_ballots;

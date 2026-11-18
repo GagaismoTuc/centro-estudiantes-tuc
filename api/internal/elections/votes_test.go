@@ -34,8 +34,28 @@ func newVoting(t *testing.T, ctx context.Context) voting {
 	return v
 }
 
-// insertElection stores an election of the example dates in tenant, annulled when annulled is set.
+// on2025 is 10 March 2025 at hour:minute, Argentina time: the voting day of the vote tests.
+func on2025(hour, minute int) time.Time {
+	return time.Date(2025, time.March, 10, hour, minute, 0, 0, art)
+}
+
+// voting2025 has the example's dates moved to 2025: the database clock checks the close before a
+// flush, so "after the close" must be past for it too. The borders are the example's: 08:00 to 18:00.
+var voting2025 = elections.Election{
+	SubmissionStartsAt: time.Date(2025, time.March, 1, 0, 0, 0, 0, art),
+	SubmissionEndsAt:   time.Date(2025, time.March, 6, 0, 0, 0, 0, art),
+	StartsAt:           on2025(8, 0),
+	EndsAt:             on2025(18, 0),
+}
+
+// insertElection stores an election of the voting2025 dates in tenant, annulled when annulled is set.
 func insertElection(t *testing.T, ctx context.Context, tenant string, annulled *time.Time) string {
+	t.Helper()
+	return insertElectionAt(t, ctx, tenant, annulled, voting2025)
+}
+
+// insertElectionAt is insertElection with the dates of d.
+func insertElectionAt(t *testing.T, ctx context.Context, tenant string, annulled *time.Time, d elections.Election) string {
 	t.Helper()
 	var commission, id string
 	if err := tdb.Super.QueryRow(ctx, `SELECT id::text FROM electoral_commissions WHERE tenant_id = $1 AND ended_at IS NULL`, tenant).Scan(&commission); errors.Is(err, pgx.ErrNoRows) {
@@ -53,8 +73,8 @@ func insertElection(t *testing.T, ctx context.Context, tenant string, annulled *
 	}
 	if err := tdb.Super.QueryRow(ctx, `
 		INSERT INTO elections (tenant_id, commission_id, name, mode, submission_starts_at, submission_ends_at, starts_at, ends_at, annulled_at, annulment_reason)
-		VALUES ($1, $2, 'Elección 2027', 'secret', $3, $4, $5, $6, $7, $8) RETURNING id::text`,
-		tenant, commission, example2027.SubmissionStartsAt, example2027.SubmissionEndsAt, example2027.StartsAt, example2027.EndsAt,
+		VALUES ($1, $2, 'Elección', 'secret', $3, $4, $5, $6, $7, $8) RETURNING id::text`,
+		tenant, commission, d.SubmissionStartsAt, d.SubmissionEndsAt, d.StartsAt, d.EndsAt,
 		annulled, reason).Scan(&id); err != nil {
 		t.Fatal(err)
 	}
@@ -100,13 +120,13 @@ func votesOf(t *testing.T, ctx context.Context, tenant string) storedVotes {
 	}
 }
 
-func at0800() *fakeClock { return &fakeClock{example2027.StartsAt} }
+func at0800() *fakeClock { return &fakeClock{voting2025.StartsAt} }
 
 // S1: voting opens at StartsAt and closes at EndsAt (inclusive); a refused vote writes nothing.
 func TestCastVoteOpensAndClosesByTheClock(t *testing.T) {
 	ctx := integration(t)
 	v := newVoting(t, ctx)
-	clk := &fakeClock{at(time.March, 10, 7, 59)}
+	clk := &fakeClock{on2025(7, 59)}
 	st := newStore(clk)
 	if err := st.CastVote(ctx, v.tenant, v.election, v.ana, v.azul); !errors.Is(err, elections.ErrElectionNotOpen) {
 		t.Fatalf("07:59: err = %v, want ErrElectionNotOpen", err)
@@ -114,7 +134,7 @@ func TestCastVoteOpensAndClosesByTheClock(t *testing.T) {
 	if got := votesOf(t, ctx, v.tenant); got != (storedVotes{}) {
 		t.Fatalf("07:59 wrote %+v, want nothing", got)
 	}
-	clk.t = at(time.March, 10, 8, 0)
+	clk.t = on2025(8, 0)
 	if err := st.CastVote(ctx, v.tenant, v.election, v.ana, v.azul); err != nil {
 		t.Fatalf("08:00: %v", err)
 	}
@@ -122,7 +142,7 @@ func TestCastVoteOpensAndClosesByTheClock(t *testing.T) {
 	if got := votesOf(t, ctx, v.tenant); got != want {
 		t.Fatalf("after 08:00 vote: %+v, want %+v", got, want)
 	}
-	clk.t = at(time.March, 10, 18, 0)
+	clk.t = on2025(18, 0)
 	if err := st.CastVote(ctx, v.tenant, v.election, v.beto, v.roja); !errors.Is(err, elections.ErrElectionNotOpen) {
 		t.Fatalf("18:00: err = %v, want ErrElectionNotOpen", err)
 	}
@@ -136,7 +156,7 @@ func TestCastVoteOpensAndClosesByTheClock(t *testing.T) {
 func TestElectorateIsTheRosterAtTheFirstAccessAfterTheStart(t *testing.T) {
 	ctx := integration(t)
 	v := newVoting(t, ctx)
-	clk := &fakeClock{at(time.March, 10, 7, 0)}
+	clk := &fakeClock{on2025(7, 0)}
 	st := newStore(clk)
 	if _, err := st.Turnout(ctx, v.tenant, v.election, v.ana); !errors.Is(err, elections.ErrElectionNotOpen) {
 		t.Fatalf("Turnout before the start: err = %v, want ErrElectionNotOpen", err)
@@ -144,7 +164,7 @@ func TestElectorateIsTheRosterAtTheFirstAccessAfterTheStart(t *testing.T) {
 	if got := votesOf(t, ctx, v.tenant); got != (storedVotes{}) {
 		t.Fatalf("before the start a snapshot was taken: %+v", got)
 	}
-	clk.t = at(time.March, 10, 8, 30)
+	clk.t = on2025(8, 30)
 	got, err := st.Turnout(ctx, v.tenant, v.election, v.ana)
 	if err != nil {
 		t.Fatalf("Turnout: %v", err)
@@ -213,7 +233,7 @@ func TestCastVoteWithoutApprovedListsDoesNotOpen(t *testing.T) {
 func TestCastVoteOnAnAnnulledElection(t *testing.T) {
 	ctx := integration(t)
 	s := newSchool(t, ctx)
-	annulled := example2027.StartsAt.Add(-time.Hour)
+	annulled := voting2025.StartsAt.Add(-time.Hour)
 	election := insertElection(t, ctx, s.tenant, &annulled)
 	list := insertList(t, ctx, s.tenant, election, s.ana, "Lista Azul", "approved")
 	st := newStore(at0800())
@@ -235,7 +255,7 @@ func TestCastVoteChoices(t *testing.T) {
 	v := newVoting(t, ctx)
 	pendingList := insertList(t, ctx, v.tenant, v.election, v.carla, "Lista Pendiente", "pending")
 	rejected := insertList(t, ctx, v.tenant, v.election, v.carla, "Lista Rechazada", "rejected")
-	past := example2027.StartsAt.AddDate(-1, 0, 0)
+	past := voting2025.StartsAt.AddDate(-1, 0, 0)
 	older := insertElection(t, ctx, v.tenant, &past)
 	otherElection := insertList(t, ctx, v.tenant, older, v.ana, "Lista Vieja", "approved")
 	other := newVoting(t, ctx)
@@ -417,7 +437,7 @@ func TestTurnoutCountsVotersAndTheCallersOwnVote(t *testing.T) {
 	if got := votesOf(t, ctx, v.tenant); got.pending != 1 || got.box != 0 {
 		t.Fatalf("while open: %+v, want the Ballot pending", got)
 	}
-	clk.t = example2027.EndsAt
+	clk.t = voting2025.EndsAt
 	if got, err := st.Turnout(ctx, v.tenant, v.election, v.ana); err != nil || got != (elections.Turnout{Voted: 1, Electorate: 3, HasVoted: true}) {
 		t.Fatalf("turnout after the close = %+v (err %v)", got, err)
 	}
@@ -433,11 +453,15 @@ func TestTurnoutCountsVotersAndTheCallersOwnVote(t *testing.T) {
 // whole box is written once in a uniformly random order, so its storage order (what a query without
 // ORDER BY returns) does not follow the vote order, not even by groups. The box keeps no time and no
 // link to the voter, its ids are random, and ce_app can read neither the pending Ballots nor the
-// box's ids or system columns. A flush called by ce_app while open is erased by the final one.
+// box's ids or system columns. A flush called by ce_app while the election is open (by the database
+// clock) is refused and changes nothing.
 func TestBallotBoxKeepsNoLinkToTheVoter(t *testing.T) {
 	ctx := integration(t)
 	s := newSchool(t, ctx)
-	election := insertElection(t, ctx, s.tenant, nil)
+	// Open now for the database clock, so the misused flush below meets the database's own check.
+	start := time.Now().Add(-time.Hour).Truncate(time.Minute)
+	open := elections.Election{SubmissionStartsAt: start.AddDate(0, 0, -9), SubmissionEndsAt: start.AddDate(0, 0, -4), StartsAt: start, EndsAt: start.Add(10 * time.Hour)}
+	election := insertElectionAt(t, ctx, s.tenant, nil, open)
 	const n = 45
 	voters := make([]string, n)
 	lists := make([]string, n)
@@ -445,7 +469,7 @@ func TestBallotBoxKeepsNoLinkToTheVoter(t *testing.T) {
 		voters[i] = addRosterMember(t, ctx, s.tenant, fmt.Sprintf("Votante %02d", i), fmt.Sprintf("8%04d", i))
 		lists[i] = insertList(t, ctx, s.tenant, election, voters[i], fmt.Sprintf("Lista %02d", i), "approved")
 	}
-	clk := at0800()
+	clk := &fakeClock{open.StartsAt}
 	st := newStore(clk)
 	appBox := func() []string {
 		t.Helper()
@@ -471,22 +495,35 @@ func TestBallotBoxKeepsNoLinkToTheVoter(t *testing.T) {
 		if got.voters != i+1 || got.pending+got.box != got.voters {
 			t.Fatalf("after %d votes: %+v, want as many Ballots as voters", i+1, got)
 		}
-		if i < misuseAt {
-			if got.box != 0 || len(appBox()) != 0 {
-				t.Fatalf("after %d votes the box is not empty while open: %+v", i+1, got)
-			}
+		if got.box != 0 || len(appBox()) != 0 {
+			t.Fatalf("after %d votes the box is not empty while open: %+v", i+1, got)
 		}
 		if i+1 == misuseAt {
-			// A misuse: ce_app flushes while open. The final flush rewrites the whole box.
-			if err := db.WithTenant(ctx, tdb.App, s.tenant, func(tx pgx.Tx) error {
+			// A misuse: ce_app flushes while open. The database refuses and nothing moves.
+			err := db.WithTenant(ctx, tdb.App, s.tenant, func(tx pgx.Tx) error {
 				_, err := tx.Exec(ctx, `SELECT election_ballots_flush($1)`, election)
 				return err
-			}); err != nil {
-				t.Fatal(err)
+			})
+			var pe *pgconn.PgError
+			if !errors.As(err, &pe) || pe.Code != "55000" {
+				t.Fatalf("flush while open: err = %v, want 55000", err)
+			}
+			if got := votesOf(t, ctx, s.tenant); got.box != 0 || got.pending != misuseAt || len(appBox()) != 0 {
+				t.Fatalf("after the refused flush: %+v, want %d pending and an empty box", got, misuseAt)
 			}
 		}
 	}
-	clk.t = example2027.EndsAt
+	// The close comes: the test moves the dates a day back, with the date-freezing trigger off for
+	// this one statement (session_replication_role), as the passing of time would.
+	if _, err := tdb.Super.Exec(ctx, `
+		BEGIN;
+		SET LOCAL session_replication_role = replica;
+		UPDATE elections SET submission_starts_at = submission_starts_at - interval '1 day', submission_ends_at = submission_ends_at - interval '1 day',
+		       starts_at = starts_at - interval '1 day', ends_at = ends_at - interval '1 day' WHERE id = '`+election+`';
+		COMMIT;`); err != nil {
+		t.Fatal(err)
+	}
+	clk.t = open.EndsAt.AddDate(0, 0, -1)
 	if _, err := st.Turnout(ctx, s.tenant, election, ""); err != nil {
 		t.Fatal(err)
 	}
@@ -516,7 +553,7 @@ func TestBallotBoxKeepsNoLinkToTheVoter(t *testing.T) {
 	}
 	// The storage order, by ctid and as ce_app reads it without ORDER BY, is one uniform shuffle of
 	// the 45 votes. Shuffled batches of 10 would keep every Ballot in its vote's group of 10 (45 of
-	// 45) and the misused flush would keep the first 20 at the front; a uniform shuffle keeps about
+	// 45); a uniform shuffle keeps about
 	// 10 Ballots in their group and about 1 at its exact position. The bounds fail by chance with a
 	// probability below one in a million.
 	cast := map[string]int{}
@@ -527,7 +564,7 @@ func TestBallotBoxKeepsNoLinkToTheVoter(t *testing.T) {
 		if len(order) != n {
 			t.Fatalf("%s: %d Ballots, want %d", name, len(order), n)
 		}
-		same, sameGroup, firstMisused := 0, 0, 0
+		same, sameGroup := 0, 0
 		for i, l := range order {
 			if cast[l] == i {
 				same++
@@ -535,13 +572,9 @@ func TestBallotBoxKeepsNoLinkToTheVoter(t *testing.T) {
 			if cast[l]/10 == i/10 {
 				sameGroup++
 			}
-			if i < misuseAt && cast[l] < misuseAt {
-				firstMisused++
-			}
 		}
-		if slices.Equal(order, lists) || same >= 10 || sameGroup >= 30 || firstMisused == misuseAt {
-			t.Fatalf("%s follows the vote order: %d at their vote position, %d in their group of 10, %d of the first %d at the front",
-				name, same, sameGroup, firstMisused, misuseAt)
+		if slices.Equal(order, lists) || same >= 10 || sameGroup >= 30 {
+			t.Fatalf("%s follows the vote order: %d at their vote position, %d in their group of 10", name, same, sameGroup)
 		}
 	}
 	if slices.IsSorted(ids) {
