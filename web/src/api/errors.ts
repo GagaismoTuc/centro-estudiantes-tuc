@@ -86,6 +86,7 @@ const contextual: Record<ErrorContext, Record<string, string>> = {
     invalid_amount: "Ingres\u00e1 un monto positivo en centavos enteros.",
     invalid_date: "Eleg\u00ed una fecha v\u00e1lida.",
     description_required: "Escrib\u00ed una descripci\u00f3n.",
+    invalid_range: "Revisá las fechas: elegí las dos y que la de inicio no sea posterior a la de fin.",
   },
   "due-exemption": {
     reason_required: "Escribí el motivo de la exención.",
@@ -124,6 +125,7 @@ const fieldsByCode: Record<string, string[]> = {
   invalid_amount: ["amount"],
   invalid_date: ["date", "dueDate"],
   future_date: ["date"],
+  invalid_range: ["from", "to"],
   description_required: ["description"],
   description_too_long: ["description"],
   invalid_credentials: ["email", "password", "currentPassword"],
