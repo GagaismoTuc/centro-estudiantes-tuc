@@ -126,6 +126,10 @@ func TestSharedContactsLifecycleAndPrivacy(t *testing.T) {
 
 	// R1 negative: sharing again while pending -> 409 already_pending; sharing another school's contact -> 404 not_found.
 	wantResponse(t, fA.do(http.MethodPost, "/api/contacts/"+cA.ID+"/share", "", ip, officerA, nil), http.StatusConflict, `{"error":"already_pending"}`)
+	var linkCount int
+	if err := tdb.Super.QueryRow(ctx, `SELECT count(*) FROM shared_contact_links WHERE tenant_id = $1 AND contact_id = $2`, fA.tenant, cA.ID).Scan(&linkCount); err != nil || linkCount != 1 {
+		t.Fatalf("links after 409 already_pending = %d (err=%v), want 1", linkCount, err)
+	}
 	wantResponse(t, fB.do(http.MethodPost, "/api/contacts/"+cA.ID+"/share", "", ip, officerB, nil), http.StatusNotFound, `{"error":"not_found"}`)
 
 	// R3 + R4: Reject via admin CLI function -> invisible in search, A sees rejected, A can share again.
@@ -164,6 +168,9 @@ func TestSharedContactsLifecycleAndPrivacy(t *testing.T) {
 		t.Fatalf("after re-share listA = %+v, want shareStatus=pending", listA)
 	}
 	wantResponse(t, fA.do(http.MethodPost, "/api/contacts/"+cA.ID+"/share", "", ip, officerA, nil), http.StatusConflict, `{"error":"already_pending"}`)
+	if err := tdb.Super.QueryRow(ctx, `SELECT count(*) FROM shared_contact_links WHERE tenant_id = $1 AND contact_id = $2`, fA.tenant, cA.ID).Scan(&linkCount); err != nil || linkCount != 2 {
+		t.Fatalf("links after 409 already_pending = %d (err=%v), want 2", linkCount, err)
+	}
 
 	// Approve share2 -> visible to B (without notes or school); re-sharing while approved -> 201 new pending (issue #82 R5).
 	if err := contacts.ApproveShared(ctx, tdb.Super, share2.ID, time.Now()); err != nil {
@@ -514,7 +521,10 @@ func TestSharedContactsCopyAndIndependence(t *testing.T) {
 	}
 	var cA contactWithShareDTO
 	_ = json.Unmarshal(rec.Body.Bytes(), &cA)
-	wantResponse(t, fA.do(http.MethodPost, "/api/contacts/"+cA.ID+"/reference-prices", `{"description":"Gazebo 3×3","amountCents":2500000,"date":"2026-09-01"}`, ip, officerA, nil), http.StatusCreated, "")
+	rec = fA.do(http.MethodPost, "/api/contacts/"+cA.ID+"/reference-prices", `{"description":"Gazebo 3×3","amountCents":2500000,"date":"2026-09-01"}`, ip, officerA, nil)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("add price = %d body=%s", rec.Code, rec.Body)
+	}
 
 	rec = fA.do(http.MethodPost, "/api/contacts/"+cA.ID+"/share", "", ip, officerA, nil)
 	if rec.Code != http.StatusCreated {
@@ -529,6 +539,12 @@ func TestSharedContactsCopyAndIndependence(t *testing.T) {
 	// R1 negative: pending or nonexistent shared contact returns 404 not_found and creates nothing.
 	wantResponse(t, fB.do(http.MethodPost, "/api/shared-contacts/"+sh.ID+"/copy", "", ip, officerB, nil), http.StatusNotFound, `{"error":"not_found"}`)
 	wantResponse(t, fB.do(http.MethodPost, "/api/shared-contacts/00000000-0000-0000-0000-000000000000/copy", "", ip, officerB, nil), http.StatusNotFound, `{"error":"not_found"}`)
+	rec = fB.do(http.MethodGet, "/api/contacts", "", ip, officerB, nil)
+	var emptyB []contactWithShareDTO
+	_ = json.Unmarshal(rec.Body.Bytes(), &emptyB)
+	if len(emptyB) != 0 {
+		t.Fatalf("rejected copies created %d contacts in B, want 0", len(emptyB))
+	}
 
 	if err := contacts.ApproveShared(ctx, tdb.Super, sh.ID, time.Now()); err != nil {
 		t.Fatal(err)
@@ -573,6 +589,12 @@ func TestSharedContactsCopyAndIndependence(t *testing.T) {
 	_ = json.Unmarshal(rec.Body.Bytes(), &page)
 	if len(page.Items) != 1 || page.Items[0].Phone != "381 555-0000" {
 		t.Fatalf("shared entry altered by copy edit: %+v", page.Items)
+	}
+	rec = fA.do(http.MethodGet, "/api/contacts", "", ip, officerA, nil)
+	var listA []contactWithShareDTO
+	_ = json.Unmarshal(rec.Body.Bytes(), &listA)
+	if len(listA) != 1 || listA[0].Phone != "381 555-0000" {
+		t.Fatalf("A contact altered by B copy edit: %+v", listA)
 	}
 
 	// R2 + R3: A withdraws -> leaves shared directory, copy in B remains, and copying withdrawn returns 404.
@@ -667,6 +689,10 @@ func TestSharedContactsWithdrawAndReshareHTTP(t *testing.T) {
 		t.Fatalf("v2 = %+v", v2)
 	}
 	wantResponse(t, fA.do(http.MethodPost, "/api/contacts/"+cA.ID+"/share", "", ip, officerA, nil), http.StatusConflict, `{"error":"already_pending"}`)
+	var linkCount int
+	if err := tdb.Super.QueryRow(ctx, `SELECT count(*) FROM shared_contact_links WHERE tenant_id = $1 AND contact_id = $2`, fA.tenant, cA.ID).Scan(&linkCount); err != nil || linkCount != 3 {
+		t.Fatalf("links after 409 already_pending = %d (err=%v), want 3", linkCount, err)
+	}
 
 	rec = fB.do(http.MethodGet, "/api/shared-contacts", "", ip, officerB, nil)
 	_ = json.Unmarshal(rec.Body.Bytes(), &page)
