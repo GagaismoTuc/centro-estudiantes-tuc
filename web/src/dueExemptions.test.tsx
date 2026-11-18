@@ -19,9 +19,9 @@ const dueSummary = {
 const owingDetail = {
   ...dueSummary,
   members: [
-    { rosterMemberId: "r1", fullName: "Ana Ficticia", status: "owing" },
-    { rosterMemberId: "r2", fullName: "Beto Ficticio", status: "owing" },
-    { rosterMemberId: "r3", fullName: "Carla Ficticia", status: "owing" },
+    { rosterMemberId: "r1", fullName: "Ana Ficticia", status: "owing", paidCents: 0 },
+    { rosterMemberId: "r2", fullName: "Beto Ficticio", status: "owing", paidCents: 0 },
+    { rosterMemberId: "r3", fullName: "Carla Ficticia", status: "owing", paidCents: 0 },
   ],
 };
 
@@ -31,9 +31,9 @@ const exemptDetail = {
   owingCount: 2,
   totalCount: 2,
   members: [
-    { rosterMemberId: "r1", fullName: "Ana Ficticia", status: "owing" },
-    { rosterMemberId: "r2", fullName: "Beto Ficticio", status: "exempt", exemptionReason: "Beca" },
-    { rosterMemberId: "r3", fullName: "Carla Ficticia", status: "owing" },
+    { rosterMemberId: "r1", fullName: "Ana Ficticia", status: "owing", paidCents: 0 },
+    { rosterMemberId: "r2", fullName: "Beto Ficticio", status: "exempt", paidCents: 0, exemptionReason: "Beca" },
+    { rosterMemberId: "r3", fullName: "Carla Ficticia", status: "owing", paidCents: 0 },
   ],
 };
 
@@ -183,7 +183,7 @@ test("S6 S7 school admin and veedor see the exemption reason without Eximir; a s
 
   mockApi({
     "GET /auth/me": ok(me()),
-    "GET /finance/dues/mine": ok([{ id: "d1", name: "Cuota de noviembre", amountCents: 200000, dueDate: "2026-11-30", status: "owing" }]),
+    "GET /finance/dues/mine": ok([{ id: "d1", name: "Cuota de noviembre", amountCents: 200000, dueDate: "2026-11-30", status: "owing", paidCents: 0 }]),
   });
   window.history.replaceState(null, "", "/cuotas");
   render(<App />);
@@ -194,7 +194,7 @@ test("S6 S7 school admin and veedor see the exemption reason without Eximir; a s
 test("S6 Mis cuotas shows only Exento for an exempt due and no reason", async () => {
   mockApi({
     "GET /auth/me": ok(me()),
-    "GET /finance/dues/mine": ok([{ id: "d1", name: "Cuota de noviembre", amountCents: 200000, dueDate: "2026-11-30", status: "exempt" }]),
+    "GET /finance/dues/mine": ok([{ id: "d1", name: "Cuota de noviembre", amountCents: 200000, dueDate: "2026-11-30", status: "exempt", paidCents: 0 }]),
   });
   window.history.replaceState(null, "", "/cuotas");
   render(<App />);

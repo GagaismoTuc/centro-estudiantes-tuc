@@ -76,6 +76,9 @@ func (s *Store) Ledger(ctx context.Context, sess auth.Session, from, to string) 
 		if out.Entries, e = pgx.CollectRows(rows, pgx.RowToStructByPos[Entry]); e != nil {
 			return e
 		}
+		if e = hidePayers(ctx, tx, sess, out.Entries); e != nil {
+			return e
+		}
 		cats, e := tx.Query(ctx, `SELECT id::text,name FROM finance_categories WHERE tenant_id=$1`, sess.TenantID)
 		if e != nil {
 			return e
@@ -146,6 +149,9 @@ func (s *Store) Report(ctx context.Context, sess auth.Session, from, to string) 
 			return e
 		}
 		if out.Entries, e = pgx.CollectRows(rows, pgx.RowToStructByPos[Entry]); e != nil {
+			return e
+		}
+		if e = hidePayers(ctx, tx, sess, out.Entries); e != nil {
 			return e
 		}
 		out.SeesPayers, e = seesPayers(ctx, tx, sess)

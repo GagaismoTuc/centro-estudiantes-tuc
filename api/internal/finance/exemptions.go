@@ -81,7 +81,14 @@ func (s *Store) CreateExemption(ctx context.Context, sess auth.Session, dueID, r
 		if exempt {
 			return ErrAlreadyExempt
 		}
-		// shortcut: 409 has_payments needs #78's payments table; whichever of #78/#79 merges second adds it here.
+		// Payments still in force (their Entry not reversed) rule out an Exemption (#79 R3).
+		var paid int64
+		if e = tx.QueryRow(ctx, `SELECT `+paidSQL("$2", "$3"), sess.TenantID, dueID, rosterMemberID).Scan(&paid); e != nil {
+			return e
+		}
+		if paid > 0 {
+			return ErrHasPayments
+		}
 		_, e = tx.Exec(ctx, `
 			INSERT INTO finance_due_exemptions (tenant_id, due_id, roster_member_id, reason, created_by, created_at)
 			VALUES ($1, $2, $3, $4, $5, $6)`,

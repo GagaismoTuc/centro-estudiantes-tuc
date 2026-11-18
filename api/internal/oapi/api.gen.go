@@ -100,19 +100,19 @@ func (e FinanceCategoryTotalDirection) Valid() bool {
 
 // Defines values for FinanceDueStatus.
 const (
-	Exempt FinanceDueStatus = "exempt"
-	Owing  FinanceDueStatus = "owing"
-	Paid   FinanceDueStatus = "paid"
+	FinanceDueStatusExempt FinanceDueStatus = "exempt"
+	FinanceDueStatusOwing  FinanceDueStatus = "owing"
+	FinanceDueStatusPaid   FinanceDueStatus = "paid"
 )
 
 // Valid indicates whether the value is a known member of the FinanceDueStatus enum.
 func (e FinanceDueStatus) Valid() bool {
 	switch e {
-	case Exempt:
+	case FinanceDueStatusExempt:
 		return true
-	case Owing:
+	case FinanceDueStatusOwing:
 		return true
-	case Paid:
+	case FinanceDueStatusPaid:
 		return true
 	default:
 		return false
@@ -491,15 +491,33 @@ func (e InvalidRangeError) Valid() bool {
 	}
 }
 
+// Defines values for DeleteContactShare404JSONResponseBodyError.
+const (
+	DeleteContactShare404JSONResponseBodyErrorNotFound  DeleteContactShare404JSONResponseBodyError = "not_found"
+	DeleteContactShare404JSONResponseBodyErrorNotShared DeleteContactShare404JSONResponseBodyError = "not_shared"
+)
+
+// Valid indicates whether the value is a known member of the DeleteContactShare404JSONResponseBodyError enum.
+func (e DeleteContactShare404JSONResponseBodyError) Valid() bool {
+	switch e {
+	case DeleteContactShare404JSONResponseBodyErrorNotFound:
+		return true
+	case DeleteContactShare404JSONResponseBodyErrorNotShared:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PostContactShare409JSONResponseBodyError.
 const (
-	AlreadyShared PostContactShare409JSONResponseBodyError = "already_shared"
+	AlreadyPending PostContactShare409JSONResponseBodyError = "already_pending"
 )
 
 // Valid indicates whether the value is a known member of the PostContactShare409JSONResponseBodyError enum.
 func (e PostContactShare409JSONResponseBodyError) Valid() bool {
 	switch e {
-	case AlreadyShared:
+	case AlreadyPending:
 		return true
 	default:
 		return false
@@ -1157,12 +1175,15 @@ func (e PatchFinanceDue422JSONResponseBodyError) Valid() bool {
 // Defines values for PostFinanceDueExemptions409JSONResponseBodyError.
 const (
 	AlreadyExempt PostFinanceDueExemptions409JSONResponseBodyError = "already_exempt"
+	HasPayments   PostFinanceDueExemptions409JSONResponseBodyError = "has_payments"
 )
 
 // Valid indicates whether the value is a known member of the PostFinanceDueExemptions409JSONResponseBodyError enum.
 func (e PostFinanceDueExemptions409JSONResponseBodyError) Valid() bool {
 	switch e {
 	case AlreadyExempt:
+		return true
+	case HasPayments:
 		return true
 	default:
 		return false
@@ -1184,6 +1205,36 @@ func (e PostFinanceDueExemptions422JSONResponseBodyError) Valid() bool {
 	case PostFinanceDueExemptions422JSONResponseBodyErrorReasonRequired:
 		return true
 	case PostFinanceDueExemptions422JSONResponseBodyErrorReasonTooLong:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostFinanceDuePayment422JSONResponseBodyError.
+const (
+	PostFinanceDuePayment422JSONResponseBodyErrorExempt        PostFinanceDuePayment422JSONResponseBodyError = "exempt"
+	PostFinanceDuePayment422JSONResponseBodyErrorFutureDate    PostFinanceDuePayment422JSONResponseBodyError = "future_date"
+	PostFinanceDuePayment422JSONResponseBodyErrorInvalidAmount PostFinanceDuePayment422JSONResponseBodyError = "invalid_amount"
+	PostFinanceDuePayment422JSONResponseBodyErrorInvalidDate   PostFinanceDuePayment422JSONResponseBodyError = "invalid_date"
+	PostFinanceDuePayment422JSONResponseBodyErrorNotOwed       PostFinanceDuePayment422JSONResponseBodyError = "not_owed"
+	PostFinanceDuePayment422JSONResponseBodyErrorOverpayment   PostFinanceDuePayment422JSONResponseBodyError = "overpayment"
+)
+
+// Valid indicates whether the value is a known member of the PostFinanceDuePayment422JSONResponseBodyError enum.
+func (e PostFinanceDuePayment422JSONResponseBodyError) Valid() bool {
+	switch e {
+	case PostFinanceDuePayment422JSONResponseBodyErrorExempt:
+		return true
+	case PostFinanceDuePayment422JSONResponseBodyErrorFutureDate:
+		return true
+	case PostFinanceDuePayment422JSONResponseBodyErrorInvalidAmount:
+		return true
+	case PostFinanceDuePayment422JSONResponseBodyErrorInvalidDate:
+		return true
+	case PostFinanceDuePayment422JSONResponseBodyErrorNotOwed:
+		return true
+	case PostFinanceDuePayment422JSONResponseBodyErrorOverpayment:
 		return true
 	default:
 		return false
@@ -1401,19 +1452,21 @@ type CommissionMember struct {
 
 // Contact defines model for Contact.
 type Contact struct {
-	CreatedAt       time.Time        `json:"createdAt"`
-	Email           string           `json:"email"`
-	HeadingArchived bool             `json:"headingArchived"`
-	HeadingId       string           `json:"headingId"`
-	HeadingName     string           `json:"headingName"`
-	Id              string           `json:"id"`
-	Name            string           `json:"name"`
-	Notes           string           `json:"notes"`
-	Phone           string           `json:"phone"`
-	ReferencePrices []ReferencePrice `json:"referencePrices"`
-	ShareStatus     *ShareStatus     `json:"shareStatus,omitempty"`
-	UpdatedAt       time.Time        `json:"updatedAt"`
-	Zone            string           `json:"zone"`
+	CreatedAt        time.Time        `json:"createdAt"`
+	Email            string           `json:"email"`
+	HasApprovedShare *bool            `json:"hasApprovedShare,omitempty"`
+	HeadingArchived  bool             `json:"headingArchived"`
+	HeadingId        string           `json:"headingId"`
+	HeadingName      string           `json:"headingName"`
+	Id               string           `json:"id"`
+	Name             string           `json:"name"`
+	Notes            string           `json:"notes"`
+	Phone            string           `json:"phone"`
+	ReferencePrices  []ReferencePrice `json:"referencePrices"`
+	ShareOutdated    *bool            `json:"shareOutdated,omitempty"`
+	ShareStatus      *ShareStatus     `json:"shareStatus,omitempty"`
+	UpdatedAt        time.Time        `json:"updatedAt"`
+	Zone             string           `json:"zone"`
 }
 
 // ContactHeading defines model for ContactHeading.
@@ -1672,10 +1725,23 @@ type FinanceDueDetail struct {
 // FinanceDueMember defines model for FinanceDueMember.
 type FinanceDueMember struct {
 	// ExemptionReason Present only when status is `exempt`. Only officers, school admins and veedors read the due detail.
-	ExemptionReason *string          `json:"exemptionReason,omitempty"`
-	FullName        string           `json:"fullName"`
-	RosterMemberId  string           `json:"rosterMemberId"`
-	Status          FinanceDueStatus `json:"status"`
+	ExemptionReason *string `json:"exemptionReason,omitempty"`
+	FullName        string  `json:"fullName"`
+
+	// PaidCents Sum of the member's payments whose Entry has not been reversed.
+	PaidCents      int64            `json:"paidCents"`
+	RosterMemberId string           `json:"rosterMemberId"`
+	Status         FinanceDueStatus `json:"status"`
+}
+
+// FinanceDuePayment defines model for FinanceDuePayment.
+type FinanceDuePayment struct {
+	AmountCents    int64  `json:"amountCents"`
+	Date           string `json:"date"`
+	DueId          string `json:"dueId"`
+	EntryId        string `json:"entryId"`
+	Id             string `json:"id"`
+	RosterMemberId string `json:"rosterMemberId"`
 }
 
 // FinanceDueStatus defines model for FinanceDueStatus.
@@ -1721,6 +1787,15 @@ type FinanceEntry struct {
 
 	// ReversesId Present when this entry is a Reversal; the id of the entry it reverses.
 	ReversesId *string `json:"reversesId,omitempty"`
+
+	// RosterMember Present on a due payment's Entry for officers, school admins and veedors; absent for students (ADR 0004).
+	RosterMember *FinanceEntryRosterMember `json:"rosterMember,omitempty"`
+}
+
+// FinanceEntryRosterMember Present on a due payment's Entry for officers, school admins and veedors; absent for students (ADR 0004).
+type FinanceEntryRosterMember struct {
+	FullName string `json:"fullName"`
+	Id       string `json:"id"`
 }
 
 // FinanceReceipt defines model for FinanceReceipt.
@@ -1875,11 +1950,14 @@ type MfaVerifyRequest struct {
 
 // MyFinanceDue defines model for MyFinanceDue.
 type MyFinanceDue struct {
-	AmountCents int64            `json:"amountCents"`
-	DueDate     string           `json:"dueDate"`
-	Id          string           `json:"id"`
-	Name        string           `json:"name"`
-	Status      FinanceDueStatus `json:"status"`
+	AmountCents int64  `json:"amountCents"`
+	DueDate     string `json:"dueDate"`
+	Id          string `json:"id"`
+	Name        string `json:"name"`
+
+	// PaidCents Sum of the caller's payments whose Entry has not been reversed.
+	PaidCents int64            `json:"paidCents"`
+	Status    FinanceDueStatus `json:"status"`
 }
 
 // NewFinanceCategory defines model for NewFinanceCategory.
@@ -1902,6 +1980,15 @@ type NewFinanceDue struct {
 type NewFinanceDueExemption struct {
 	// Reason Trimmed; 1 to 500 characters.
 	Reason         string `json:"reason"`
+	RosterMemberId string `json:"rosterMemberId"`
+}
+
+// NewFinanceDuePayment defines model for NewFinanceDuePayment.
+type NewFinanceDuePayment struct {
+	AmountCents int64 `json:"amountCents"`
+
+	// Date Payment date (YYYY-MM-DD), not in the future in Argentina.
+	Date           string `json:"date"`
 	RosterMemberId string `json:"rosterMemberId"`
 }
 
@@ -2180,6 +2267,9 @@ type GetContactsParams struct {
 	Q         *string `form:"q,omitempty" json:"q,omitempty"`
 }
 
+// DeleteContactShare404JSONResponseBodyError defines parameters for DeleteContactShare.
+type DeleteContactShare404JSONResponseBodyError string
+
 // PostContactShare409JSONResponseBodyError defines parameters for PostContactShare.
 type PostContactShare409JSONResponseBodyError string
 
@@ -2293,6 +2383,9 @@ type PostFinanceDueExemptions409JSONResponseBodyError string
 
 // PostFinanceDueExemptions422JSONResponseBodyError defines parameters for PostFinanceDueExemptions.
 type PostFinanceDueExemptions422JSONResponseBodyError string
+
+// PostFinanceDuePayment422JSONResponseBodyError defines parameters for PostFinanceDuePayment.
+type PostFinanceDuePayment422JSONResponseBodyError string
 
 // GetFinanceEntriesCsvParams defines parameters for GetFinanceEntriesCsv.
 type GetFinanceEntriesCsvParams struct {
@@ -2468,6 +2561,9 @@ type PatchFinanceDueJSONRequestBody = UpdateFinanceDue
 // PostFinanceDueExemptionsJSONRequestBody defines body for PostFinanceDueExemptions for application/json ContentType.
 type PostFinanceDueExemptionsJSONRequestBody = NewFinanceDueExemption
 
+// PostFinanceDuePaymentJSONRequestBody defines body for PostFinanceDuePayment for application/json ContentType.
+type PostFinanceDuePaymentJSONRequestBody = NewFinanceDuePayment
+
 // PostFinanceEntriesJSONRequestBody defines body for PostFinanceEntries for application/json ContentType.
 type PostFinanceEntriesJSONRequestBody = NewFinanceEntry
 
@@ -2554,6 +2650,9 @@ type ServerInterface interface {
 	// DeleteContactReferencePrice Delete a reference price from a contact
 	// (DELETE /contacts/{id}/reference-prices/{priceId})
 	DeleteContactReferencePrice(w http.ResponseWriter, r *http.Request, id string, priceId string)
+	// DeleteContactShare Withdraw a shared contact from the shared directory
+	// (DELETE /contacts/{id}/share)
+	DeleteContactShare(w http.ResponseWriter, r *http.Request, id string)
 	// PostContactShare Share a contact with the platform-wide shared directory
 	// (POST /contacts/{id}/share)
 	PostContactShare(w http.ResponseWriter, r *http.Request, id string)
@@ -2683,6 +2782,12 @@ type ServerInterface interface {
 	// PostFinanceDueExemptions Exempt a roster member from a due, with a reason, as an officer with MFA
 	// (POST /finance/dues/{id}/exemptions)
 	PostFinanceDueExemptions(w http.ResponseWriter, r *http.Request, id string)
+	// GetFinanceDueMembersCsv Download the per-student list of a due as CSV
+	// (GET /finance/dues/{id}/members.csv)
+	GetFinanceDueMembersCsv(w http.ResponseWriter, r *http.Request, id string)
+	// PostFinanceDuePayment Record a full or partial due payment for one roster member as an officer with MFA
+	// (POST /finance/dues/{id}/payments)
+	PostFinanceDuePayment(w http.ResponseWriter, r *http.Request, id string)
 	// GetFinanceEntries List entries in the active school
 	// (GET /finance/entries)
 	GetFinanceEntries(w http.ResponseWriter, r *http.Request)
@@ -2740,6 +2845,9 @@ type ServerInterface interface {
 	// GetSharedContacts Search approved contacts in the shared directory
 	// (GET /shared-contacts)
 	GetSharedContacts(w http.ResponseWriter, r *http.Request, params GetSharedContactsParams)
+	// PostSharedContactCopy Copy an approved shared contact into the active school's directory
+	// (POST /shared-contacts/{id}/copy)
+	PostSharedContactCopy(w http.ResponseWriter, r *http.Request, id string)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -3231,6 +3339,32 @@ func (siw *ServerInterfaceWrapper) DeleteContactReferencePrice(w http.ResponseWr
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.DeleteContactReferencePrice(w, r, id, priceId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteContactShare operation middleware
+func (siw *ServerInterfaceWrapper) DeleteContactShare(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteContactShare(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4260,6 +4394,58 @@ func (siw *ServerInterfaceWrapper) PostFinanceDueExemptions(w http.ResponseWrite
 	handler.ServeHTTP(w, r)
 }
 
+// GetFinanceDueMembersCsv operation middleware
+func (siw *ServerInterfaceWrapper) GetFinanceDueMembersCsv(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetFinanceDueMembersCsv(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostFinanceDuePayment operation middleware
+func (siw *ServerInterfaceWrapper) PostFinanceDuePayment(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostFinanceDuePayment(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetFinanceEntries operation middleware
 func (siw *ServerInterfaceWrapper) GetFinanceEntries(w http.ResponseWriter, r *http.Request) {
 
@@ -4772,6 +4958,32 @@ func (siw *ServerInterfaceWrapper) GetSharedContacts(w http.ResponseWriter, r *h
 	handler.ServeHTTP(w, r)
 }
 
+// PostSharedContactCopy operation middleware
+func (siw *ServerInterfaceWrapper) PostSharedContactCopy(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostSharedContactCopy(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -4934,8 +5146,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/contacts/{id}", wrapper.PatchContact)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/contacts/{id}/reference-prices", wrapper.PostContactReferencePrice)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/contacts/{id}/reference-prices/{priceId}", wrapper.DeleteContactReferencePrice)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/contacts/{id}/share", wrapper.DeleteContactShare)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/contacts/{id}/share", wrapper.PostContactShare)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/shared-contacts", wrapper.GetSharedContacts)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/shared-contacts/{id}/copy", wrapper.PostSharedContactCopy)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/roster/access-codes", wrapper.PostRosterAccessCodes)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/electoral-commission", wrapper.GetElectoralCommission)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/electoral-commission", wrapper.PutElectoralCommission)
@@ -4980,6 +5194,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/dues/{id}", wrapper.GetFinanceDue)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/finance/dues/{id}", wrapper.PatchFinanceDue)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/finance/dues/{id}/exemptions", wrapper.PostFinanceDueExemptions)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/finance/dues/{id}/payments", wrapper.PostFinanceDuePayment)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/dues/{id}/members.csv", wrapper.GetFinanceDueMembersCsv)
 
 	return m
 }

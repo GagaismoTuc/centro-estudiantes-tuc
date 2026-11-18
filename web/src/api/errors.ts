@@ -50,6 +50,8 @@ const messages: Record<string, string> = {
   reserved_heading: "El rubro «otros» es parte del sistema y no se puede editar, archivar ni borrar.",
   invalid_heading: "Elegí un rubro activo válido.",
   already_shared: "Este contacto ya está compartido o pendiente de aprobación.",
+  already_pending: "Este contacto ya tiene una solicitud pendiente de aprobación.",
+  not_shared: "Este contacto no está compartido en este momento.",
   election_frozen: "La elección ya abrió: no se puede cambiar el Centro de estudiantes.",
   empty_commission: "Elegí al menos un integrante para el Centro de estudiantes.",
   no_account: "Ese alumno todavía no tiene cuenta. Pedile que la active antes de sumarlo al Centro de estudiantes.",
@@ -64,6 +66,9 @@ const messages: Record<string, string> = {
   due_frozen: "Esta cuota ya tiene pagos o exenciones: solo podés cambiar el nombre.",
   already_exempt: "Este alumno ya está exento.",
   not_owed: "Este alumno no debe esta cuota.",
+  overpayment: "El pago supera lo que falta pagar de la cuota.",
+  exempt: "Este alumno está exento de esta cuota: no se le puede registrar un pago.",
+  has_payments: "Este alumno ya tiene pagos de esta cuota: no se lo puede eximir.",
   election_annulled: "La elección fue anulada: ya no se puede cambiar.",
   election_published: "La votación ya terminó y el resultado está publicado: no se puede anular.",
   reason_required: "Escribí el motivo antes de anular la elección.",
@@ -132,6 +137,7 @@ export function errorMessage(code: string, context?: ErrorContext): string {
 /** Form fields an error code is about, so the form can mark them invalid and focus the first. */
 const fieldsByCode: Record<string, string[]> = {
   invalid_amount: ["amount"],
+  overpayment: ["amount"],
   invalid_date: ["date", "dueDate"],
   future_date: ["date"],
   invalid_range: ["from", "to"],

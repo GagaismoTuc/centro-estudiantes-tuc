@@ -674,10 +674,14 @@ export interface paths {
         put?: never;
         /**
          * Share a contact with the platform-wide shared directory
-         * @description Officers with a two-factor session only. Copies the shareable fields (excluding notes and source school) into a pending shared-directory entry for Platform admin approval.
+         * @description Officers with a two-factor session only. Copies the shareable fields (excluding notes and source school) into a pending shared-directory entry for Platform admin approval. Sharing a contact that already has an approved entry creates a new pending version while keeping the approved entry visible until the new version is approved.
          */
         post: operations["postContactShare"];
-        delete?: never;
+        /**
+         * Withdraw a shared contact from the shared directory
+         * @description Officers with a two-factor session only. Withdraws any pending or approved share requests for the contact so it is no longer listed in the shared directory.
+         */
+        delete: operations["deleteContactShare"];
         options?: never;
         head?: never;
         patch?: never;
@@ -697,6 +701,26 @@ export interface paths {
         get: operations["getSharedContacts"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/shared-contacts/{id}/copy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Copy an approved shared contact into the active school's directory
+         * @description Officers with a two-factor session only. Creates an independent copy (without notes or source school) under the active heading of matching name (case-insensitive) or "otros".
+         */
+        post: operations["postSharedContactCopy"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1413,6 +1437,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/finance/dues/{id}/payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record a full or partial due payment for one roster member as an officer with MFA
+         * @description Writes, in one transaction, the payment and its income Entry in the reserved category "Cuotas" with the description "Pago de cuota: " followed by the due's name. Payments for one roster member are serialized, so together they never exceed the due's amount. Reversing the payment's Entry (`POST /finance/entries/{entryId}/reversal`) discounts the payment; the due stays frozen. Errors never name the roster member.
+         */
+        post: operations["postFinanceDuePayment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/finance/dues/{id}/members.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Download the per-student list of a due as CSV
+         * @description Officers, school admins and veedors with a verified two-factor session. UTF-8 with a byte order mark, `;` as separator, one row per roster member of the due's snapshot: name, paid, owing, status and exemption reason. Never includes document numbers.
+         */
+        get: operations["getFinanceDueMembersCsv"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1522,6 +1590,12 @@ export interface components {
             reversedBy?: string;
             /** @description Present when this entry was reversed; the Reversal's date (YYYY-MM-DD, Argentina). */
             reversedOn?: string;
+            rosterMember?: components["schemas"]["FinanceEntryRosterMember"];
+        };
+        /** @description Present on a due payment's Entry for officers, school admins and veedors; absent for students (ADR 0004). */
+        FinanceEntryRosterMember: {
+            id: string;
+            fullName: string;
         };
         FinanceReceipt: {
             id: string;
@@ -1598,6 +1672,11 @@ export interface components {
         FinanceDueMember: {
             rosterMemberId: string;
             fullName: string;
+            /**
+             * Format: int64
+             * @description Sum of the member's payments whose Entry has not been reversed.
+             */
+            paidCents: number;
             status: components["schemas"]["FinanceDueStatus"];
             /** @description Present only when status is `exempt`. Only officers, school admins and veedors read the due detail. */
             exemptionReason?: string;
@@ -1634,8 +1713,29 @@ export interface components {
             name: string;
             /** Format: int64 */
             amountCents: number;
+            /**
+             * Format: int64
+             * @description Sum of the caller's payments whose Entry has not been reversed.
+             */
+            paidCents: number;
             dueDate: string;
             status: components["schemas"]["FinanceDueStatus"];
+        };
+        NewFinanceDuePayment: {
+            rosterMemberId: string;
+            /** Format: int64 */
+            amountCents: number;
+            /** @description Payment date (YYYY-MM-DD), not in the future in Argentina. */
+            date: string;
+        };
+        FinanceDuePayment: {
+            id: string;
+            dueId: string;
+            rosterMemberId: string;
+            entryId: string;
+            /** Format: int64 */
+            amountCents: number;
+            date: string;
         };
         ForbiddenError: {
             /** @enum {string} */
@@ -1944,6 +2044,8 @@ export interface components {
             notes: string;
             referencePrices: components["schemas"]["ReferencePrice"][];
             shareStatus?: components["schemas"]["ShareStatus"];
+            hasApprovedShare?: boolean;
+            shareOutdated?: boolean;
             /** Format: date-time */
             createdAt: string;
             /** Format: date-time */
@@ -3736,7 +3838,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Contact already has a `pending` or `approved` share request (`already_shared`). */
+            /** @description Contact already has a `pending` share request (`already_pending`). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3744,7 +3846,41 @@ export interface operations {
                 content: {
                     "application/json": {
                         /** @enum {string} */
-                        error: "already_shared";
+                        error: "already_pending";
+                    };
+                };
+            };
+        };
+    };
+    deleteContactShare: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Share withdrawn. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["DirectoryForbidden"];
+            /** @description Contact not found (`not_found`) or not actively shared (`not_shared`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "not_found" | "not_shared";
                     };
                 };
             };
@@ -3775,6 +3911,39 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["DirectoryForbidden"];
+        };
+    };
+    postSharedContactCopy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Contact copied into the active school's directory. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Contact"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["DirectoryForbidden"];
+            /** @description Shared contact not found or not approved (`not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     postRosterAccessCodes: {
@@ -5653,7 +5822,7 @@ export interface operations {
                     "application/json": components["schemas"]["NotFoundError"];
                 };
             };
-            /** @description The roster member is already exempt from this due (`already_exempt`). Nothing is written. */
+            /** @description Nothing is written. `already_exempt`: the roster member is already exempt from this due. `has_payments`: the roster member has payments for this due whose Entry was not reversed. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -5661,7 +5830,7 @@ export interface operations {
                 content: {
                     "application/json": {
                         /** @enum {string} */
-                        error: "already_exempt";
+                        error: "already_exempt" | "has_payments";
                     };
                 };
             };
@@ -5675,6 +5844,89 @@ export interface operations {
                         /** @enum {string} */
                         error: "reason_required" | "reason_too_long" | "not_owed";
                     };
+                };
+            };
+        };
+    };
+    postFinanceDuePayment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewFinanceDuePayment"];
+            };
+        };
+        responses: {
+            /** @description Payment and its Entry recorded. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinanceDuePayment"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["DirectoryForbidden"];
+            /** @description Due or roster member not found in the active school (`not_found`). Nothing is written. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotFoundError"];
+                };
+            };
+            /** @description Nothing is written. `invalid_amount`: amount missing, zero or negative. `invalid_date` or `future_date`: the payment date. `not_owed`: the roster member is not in the due's snapshot. `overpayment`: the payment plus what was already paid exceeds the due's amount. `exempt`: the roster member is exempt from the due. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "invalid_amount" | "invalid_date" | "future_date" | "not_owed" | "overpayment" | "exempt";
+                    };
+                };
+            };
+        };
+    };
+    getFinanceDueMembersCsv: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description CSV file. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["DirectoryForbidden"];
+            /** @description Due not found in the active school (`not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotFoundError"];
                 };
             };
         };

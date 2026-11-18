@@ -2,12 +2,15 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
   createDue,
   deleteDue,
+  dueMembersCsvHref,
   exemptDueMember,
   getDue,
   listDues,
   listMyDues,
+  recordDuePayment,
   updateDue,
   type DueDetail,
+  type DueMember,
   type DueSummary,
   type MyDue,
 } from "../api/dues.ts";
@@ -16,7 +19,7 @@ import { canReadDues, hasRole, useMe, useSession } from "../auth/session.tsx";
 import { ConfirmDialog } from "../components/ConfirmDialog.tsx";
 import { Field, FormStatus, useFormErrors, type Status } from "../components/Form.tsx";
 import { PageTitle, useDocumentTitle } from "../components/Page.tsx";
-import { centsOf, dayMonthYear, pesos, pesosInput } from "../lib/money.ts";
+import { centsOf, dayMonthYear, pesos, pesosInput, todayArgentina } from "../lib/money.ts";
 
 const memberStatusLabel: Record<string, string> = {
   owing: "Debe",
@@ -24,13 +27,76 @@ const memberStatusLabel: Record<string, string> = {
   exempt: "Exento",
 };
 
+/** What a member still owes of a due, in centavos. */
+const owedCents = (amountCents: string, paidCents: string) => String(BigInt(amountCents) - BigInt(paidCents));
+
+/** "Pagó $ 500,00 de $ 2.000,00" while a payment is partial; otherwise the status label. */
+function memberStatusText(member: DueMember, amountCents: string): string {
+  if (member.status === "owing" && member.paidCents !== "0") return `Pagó ${pesos(member.paidCents)} de ${pesos(amountCents)}`;
+  return memberStatusLabel[member.status] ?? member.status;
+}
+
 function myDueText(due: MyDue): string {
   const formatted = pesos(due.amountCents);
   const formattedDate = dayMonthYear(due.dueDate);
   if (due.status === "paid") return `Pagada ${formatted} — vencía el ${formattedDate}`;
   // S6: the exempt student sees only "Exento", never the reason.
   if (due.status === "exempt") return "Exento";
+  if (due.paidCents !== "0") {
+    return `Pagaste ${pesos(due.paidCents)} de ${formatted}, te falta ${pesos(owedCents(due.amountCents, due.paidCents))} — vence el ${formattedDate}`;
+  }
   return `Debés ${formatted} — vence el ${formattedDate}`;
+}
+
+type PaymentFormProps = {
+  member: DueMember;
+  owed: string;
+  busy: boolean;
+  form: ReturnType<typeof useFormErrors>;
+  onSubmit: (values: { amountCents: string; date: string }) => void;
+  onCancel: () => void;
+};
+
+function PaymentForm({ member, owed, busy, form, onSubmit, onCancel }: PaymentFormProps) {
+  const headingId = useId();
+  const [amount, setAmount] = useState(pesosInput(owed));
+  const [date, setDate] = useState(todayArgentina());
+
+  function handleSubmit() {
+    if (!form.validate({
+      amount: (v) => (centsOf(v) === null ? "Ingresá un monto positivo con hasta dos decimales." : null),
+      date: (v) => (!v ? "Elegí la fecha del pago." : null),
+    })) {
+      return;
+    }
+    onSubmit({ amountCents: centsOf(amount)!, date });
+  }
+
+  return (
+    <section className="panel">
+      <h2 id={headingId}>Registrar pago de {member.fullName}</h2>
+      <p className="muted small">Falta pagar {pesos(owed)}.</p>
+      <form
+        aria-labelledby={headingId}
+        {...form.formProps}
+        onSubmit={(event) => {
+          event.preventDefault();
+          handleSubmit();
+        }}
+      >
+        <Field label="Monto en pesos" inputMode="decimal" {...form.field("amount")} value={amount} onChange={(e) => setAmount(e.target.value)} />
+        <Field label="Fecha del pago" type="date" {...form.field("date")} value={date} onChange={(e) => setDate(e.target.value)} />
+        <div className="panel__actions">
+          <button type="submit" className="button button--primary" disabled={busy}>
+            Guardar pago
+          </button>
+          <button type="button" className="button button--secondary" disabled={busy} onClick={onCancel}>
+            Cancelar
+          </button>
+        </div>
+      </form>
+    </section>
+  );
 }
 
 type DueFormProps = {
@@ -161,14 +227,17 @@ export function Dues() {
   const [showCreate, setShowCreate] = useState(false);
   const [editing, setEditing] = useState<DueSummary | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<DueSummary | null>(null);
+  const [paying, setPaying] = useState<DueMember | null>(null);
   const [exempting, setExempting] = useState<ExemptTarget | null>(null);
   const [status, setStatus] = useState<Status>(null);
   const [busy, setBusy] = useState(false);
   const pending = useRef(false);
   const createForm = useFormErrors();
   const editForm = useFormErrors();
+  const paymentForm = useFormErrors();
   const exemptForm = useFormErrors();
-  // After an exemption the form unmounts with focus inside it: move focus to the success message (CS-9).
+  // After a successful create, edit, delete, payment or exemption the focused form or dialog
+  // unmounts: move focus to the success message so it never stays on body (CS-9).
   const focusStatus = useRef(false);
 
   const failed = useCallback(
@@ -206,6 +275,7 @@ export function Dues() {
     setStatus(null);
     const result = await createDue(values);
     if (result.ok) {
+      focusStatus.current = true;
       setShowCreate(false);
       setDetail(result.data);
       setStatus({ tone: "ok", text: "Se creó la cuota." });
@@ -224,6 +294,7 @@ export function Dues() {
     setStatus(null);
     const result = await updateDue(editing.id, values);
     if (result.ok) {
+      focusStatus.current = true;
       setEditing(null);
       if (detail?.id === result.data.id) setDetail(result.data);
       setStatus({ tone: "ok", text: "Se actualizó la cuota." });
@@ -243,6 +314,7 @@ export function Dues() {
     setStatus(null);
     const result = await deleteDue(target.id);
     if (result.ok) {
+      focusStatus.current = true;
       if (detail?.id === target.id) {
         setDetail(null);
         setExempting(null);
@@ -251,6 +323,8 @@ export function Dues() {
       setStatus({ tone: "ok", text: "Se borró la cuota." });
       await load();
     } else {
+      // The dialog that held focus is gone and there is no form to mark: focus the message (CS-9).
+      focusStatus.current = true;
       failed(result.code);
     }
     pending.current = false;
@@ -261,12 +335,33 @@ export function Dues() {
     if (pending.current) return;
     pending.current = true;
     setBusy(true);
+    setPaying(null);
     const result = await getDue(id);
     if (result.ok) {
       setDetail(result.data);
       setExempting(null);
     } else {
       failed(result.code);
+    }
+    pending.current = false;
+    setBusy(false);
+  }
+
+  async function handlePayment(values: { amountCents: string; date: string }) {
+    if (!detail || !paying || pending.current) return;
+    pending.current = true;
+    setBusy(true);
+    setStatus(null);
+    const result = await recordDuePayment(detail.id, { rosterMemberId: paying.rosterMemberId, ...values });
+    if (result.ok) {
+      focusStatus.current = true;
+      setPaying(null);
+      setStatus({ tone: "ok", text: "Se registró el pago." });
+      const refreshed = await getDue(detail.id);
+      if (refreshed.ok) setDetail(refreshed.data);
+      await load();
+    } else {
+      failed(result.code, paymentForm);
     }
     pending.current = false;
     setBusy(false);
@@ -292,7 +387,7 @@ export function Dues() {
     setBusy(false);
   }
 
-  const activeForm = exempting ? exemptForm : editing ? editForm : createForm;
+  const activeForm = exempting ? exemptForm : editing ? editForm : paying ? paymentForm : createForm;
 
   useEffect(() => {
     if (!focusStatus.current) return;
@@ -311,6 +406,7 @@ export function Dues() {
               className="button button--primary"
               onClick={() => {
                 setEditing(null);
+                setPaying(null);
                 createForm.clear();
                 setStatus(null);
                 setShowCreate(true);
@@ -392,6 +488,7 @@ export function Dues() {
                           aria-label={`Editar ${due.name}`}
                           onClick={() => {
                             setShowCreate(false);
+                            setPaying(null);
                             setExempting(null);
                             editForm.clear();
                             setStatus(null);
@@ -429,13 +526,22 @@ export function Dues() {
                 {detail.totalCount - detail.owingCount} de {detail.totalCount} pagaron
               </p>
             </div>
-            <button type="button" className="button button--ghost button--small" onClick={() => {
-                setDetail(null);
-                setExempting(null);
-              }}
-            >
-              Cerrar detalle
-            </button>
+            <div className="panel__actions">
+              <a className="button button--secondary button--small" href={dueMembersCsvHref(detail.id)} download>
+                Descargar CSV
+              </a>
+              <button
+                type="button"
+                className="button button--ghost button--small"
+                onClick={() => {
+                  setPaying(null);
+                  setExempting(null);
+                  setDetail(null);
+                }}
+              >
+                Cerrar detalle
+              </button>
+            </div>
           </div>
           <div className="table-wrap" tabIndex={0} role="region" aria-labelledby="due-detail-title">
             <table className="data-table">
@@ -451,7 +557,7 @@ export function Dues() {
                   <tr key={member.rosterMemberId}>
                     <th scope="row">{member.fullName}</th>
                     <td data-label="Estado">
-                      <span>{memberStatusLabel[member.status] ?? member.status}</span>
+                      <span>{memberStatusText(member, detail.amountCents)}</span>
                       {member.status === "exempt" && member.exemptionReason && (
                         <>
                           <br />
@@ -461,8 +567,26 @@ export function Dues() {
                     </td>
                     {isOfficer && (
                       <td data-label="Acciones">
-                        {/* Paid members are left out too: the API answers has_payments (S3). */}
                         {member.status === "owing" && (
+                          <button
+                            type="button"
+                            className="button button--secondary button--small"
+                            disabled={busy}
+                            aria-label={`Registrar pago de ${member.fullName}`}
+                            onClick={() => {
+                              setShowCreate(false);
+                              setEditing(null);
+                              setExempting(null);
+                              paymentForm.clear();
+                              setStatus(null);
+                              setPaying(member);
+                            }}
+                          >
+                            Registrar pago
+                          </button>
+                        )}{" "}
+                        {/* Members with payments are left out: the API answers has_payments (#79 R3). */}
+                        {member.status === "owing" && member.paidCents === "0" && (
                           <button
                             type="button"
                             className="button button--secondary button--small"
@@ -471,6 +595,7 @@ export function Dues() {
                             onClick={() => {
                               setShowCreate(false);
                               setEditing(null);
+                              setPaying(null);
                               exemptForm.clear();
                               setStatus(null);
                               setExempting({ rosterMemberId: member.rosterMemberId, fullName: member.fullName });
@@ -500,6 +625,21 @@ export function Dues() {
             />
           )}
         </section>
+      )}
+
+      {isOfficer && detail && paying && (
+        <PaymentForm
+          key={paying.rosterMemberId}
+          member={paying}
+          owed={owedCents(detail.amountCents, paying.paidCents)}
+          busy={busy}
+          form={paymentForm}
+          onSubmit={(values) => void handlePayment(values)}
+          onCancel={() => {
+            setPaying(null);
+            paymentForm.clear();
+          }}
+        />
       )}
 
       {showMine && (

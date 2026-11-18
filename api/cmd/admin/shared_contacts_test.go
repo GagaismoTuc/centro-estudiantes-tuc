@@ -186,3 +186,54 @@ func TestSharedContactsCLIRefusesAppRoleAndUsageErrors(t *testing.T) {
 		}
 	}
 }
+
+func TestSharedContactsCLIApproveReplacesPriorVersion(t *testing.T) {
+	ctx := integration(t)
+	v1ID, contactID, orgID := seedSharedContactForCLI(t, ctx, "Escuela Reemplazo", "Proveedor Viejo", "gazebos", "Yerba Buena", "Privada", "approved")
+
+	var v2ID, withdrawnID string
+	if err := tdb.Super.QueryRow(ctx, `INSERT INTO shared_contacts (status, heading_name, name, zone) VALUES ('pending', 'gazebos', 'Proveedor Nuevo', 'Tafí Viejo') RETURNING id::text`).Scan(&v2ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := tdb.Super.QueryRow(ctx, `INSERT INTO shared_contacts (status, heading_name, name, zone) VALUES ('withdrawn', 'gazebos', 'Proveedor Retirado', 'Yerba Buena') RETURNING id::text`).Scan(&withdrawnID); err != nil {
+		t.Fatal(err)
+	}
+	for _, scID := range []string{v2ID, withdrawnID} {
+		if _, err := tdb.Super.Exec(ctx, `INSERT INTO shared_contact_links (tenant_id, contact_id, shared_contact_id) VALUES ($1, $2, $3)`, orgID, contactID, scID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Cleanup(func() {
+		_, _ = tdb.Super.Exec(context.Background(), `DELETE FROM shared_contacts WHERE id IN ($1, $2)`, v2ID, withdrawnID)
+	})
+
+	// pending excludes withdrawn entries.
+	code, stdout, stderr := runAdminWithEnv(tdb.AppDSN, tdb.SuperDSN, "", "shared-contacts", "pending")
+	if code != 0 || stderr != "" {
+		t.Fatalf("pending: exit=%d stderr=%q", code, stderr)
+	}
+	if !strings.Contains(stdout, v2ID) || strings.Contains(stdout, withdrawnID) || strings.Contains(stdout, v1ID) {
+		t.Fatalf("pending stdout = %q", stdout)
+	}
+
+	// Approving v2 moves v1 to removed and sets v2 to approved.
+	code, stdout, stderr = runAdminWithEnv(tdb.AppDSN, tdb.SuperDSN, "", "shared-contacts", "approve", v2ID)
+	if code != 0 || stderr != "" || !strings.Contains(stdout, v2ID) {
+		t.Fatalf("approve v2: exit=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+	if got := sharedStatus(t, ctx, v2ID); got != "approved" {
+		t.Fatalf("v2 status = %q, want approved", got)
+	}
+	if got := sharedStatus(t, ctx, v1ID); got != "removed" {
+		t.Fatalf("v1 status = %q, want removed", got)
+	}
+
+	// Approving a withdrawn entry fails and leaves it withdrawn.
+	code, _, stderr = runAdminWithEnv(tdb.AppDSN, tdb.SuperDSN, "", "shared-contacts", "approve", withdrawnID)
+	if code == 0 || !strings.Contains(stderr, "is not pending") {
+		t.Fatalf("approve withdrawn: exit=%d stderr=%q", code, stderr)
+	}
+	if got := sharedStatus(t, ctx, withdrawnID); got != "withdrawn" {
+		t.Fatalf("withdrawn status = %q, want withdrawn", got)
+	}
+}

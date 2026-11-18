@@ -43,15 +43,21 @@ type Entry struct {
 	// ReversesID is set on a Reversal. ReversalID, ReversedBy and ReversedOn are set on an entry
 	// that was reversed: its Reversal's id, recorder name and date.
 	ReversesID, ReversalID, ReversedBy, ReversedOn string
-	HasReceipt                                     bool
+	// RosterMemberID and RosterMemberName are set on a Due payment's Entry: who paid. List, Get,
+	// Report and Ledger clear them for viewers who may not see who paid (ADR 0004).
+	RosterMemberID, RosterMemberName string
+	HasReceipt                       bool
 }
 
-// entryColumns selects an Entry of finance_entries e, with its Reversal r (LEFT JOIN), in the
-// field order of Entry.
+// entryColumns selects an Entry of finance_entries e, with its Reversal r and, for a Due payment,
+// the Roster member pm who paid (LEFT JOINs), in the field order of Entry.
 const entryColumns = `e.id::text,e.category_id::text,e.direction,to_char(e.entry_date,'YYYY-MM-DD'),e.description,e.recorded_by_name,e.amount_cents,e.recorded_at,
   COALESCE(e.reverses_id::text,''),COALESCE(r.id::text,''),COALESCE(r.recorded_by_name,''),COALESCE(to_char(r.entry_date,'YYYY-MM-DD'),''),
+  COALESCE(pm.id::text,''),COALESCE(pm.full_name,''),
   EXISTS(SELECT 1 FROM finance_receipts fr WHERE fr.tenant_id=e.tenant_id AND fr.entry_id=e.id)
-  FROM finance_entries e LEFT JOIN finance_entries r ON r.tenant_id=e.tenant_id AND r.reverses_id=e.id`
+  FROM finance_entries e LEFT JOIN finance_entries r ON r.tenant_id=e.tenant_id AND r.reverses_id=e.id
+  LEFT JOIN finance_due_payments dp ON dp.tenant_id=e.tenant_id AND dp.entry_id=e.id
+  LEFT JOIN roster_members pm ON pm.tenant_id=dp.tenant_id AND pm.id=dp.roster_member_id`
 
 type NewEntry struct {
 	CategoryID, Direction, Date, Description string
@@ -192,7 +198,7 @@ func (s *Store) Reverse(ctx context.Context, sess auth.Session, id string) (out 
 			return ErrNotFound
 		}
 		var original Entry
-		e := tx.QueryRow(ctx, `SELECT `+entryColumns+` WHERE e.tenant_id=$1 AND e.id=$2`, sess.TenantID, id).Scan(&original.ID, &original.CategoryID, &original.Direction, &original.Date, &original.Description, &original.RecordedBy, &original.AmountCents, &original.RecordedAt, &original.ReversesID, &original.ReversalID, &original.ReversedBy, &original.ReversedOn, &original.HasReceipt)
+		e := tx.QueryRow(ctx, `SELECT `+entryColumns+` WHERE e.tenant_id=$1 AND e.id=$2`, sess.TenantID, id).Scan(&original.ID, &original.CategoryID, &original.Direction, &original.Date, &original.Description, &original.RecordedBy, &original.AmountCents, &original.RecordedAt, &original.ReversesID, &original.ReversalID, &original.ReversedBy, &original.ReversedOn, &original.RosterMemberID, &original.RosterMemberName, &original.HasReceipt)
 		if errors.Is(e, pgx.ErrNoRows) {
 			return ErrNotFound
 		}
@@ -233,20 +239,42 @@ func (s *Store) List(ctx context.Context, sess auth.Session) (out []Entry, err e
 			return e
 		}
 		defer rows.Close()
-		out, e = pgx.CollectRows(rows, pgx.RowToStructByPos[Entry])
-		return e
+		if out, e = pgx.CollectRows(rows, pgx.RowToStructByPos[Entry]); e != nil {
+			return e
+		}
+		return hidePayers(ctx, tx, sess, out)
 	})
 	return
+}
+
+// hidePayers clears who paid from Due payment Entries unless the session may see it: Officers,
+// School admins and Veedores with a verified second factor, as for the per-student list (ADR 0004,
+// ADR 0001 2FA rule 5); Students never do.
+func hidePayers(ctx context.Context, tx pgx.Tx, sess auth.Session, entries []Entry) error {
+	sees, err := hasDueRole(ctx, tx, sess, dueReaderRoles)
+	if err != nil || (sees && auth.RequireMFA(sess) == nil) {
+		return err
+	}
+	for i := range entries {
+		entries[i].RosterMemberID, entries[i].RosterMemberName = "", ""
+	}
+	return nil
 }
 func (s *Store) Get(ctx context.Context, sess auth.Session, id string) (out Entry, err error) {
 	err = s.withMember(ctx, sess, false, func(tx pgx.Tx) error {
 		if !uuidPattern.MatchString(id) {
 			return ErrNotFound
 		}
-		e := tx.QueryRow(ctx, `SELECT `+entryColumns+` WHERE e.tenant_id=$1 AND e.id=$2`, sess.TenantID, id).Scan(&out.ID, &out.CategoryID, &out.Direction, &out.Date, &out.Description, &out.RecordedBy, &out.AmountCents, &out.RecordedAt, &out.ReversesID, &out.ReversalID, &out.ReversedBy, &out.ReversedOn, &out.HasReceipt)
+		e := tx.QueryRow(ctx, `SELECT `+entryColumns+` WHERE e.tenant_id=$1 AND e.id=$2`, sess.TenantID, id).Scan(&out.ID, &out.CategoryID, &out.Direction, &out.Date, &out.Description, &out.RecordedBy, &out.AmountCents, &out.RecordedAt, &out.ReversesID, &out.ReversalID, &out.ReversedBy, &out.ReversedOn, &out.RosterMemberID, &out.RosterMemberName, &out.HasReceipt)
 		if errors.Is(e, pgx.ErrNoRows) {
 			return ErrNotFound
 		}
+		if e != nil {
+			return e
+		}
+		one := []Entry{out}
+		e = hidePayers(ctx, tx, sess, one)
+		out = one[0]
 		return e
 	})
 	return
