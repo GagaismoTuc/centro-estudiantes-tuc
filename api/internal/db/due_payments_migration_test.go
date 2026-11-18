@@ -14,11 +14,11 @@ import (
 	"github.com/pressly/goose/v3"
 )
 
-// TestDuePaymentsMigration00032 covers R12 at the database: append-only grants, forced RLS and
+// TestDuePaymentsMigration00033 covers R12 at the database: append-only grants, forced RLS and
 // composite foreign keys to the Due snapshot and to a non-Reversal Entry; plus the row lock of R5.
-func TestDuePaymentsMigration00032(t *testing.T) {
-	if _, err := migrations.FS.ReadFile("00032_due_payments.sql"); err != nil {
-		t.Fatalf("due payments migration 00032 is missing: %v", err)
+func TestDuePaymentsMigration00033(t *testing.T) {
+	if _, err := migrations.FS.ReadFile("00033_due_payments.sql"); err != nil {
+		t.Fatalf("due payments migration 00033 is missing: %v", err)
 	}
 	ctx := context.Background()
 	env, stop, err := testdb.Start(ctx)
@@ -196,15 +196,15 @@ func TestDuePaymentsMigration00032(t *testing.T) {
 	}
 
 	// DownTo/UpTo pin this migration: earlier or later ones must not shift what this test rolls back.
-	if _, err := p.DownTo(ctx, 31); err != nil {
-		t.Fatalf("down to 31: %v", err)
+	if _, err := p.DownTo(ctx, 32); err != nil {
+		t.Fatalf("down to 32: %v", err)
 	}
 	var exists, lockGrant bool
 	if err := env.Super.QueryRow(ctx, `SELECT to_regclass('public.finance_due_payments') IS NOT NULL,
 		has_column_privilege('ce_app','finance_due_members','roster_member_id','UPDATE')`).Scan(&exists, &lockGrant); err != nil || exists || !lockGrant {
-		t.Fatalf("after down to 31: payments table exists=%v, 00031 lock grant kept=%v, err=%v", exists, lockGrant, err)
+		t.Fatalf("after down to 32: payments table exists=%v, 00031 lock grant kept=%v, err=%v", exists, lockGrant, err)
 	}
-	if _, err := p.UpTo(ctx, 32); err != nil {
-		t.Fatalf("reapply 00032: %v", err)
+	if _, err := p.UpTo(ctx, 33); err != nil {
+		t.Fatalf("reapply 00033: %v", err)
 	}
 }
