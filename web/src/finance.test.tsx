@@ -21,6 +21,16 @@ test("R15 students read the ledger and balance without an entry form", async () 
   expect(screen.queryByRole("button", { name: "Nuevo movimiento" })).toBeNull();
 });
 
+test.each([["student", "not_required"], ["officer", "satisfied"]] as const)("S10 a %s sees the ledger CSV download and the Informe link", async (role, mfa) => {
+  mockApi({ "GET /auth/me": ok(me({ role, mfa })), ...reads });
+  window.history.replaceState(null, "", "/caja"); render(<App />);
+  expect(await screen.findByText("$ 2.000,00")).toBeTruthy();
+  const csv = screen.getByRole("link", { name: "Descargar CSV" });
+  expect(csv.getAttribute("href")).toBe("/api/finance/entries.csv");
+  expect(csv.hasAttribute("download")).toBe(true);
+  expect(screen.getByRole("link", { name: "Informe" }).getAttribute("href")).toBe("/caja/informe");
+});
+
 test("R15 school admins read the ledger without an entry form", async () => {
   mockApi({ "GET /auth/me": ok(me({ role: "school_admin", mfa: "satisfied" })), ...reads });
   window.history.replaceState(null, "", "/caja"); render(<App />);

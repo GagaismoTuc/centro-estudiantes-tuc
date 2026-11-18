@@ -15,6 +15,7 @@ import { canReadReceipts, hasRole, useMe, useSession } from "../auth/session.tsx
 import { ConfirmDialog } from "../components/ConfirmDialog.tsx";
 import { Field, FormStatus, useFormErrors, type Status } from "../components/Form.tsx";
 import { PageTitle, useDocumentTitle } from "../components/Page.tsx";
+import { Link } from "../lib/router.tsx";
 import { centsOf, dayMonthYear, pesos, todayArgentina } from "../lib/money.ts";
 import { FinanceCategories } from "./FinanceCategories.tsx";
 
@@ -240,6 +241,10 @@ export function Finance() {
 
   return <>
     <header className="page-header"><PageTitle>Caja</PageTitle></header>
+    <div className="page-actions">
+      <Link className="button button--secondary" to="/caja/informe">Informe</Link>
+      <a className="button button--secondary" href="/api/finance/entries.csv" download>Descargar CSV</a>
+    </div>
     <FormStatus status={status} {...form.statusProps} />
     <button type="button" className="button button--secondary" onClick={() => setShowCategories(!showCategories)}>{"Categor\u00edas"}</button>
     {showCategories && <FinanceCategories categories={categories} used={entries === null ? null : new Set(entries.map((e) => e.categoryId))} officer={isOfficer} reload={load} authError={(code) => { if (code === "mfa_required" || code === "unauthenticated") void refresh(); }} />}
