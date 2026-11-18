@@ -18,7 +18,16 @@ import (
 // voteIP is the client address of every vote request; S11 checks it never reaches the logs.
 const voteIP = "198.51.100.56"
 
-// voteSchool is a school (see newSchool) whose election is the S1 example (voting 10 March 2027,
+// The S1 example moved to 2025: the database refuses to flush the box of an election whose end is
+// still ahead of its own clock, so the voting day must be in the past for the real clock too.
+var (
+	vSubStart = time.Date(2025, time.March, 1, 0, 0, 0, 0, art)
+	vSubEnd   = time.Date(2025, time.March, 6, 0, 0, 0, 0, art)
+	vStart    = time.Date(2025, time.March, 10, 8, 0, 0, 0, art)
+	vEnd      = time.Date(2025, time.March, 10, 18, 0, 0, 0, art)
+)
+
+// voteSchool is a school (see newSchool) whose election is the S1 example (voting 10 March 2025,
 // 08:00 to 18:00 Argentina time) with two approved lists, a pending one and a rejected one, plus an
 // earlier annulled election of the same school with its own approved list. The clock stands at
 // 07:59 of the voting day, so sessions opened from here last past the end.
@@ -35,7 +44,10 @@ type voterAccount struct{ userID, email, member string }
 func newVoteSchool(t *testing.T, ctx context.Context) *voteSchool {
 	t.Helper()
 	s := newSchool(t, ctx)
-	e := decodeElection(t, s.create(s.member, encode(draft())), http.StatusCreated)
+	s.clk.t = vSubStart.Add(-24 * time.Hour) // the app clock goes back so the dates are still ahead
+	e := decodeElection(t, s.create(s.member, encode(with(draft(),
+		"submissionStartsAt", vSubStart.Format(time.RFC3339), "submissionEndsAt", vSubEnd.Format(time.RFC3339),
+		"startsAt", vStart.Format(time.RFC3339), "endsAt", vEnd.Format(time.RFC3339)))), http.StatusCreated)
 	v := &voteSchool{school: s, electionID: e.ID}
 	rep := seedMember(t, ctx, s.tenant, "Rita Apoderada", "30333100")
 	v.blue = seedList(t, ctx, s.tenant, e.ID, "Lista Azul", rep, "approved")
@@ -46,14 +58,14 @@ func newVoteSchool(t *testing.T, ctx context.Context) *voteSchool {
 	if err := tdb.Super.QueryRow(ctx, `
 		INSERT INTO elections (tenant_id, commission_id, name, mode, submission_starts_at, submission_ends_at, starts_at, ends_at,
 		                       annulled_at, annulment_reason)
-		SELECT tenant_id, commission_id, 'Elección 2026', 'secret', $2, $3, $4, $5, $3, 'Se detectó un error en el padrón cargado'
+		SELECT tenant_id, commission_id, 'Elección 2024', 'secret', $2, $3, $4, $5, $3, 'Se detectó un error en el padrón cargado'
 		FROM elections WHERE id = $1 RETURNING id::text`, e.ID,
-		time.Date(2026, time.September, 1, 0, 0, 0, 0, art), time.Date(2026, time.September, 6, 0, 0, 0, 0, art),
-		time.Date(2026, time.September, 10, 8, 0, 0, 0, art), time.Date(2026, time.September, 10, 18, 0, 0, 0, art)).Scan(&earlier); err != nil {
+		time.Date(2024, time.September, 1, 0, 0, 0, 0, art), time.Date(2024, time.September, 6, 0, 0, 0, 0, art),
+		time.Date(2024, time.September, 10, 8, 0, 0, 0, art), time.Date(2024, time.September, 10, 18, 0, 0, 0, art)).Scan(&earlier); err != nil {
 		t.Fatal(err)
 	}
 	v.otherElectionList = seedList(t, ctx, s.tenant, earlier, "Lista Azul", rep, "approved")
-	v.clk.t = exStart.Add(-time.Minute)
+	v.clk.t = vStart.Add(-time.Minute)
 	return v
 }
 
@@ -236,8 +248,8 @@ func foreignElection(t *testing.T, ctx context.Context) (election, list string) 
 	if err := tdb.Super.QueryRow(ctx, `
 		WITH c AS (INSERT INTO electoral_commissions (tenant_id) VALUES ($1) RETURNING id)
 		INSERT INTO elections (tenant_id, commission_id, name, mode, submission_starts_at, submission_ends_at, starts_at, ends_at)
-		SELECT $1, c.id, 'Elección 2027', 'secret', $2, $3, $4, $5 FROM c RETURNING id::text`,
-		tenant, exSubStart, exSubEnd, exStart, exEnd).Scan(&election); err != nil {
+		SELECT $1, c.id, 'Elección 2025', 'secret', $2, $3, $4, $5 FROM c RETURNING id::text`,
+		tenant, vSubStart, vSubEnd, vStart, vEnd).Scan(&election); err != nil {
 		t.Fatal(err)
 	}
 	return election, seedList(t, ctx, tenant, election, "Lista Azul", rep, "approved")
@@ -282,11 +294,11 @@ func TestVoteOpensAndClosesByTheClock(t *testing.T) {
 		t.Fatalf("snapshots at 07:59 = %d, want 0", n)
 	}
 
-	v.clk.t = exStart
+	v.clk.t = vStart
 	wantVoted(t, v.vote(carlaTok, v.electionID, voteBody(v.blue)))
 	wantBox(t, ctx, v.electionID, 1, carla.member)
 
-	v.clk.t = exEnd
+	v.clk.t = vEnd
 	wantVoteError(t, v.vote(darioTok, v.electionID, voteBody(v.blue)), http.StatusConflict, "election_not_open")
 	wantBox(t, ctx, v.electionID, 1, carla.member)
 }
@@ -299,7 +311,7 @@ func TestVoteElectorateIsTheRosterWhenVotingOpens(t *testing.T) {
 	carla := v.voter(t, ctx, "Carla Ficticia", "30333101")
 	dario := v.voter(t, ctx, "Dario Ficticio", "30333102")
 	carlaTok, darioTok := v.loginOK(t, carla.email), v.loginOK(t, dario.email)
-	v.clk.t = exStart
+	v.clk.t = vStart
 	size := rosterSize(t, ctx, v.tenant)
 
 	recs := make([]*httptest.ResponseRecorder, 2)
@@ -335,7 +347,7 @@ func TestVoteWithoutApprovedListsDoesNotOpen(t *testing.T) {
 	}
 	carla := v.voter(t, ctx, "Carla Ficticia", "30333101")
 	carlaTok := v.loginOK(t, carla.email)
-	v.clk.t = exStart
+	v.clk.t = vStart
 	wantVoteError(t, v.vote(carlaTok, v.electionID, voteBody("blank")), http.StatusConflict, "no_approved_lists")
 	wantVoteError(t, v.turnout(carlaTok, v.electionID), http.StatusConflict, "no_approved_lists")
 	wantBox(t, ctx, v.electionID, 0)
@@ -434,7 +446,7 @@ func TestVoteChoices(t *testing.T) {
 	carla := v.voter(t, ctx, "Carla Ficticia", "30333101")
 	dario := v.voter(t, ctx, "Dario Ficticio", "30333102")
 	carlaTok, darioTok := v.loginOK(t, carla.email), v.loginOK(t, dario.email)
-	v.clk.t = exStart
+	v.clk.t = vStart
 
 	for _, tc := range []struct {
 		name, election, body, code string
@@ -486,7 +498,7 @@ func TestVoteOncePerStudent(t *testing.T) {
 	}
 	carla := v.voter(t, ctx, "Carla Ficticia", "30333101")
 	anaTok, carlaTok := v.rosterLogin(t, ctx, v.ana), v.loginOK(t, carla.email)
-	v.clk.t = exStart
+	v.clk.t = vStart
 
 	wantVoted(t, v.vote(anaTok, v.electionID, voteBody(v.blue)))
 	wantVoteError(t, v.vote(anaTok, v.electionID, voteBody(v.green)), http.StatusConflict, "already_voted")
@@ -517,7 +529,7 @@ func TestVoteWhoVotes(t *testing.T) {
 	_, adminTok := v.signIn(t, ctx, "school_admin")
 	_, officerTok := v.signIn(t, ctx, "officer")
 	_, outsiderTok := v.signIn(t, ctx, "")
-	v.clk.t = exStart
+	v.clk.t = vStart
 
 	for _, tc := range []struct {
 		name, token, code string
@@ -547,10 +559,10 @@ func TestStudentClaimsTheCodeDuringTheElectionAndVotes(t *testing.T) {
 	carla := v.voter(t, ctx, "Carla Ficticia", "30333101")
 	fede := seedMember(t, ctx, v.tenant, "Fede Ficticio", "30333103")
 	carlaTok := v.loginOK(t, carla.email)
-	v.clk.t = exStart
+	v.clk.t = vStart
 	wantVoted(t, v.vote(carlaTok, v.electionID, voteBody(v.blue))) // the snapshot is taken here
 
-	v.clk.t = time.Date(2027, time.March, 10, 10, 0, 0, 0, art)
+	v.clk.t = time.Date(2025, time.March, 10, 10, 0, 0, 0, art)
 	code := seedCode(t, ctx, v.tenant, fede, "active", v.clk.Now())
 	email := uniqueEmail("fede")
 	rec := v.claim(code, email, password, "192.0.2.77")
@@ -573,7 +585,7 @@ func TestVoteFailureBetweenTheTwoWritesKeepsNeither(t *testing.T) {
 	v := newVoteSchool(t, ctx)
 	carla := v.voter(t, ctx, "Carla Ficticia", "30333101")
 	carlaTok := v.loginOK(t, carla.email)
-	v.clk.t = exStart
+	v.clk.t = vStart
 
 	remove := installBallotFault(t, ctx, v.electionID)
 	wantVoteError(t, v.vote(carlaTok, v.electionID, voteBody(v.blue)), http.StatusInternalServerError, "internal")
@@ -592,7 +604,7 @@ func TestVoteLogsNeverLinkTheChoiceToTheVoter(t *testing.T) {
 	carla := v.voter(t, ctx, "Carla Ficticia", "30333101")
 	dario := v.voter(t, ctx, "Dario Ficticio", "30333102")
 	carlaTok, darioTok := v.loginOK(t, carla.email), v.loginOK(t, dario.email)
-	v.clk.t = exStart
+	v.clk.t = vStart
 
 	var logs bytes.Buffer
 	previous := slog.Default()
@@ -629,7 +641,7 @@ func TestTurnoutShowsOnlyHowManyVoted(t *testing.T) {
 	_, outsiderTok := v.signIn(t, ctx, "")
 
 	wantVoteError(t, v.turnout(carlaTok, v.electionID), http.StatusConflict, "election_not_open")
-	v.clk.t = exStart
+	v.clk.t = vStart
 	size := rosterSize(t, ctx, v.tenant)
 	wantTurnout(t, v.turnout(carlaTok, v.electionID), 0, size, false)
 	wantVoted(t, v.vote(carlaTok, v.electionID, voteBody(v.blue)))
@@ -645,7 +657,7 @@ func TestTurnoutShowsOnlyHowManyVoted(t *testing.T) {
 	wantVoteError(t, v.results(outsiderTok, v.electionID), http.StatusForbidden, "forbidden")
 	wantVoteError(t, v.results("", v.electionID), http.StatusUnauthorized, "unauthenticated")
 
-	v.clk.t = exEnd
+	v.clk.t = vEnd
 	wantTurnout(t, v.turnout(darioTok, v.electionID), 1, size, false)
 	wantVoteError(t, v.results(carlaTok, v.electionID), http.StatusConflict, "results_not_available")
 }
@@ -658,7 +670,7 @@ func TestVoteNeedsNoSecondFactor(t *testing.T) {
 	carla := v.voter(t, ctx, "Carla Ficticia", "30333101")
 	beto := v.presidenteMember(t, ctx)
 	carlaTok, betoTok := v.loginOK(t, carla.email), v.rosterLogin(t, ctx, beto)
-	v.clk.t = exStart
+	v.clk.t = vStart
 	if mfa, _ := meJSON(t, v.fixture, carlaTok); mfa != "not_required" {
 		t.Fatalf("student mfa = %q, want not_required", mfa)
 	}
@@ -678,7 +690,7 @@ func TestVoteAndTurnoutOfAnotherSchoolAreNotFound(t *testing.T) {
 	foreign, foreignList := foreignElection(t, ctx)
 	carla := v.voter(t, ctx, "Carla Ficticia", "30333101")
 	carlaTok := v.loginOK(t, carla.email)
-	v.clk.t = exStart
+	v.clk.t = vStart
 	wantVoteError(t, v.vote(carlaTok, foreign, voteBody(foreignList)), http.StatusNotFound, "not_found")
 	wantVoteError(t, v.vote(carlaTok, foreign, voteBody("blank")), http.StatusNotFound, "not_found")
 	wantVoteError(t, v.turnout(carlaTok, foreign), http.StatusNotFound, "not_found")
@@ -697,7 +709,7 @@ func TestVoteOnAnAnnulledElection(t *testing.T) {
 	carla := v.voter(t, ctx, "Carla Ficticia", "30333101")
 	dario := v.voter(t, ctx, "Dario Ficticio", "30333102")
 	carlaTok, darioTok := v.loginOK(t, carla.email), v.loginOK(t, dario.email)
-	v.clk.t = exStart
+	v.clk.t = vStart
 	wantVoted(t, v.vote(carlaTok, v.electionID, voteBody(v.blue)))
 	if _, err := tdb.Super.Exec(ctx, `UPDATE elections SET annulled_at = $2, annulment_reason = $3 WHERE id = $1`,
 		v.electionID, v.clk.Now(), exampleReason); err != nil {
