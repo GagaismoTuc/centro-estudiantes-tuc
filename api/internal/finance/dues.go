@@ -41,6 +41,7 @@ type DueMember struct {
 	RosterMemberID  string
 	FullName        string
 	Status          string
+	PaidCents       int64
 	ExemptionReason string
 }
 
@@ -57,6 +58,7 @@ type MyDue struct {
 	AmountCents int64
 	DueDate     string
 	Status      string
+	PaidCents   int64
 }
 
 // NewDue is the input to create a Due and snapshot the current Roster.
@@ -80,21 +82,9 @@ func (s *Store) withDueRole(ctx context.Context, sess auth.Session, allowReaders
 	return db.WithTenant(ctx, s.pool, sess.TenantID, func(tx pgx.Tx) error {
 		roles := []string{"officer"}
 		if allowReaders {
-			roles = []string{"school_admin", "officer", "veedor"}
+			roles = dueReaderRoles
 		}
-		var allowed bool
-		err := tx.QueryRow(ctx, `
-			SELECT EXISTS (
-				SELECT 1 FROM memberships m
-				WHERE m.tenant_id = $1 AND m.user_id = $2
-				  AND (
-					  m.role = ANY($3::text[])
-					  OR EXISTS (
-						  SELECT 1 FROM officer_positions p
-						  WHERE p.tenant_id = m.tenant_id AND p.roster_member_id = m.roster_member_id
-					  )
-				  )
-			)`, sess.TenantID, sess.UserID, roles).Scan(&allowed)
+		allowed, err := hasDueRole(ctx, tx, sess, roles)
 		if err != nil {
 			return err
 		}
@@ -106,6 +96,27 @@ func (s *Store) withDueRole(ctx context.Context, sess auth.Session, allowReaders
 		}
 		return fn(tx)
 	})
+}
+
+// dueReaderRoles see the full per-student list of a Due and who paid (ADR 0004).
+var dueReaderRoles = []string{"school_admin", "officer", "veedor"}
+
+// hasDueRole reports whether the session holds one of roles, or an officer position, in its tenant.
+func hasDueRole(ctx context.Context, tx pgx.Tx, sess auth.Session, roles []string) (bool, error) {
+	var allowed bool
+	err := tx.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM memberships m
+			WHERE m.tenant_id = $1 AND m.user_id = $2
+			  AND (
+				  m.role = ANY($3::text[])
+				  OR EXISTS (
+					  SELECT 1 FROM officer_positions p
+					  WHERE p.tenant_id = m.tenant_id AND p.roster_member_id = m.roster_member_id
+				  )
+			  )
+		)`, sess.TenantID, sess.UserID, roles).Scan(&allowed)
+	return allowed, err
 }
 
 // AuthorizeDueWrite checks that sess is an officer with verified MFA before parsing request payloads.
@@ -121,17 +132,8 @@ func parseDueDate(raw string) (time.Time, error) {
 	return date, nil
 }
 
-func hasDueActivity(ctx context.Context, tx pgx.Tx, tenantID, dueID string) (bool, error) {
-	// shortcut: counts only Exemptions until #78 adds payments here.
-	var active bool
-	err := tx.QueryRow(ctx, `
-		SELECT EXISTS (SELECT 1 FROM finance_due_exemptions WHERE tenant_id = $1 AND due_id = $2)`,
-		tenantID, dueID).Scan(&active)
-	return active, err
-}
-
 func buildDueDetail(ctx context.Context, tx pgx.Tx, tenantID string, due Due) (DueDetail, error) {
-	members, err := loadDueMembers(ctx, tx, tenantID, due.ID)
+	members, err := loadDueMembers(ctx, tx, tenantID, due.ID, due.AmountCents)
 	if err != nil {
 		return DueDetail{}, err
 	}
@@ -148,9 +150,10 @@ func buildDueDetail(ctx context.Context, tx pgx.Tx, tenantID string, due Due) (D
 	return DueDetail{Due: due, Members: members}, nil
 }
 
-func loadDueMembers(ctx context.Context, tx pgx.Tx, tenantID, dueID string) ([]DueMember, error) {
+func loadDueMembers(ctx context.Context, tx pgx.Tx, tenantID, dueID string, amountCents int64) ([]DueMember, error) {
 	rows, err := tx.Query(ctx, `
-		SELECT dm.roster_member_id::text, rm.full_name, e.roster_member_id IS NOT NULL, COALESCE(e.reason, '')
+		SELECT dm.roster_member_id::text, rm.full_name, `+paidSQL("dm.due_id", "dm.roster_member_id")+`,
+		       e.roster_member_id IS NOT NULL, COALESCE(e.reason, '')
 		FROM finance_due_members dm
 		JOIN roster_members rm ON rm.tenant_id = dm.tenant_id AND rm.id = dm.roster_member_id
 		LEFT JOIN finance_due_exemptions e
@@ -165,13 +168,10 @@ func loadDueMembers(ctx context.Context, tx pgx.Tx, tenantID, dueID string) ([]D
 	for rows.Next() {
 		var m DueMember
 		var exempt bool
-		if err := rows.Scan(&m.RosterMemberID, &m.FullName, &exempt, &m.ExemptionReason); err != nil {
+		if err := rows.Scan(&m.RosterMemberID, &m.FullName, &m.PaidCents, &exempt, &m.ExemptionReason); err != nil {
 			return nil, err
 		}
-		m.Status = DueStatusOwing
-		if exempt {
-			m.Status = DueStatusExempt
-		}
+		m.Status = dueStatus(amountCents, m.PaidCents, exempt)
 		members = append(members, m)
 	}
 	if err := rows.Err(); err != nil {
@@ -230,7 +230,7 @@ func (s *Store) ListDues(ctx context.Context, sess auth.Session) (out []Due, err
 	err = s.withDueRole(ctx, sess, true, func(tx pgx.Tx) error {
 		rows, e := tx.Query(ctx, `
 			SELECT d.id::text, d.name, d.amount_cents, to_char(d.due_date, 'YYYY-MM-DD'), d.created_at,
-			       COUNT(dm.roster_member_id) FILTER (WHERE e.roster_member_id IS NULL)::int,
+			       COUNT(dm.roster_member_id) FILTER (WHERE e.roster_member_id IS NULL AND `+paidSQL("dm.due_id", "dm.roster_member_id")+` < d.amount_cents)::int,
 			       COUNT(dm.roster_member_id) FILTER (WHERE e.roster_member_id IS NULL)::int
 			FROM finance_dues d
 			LEFT JOIN finance_due_members dm ON dm.tenant_id = d.tenant_id AND dm.due_id = d.id
@@ -405,7 +405,8 @@ func (s *Store) ListMyDues(ctx context.Context, sess auth.Session) (out []MyDue,
 			return e
 		}
 		rows, e := tx.Query(ctx, `
-			SELECT d.id::text, d.name, d.amount_cents, to_char(d.due_date, 'YYYY-MM-DD'), e.roster_member_id IS NOT NULL
+			SELECT d.id::text, d.name, d.amount_cents, to_char(d.due_date, 'YYYY-MM-DD'), `+paidSQL("d.id", "dm.roster_member_id")+`,
+			       e.roster_member_id IS NOT NULL
 			FROM finance_dues d
 			JOIN finance_due_members dm ON dm.tenant_id = d.tenant_id AND dm.due_id = d.id
 			LEFT JOIN finance_due_exemptions e
@@ -419,14 +420,11 @@ func (s *Store) ListMyDues(ctx context.Context, sess auth.Session) (out []MyDue,
 		for rows.Next() {
 			var d MyDue
 			var exempt bool
-			if e := rows.Scan(&d.ID, &d.Name, &d.AmountCents, &d.DueDate, &exempt); e != nil {
+			if e := rows.Scan(&d.ID, &d.Name, &d.AmountCents, &d.DueDate, &d.PaidCents, &exempt); e != nil {
 				return e
 			}
 			// The Student sees only that they are exempt, never the reason (ADR 0004).
-			d.Status = DueStatusOwing
-			if exempt {
-				d.Status = DueStatusExempt
-			}
+			d.Status = dueStatus(d.AmountCents, d.PaidCents, exempt)
 			out = append(out, d)
 		}
 		return rows.Err()

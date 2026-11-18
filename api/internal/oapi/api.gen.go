@@ -100,19 +100,19 @@ func (e FinanceCategoryTotalDirection) Valid() bool {
 
 // Defines values for FinanceDueStatus.
 const (
-	Exempt FinanceDueStatus = "exempt"
-	Owing  FinanceDueStatus = "owing"
-	Paid   FinanceDueStatus = "paid"
+	FinanceDueStatusExempt FinanceDueStatus = "exempt"
+	FinanceDueStatusOwing  FinanceDueStatus = "owing"
+	FinanceDueStatusPaid   FinanceDueStatus = "paid"
 )
 
 // Valid indicates whether the value is a known member of the FinanceDueStatus enum.
 func (e FinanceDueStatus) Valid() bool {
 	switch e {
-	case Exempt:
+	case FinanceDueStatusExempt:
 		return true
-	case Owing:
+	case FinanceDueStatusOwing:
 		return true
-	case Paid:
+	case FinanceDueStatusPaid:
 		return true
 	default:
 		return false
@@ -1037,12 +1037,15 @@ func (e PatchFinanceDue422JSONResponseBodyError) Valid() bool {
 // Defines values for PostFinanceDueExemptions409JSONResponseBodyError.
 const (
 	AlreadyExempt PostFinanceDueExemptions409JSONResponseBodyError = "already_exempt"
+	HasPayments   PostFinanceDueExemptions409JSONResponseBodyError = "has_payments"
 )
 
 // Valid indicates whether the value is a known member of the PostFinanceDueExemptions409JSONResponseBodyError enum.
 func (e PostFinanceDueExemptions409JSONResponseBodyError) Valid() bool {
 	switch e {
 	case AlreadyExempt:
+		return true
+	case HasPayments:
 		return true
 	default:
 		return false
@@ -1064,6 +1067,36 @@ func (e PostFinanceDueExemptions422JSONResponseBodyError) Valid() bool {
 	case PostFinanceDueExemptions422JSONResponseBodyErrorReasonRequired:
 		return true
 	case PostFinanceDueExemptions422JSONResponseBodyErrorReasonTooLong:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostFinanceDuePayment422JSONResponseBodyError.
+const (
+	PostFinanceDuePayment422JSONResponseBodyErrorExempt        PostFinanceDuePayment422JSONResponseBodyError = "exempt"
+	PostFinanceDuePayment422JSONResponseBodyErrorFutureDate    PostFinanceDuePayment422JSONResponseBodyError = "future_date"
+	PostFinanceDuePayment422JSONResponseBodyErrorInvalidAmount PostFinanceDuePayment422JSONResponseBodyError = "invalid_amount"
+	PostFinanceDuePayment422JSONResponseBodyErrorInvalidDate   PostFinanceDuePayment422JSONResponseBodyError = "invalid_date"
+	PostFinanceDuePayment422JSONResponseBodyErrorNotOwed       PostFinanceDuePayment422JSONResponseBodyError = "not_owed"
+	PostFinanceDuePayment422JSONResponseBodyErrorOverpayment   PostFinanceDuePayment422JSONResponseBodyError = "overpayment"
+)
+
+// Valid indicates whether the value is a known member of the PostFinanceDuePayment422JSONResponseBodyError enum.
+func (e PostFinanceDuePayment422JSONResponseBodyError) Valid() bool {
+	switch e {
+	case PostFinanceDuePayment422JSONResponseBodyErrorExempt:
+		return true
+	case PostFinanceDuePayment422JSONResponseBodyErrorFutureDate:
+		return true
+	case PostFinanceDuePayment422JSONResponseBodyErrorInvalidAmount:
+		return true
+	case PostFinanceDuePayment422JSONResponseBodyErrorInvalidDate:
+		return true
+	case PostFinanceDuePayment422JSONResponseBodyErrorNotOwed:
+		return true
+	case PostFinanceDuePayment422JSONResponseBodyErrorOverpayment:
 		return true
 	default:
 		return false
@@ -1552,10 +1585,23 @@ type FinanceDueDetail struct {
 // FinanceDueMember defines model for FinanceDueMember.
 type FinanceDueMember struct {
 	// ExemptionReason Present only when status is `exempt`. Only officers, school admins and veedors read the due detail.
-	ExemptionReason *string          `json:"exemptionReason,omitempty"`
-	FullName        string           `json:"fullName"`
-	RosterMemberId  string           `json:"rosterMemberId"`
-	Status          FinanceDueStatus `json:"status"`
+	ExemptionReason *string `json:"exemptionReason,omitempty"`
+	FullName        string  `json:"fullName"`
+
+	// PaidCents Sum of the member's payments whose Entry has not been reversed.
+	PaidCents      int64            `json:"paidCents"`
+	RosterMemberId string           `json:"rosterMemberId"`
+	Status         FinanceDueStatus `json:"status"`
+}
+
+// FinanceDuePayment defines model for FinanceDuePayment.
+type FinanceDuePayment struct {
+	AmountCents    int64  `json:"amountCents"`
+	Date           string `json:"date"`
+	DueId          string `json:"dueId"`
+	EntryId        string `json:"entryId"`
+	Id             string `json:"id"`
+	RosterMemberId string `json:"rosterMemberId"`
 }
 
 // FinanceDueStatus defines model for FinanceDueStatus.
@@ -1601,6 +1647,15 @@ type FinanceEntry struct {
 
 	// ReversesId Present when this entry is a Reversal; the id of the entry it reverses.
 	ReversesId *string `json:"reversesId,omitempty"`
+
+	// RosterMember Present on a due payment's Entry for officers, school admins and veedors; absent for students (ADR 0004).
+	RosterMember *FinanceEntryRosterMember `json:"rosterMember,omitempty"`
+}
+
+// FinanceEntryRosterMember Present on a due payment's Entry for officers, school admins and veedors; absent for students (ADR 0004).
+type FinanceEntryRosterMember struct {
+	FullName string `json:"fullName"`
+	Id       string `json:"id"`
 }
 
 // FinanceReceipt defines model for FinanceReceipt.
@@ -1755,11 +1810,14 @@ type MfaVerifyRequest struct {
 
 // MyFinanceDue defines model for MyFinanceDue.
 type MyFinanceDue struct {
-	AmountCents int64            `json:"amountCents"`
-	DueDate     string           `json:"dueDate"`
-	Id          string           `json:"id"`
-	Name        string           `json:"name"`
-	Status      FinanceDueStatus `json:"status"`
+	AmountCents int64  `json:"amountCents"`
+	DueDate     string `json:"dueDate"`
+	Id          string `json:"id"`
+	Name        string `json:"name"`
+
+	// PaidCents Sum of the caller's payments whose Entry has not been reversed.
+	PaidCents int64            `json:"paidCents"`
+	Status    FinanceDueStatus `json:"status"`
 }
 
 // NewFinanceCategory defines model for NewFinanceCategory.
@@ -1782,6 +1840,15 @@ type NewFinanceDue struct {
 type NewFinanceDueExemption struct {
 	// Reason Trimmed; 1 to 500 characters.
 	Reason         string `json:"reason"`
+	RosterMemberId string `json:"rosterMemberId"`
+}
+
+// NewFinanceDuePayment defines model for NewFinanceDuePayment.
+type NewFinanceDuePayment struct {
+	AmountCents int64 `json:"amountCents"`
+
+	// Date Payment date (YYYY-MM-DD), not in the future in Argentina.
+	Date           string `json:"date"`
 	RosterMemberId string `json:"rosterMemberId"`
 }
 
@@ -2141,6 +2208,9 @@ type PostFinanceDueExemptions409JSONResponseBodyError string
 // PostFinanceDueExemptions422JSONResponseBodyError defines parameters for PostFinanceDueExemptions.
 type PostFinanceDueExemptions422JSONResponseBodyError string
 
+// PostFinanceDuePayment422JSONResponseBodyError defines parameters for PostFinanceDuePayment.
+type PostFinanceDuePayment422JSONResponseBodyError string
+
 // GetFinanceEntriesCsvParams defines parameters for GetFinanceEntriesCsv.
 type GetFinanceEntriesCsvParams struct {
 	// From First day of the range (YYYY-MM-DD, inclusive). Missing or invalid answers `invalid_range`.
@@ -2311,6 +2381,9 @@ type PatchFinanceDueJSONRequestBody = UpdateFinanceDue
 
 // PostFinanceDueExemptionsJSONRequestBody defines body for PostFinanceDueExemptions for application/json ContentType.
 type PostFinanceDueExemptionsJSONRequestBody = NewFinanceDueExemption
+
+// PostFinanceDuePaymentJSONRequestBody defines body for PostFinanceDuePayment for application/json ContentType.
+type PostFinanceDuePaymentJSONRequestBody = NewFinanceDuePayment
 
 // PostFinanceEntriesJSONRequestBody defines body for PostFinanceEntries for application/json ContentType.
 type PostFinanceEntriesJSONRequestBody = NewFinanceEntry
@@ -2518,6 +2591,12 @@ type ServerInterface interface {
 	// PostFinanceDueExemptions Exempt a roster member from a due, with a reason, as an officer with MFA
 	// (POST /finance/dues/{id}/exemptions)
 	PostFinanceDueExemptions(w http.ResponseWriter, r *http.Request, id string)
+	// GetFinanceDueMembersCsv Download the per-student list of a due as CSV
+	// (GET /finance/dues/{id}/members.csv)
+	GetFinanceDueMembersCsv(w http.ResponseWriter, r *http.Request, id string)
+	// PostFinanceDuePayment Record a full or partial due payment for one roster member as an officer with MFA
+	// (POST /finance/dues/{id}/payments)
+	PostFinanceDuePayment(w http.ResponseWriter, r *http.Request, id string)
 	// GetFinanceEntries List entries in the active school
 	// (GET /finance/entries)
 	GetFinanceEntries(w http.ResponseWriter, r *http.Request)
@@ -4017,6 +4096,58 @@ func (siw *ServerInterfaceWrapper) PostFinanceDueExemptions(w http.ResponseWrite
 	handler.ServeHTTP(w, r)
 }
 
+// GetFinanceDueMembersCsv operation middleware
+func (siw *ServerInterfaceWrapper) GetFinanceDueMembersCsv(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetFinanceDueMembersCsv(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostFinanceDuePayment operation middleware
+func (siw *ServerInterfaceWrapper) PostFinanceDuePayment(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostFinanceDuePayment(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetFinanceEntries operation middleware
 func (siw *ServerInterfaceWrapper) GetFinanceEntries(w http.ResponseWriter, r *http.Request) {
 
@@ -4734,6 +4865,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/dues/{id}", wrapper.GetFinanceDue)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/finance/dues/{id}", wrapper.PatchFinanceDue)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/finance/dues/{id}/exemptions", wrapper.PostFinanceDueExemptions)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/finance/dues/{id}/payments", wrapper.PostFinanceDuePayment)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/dues/{id}/members.csv", wrapper.GetFinanceDueMembersCsv)
 
 	return m
 }

@@ -12,9 +12,10 @@ import (
 )
 
 // csvText escapes a text cell so a spreadsheet never runs it as a formula (CSV injection): a
-// leading =, +, - or @ gets a ' in front. Every cell except a csvAmount goes through it.
+// leading =, +, -, @, tab or carriage return gets a ' in front. Every cell except a csvAmount goes
+// through it.
 func csvText(v string) string {
-	if v != "" && strings.ContainsRune("=+-@", rune(v[0])) {
+	if v != "" && strings.ContainsRune("=+-@\t\r", rune(v[0])) {
 		return "'" + v
 	}
 	return v
@@ -46,8 +47,7 @@ func csvYesNo(v bool) string {
 
 // writeLedgerCSV writes the ledger section. The "alumno" column exists only for readers who may see
 // who paid a Due (ADR 0004); Students never get it.
-// shortcut: "con comprobante" is always "no" until Receipts (#73), and "alumno" stays empty until
-// Due payments (#78) link an Entry to a Roster member.
+// shortcut: "con comprobante" is always "no" until Receipts (#73).
 func writeLedgerCSV(cw *csv.Writer, entries []finance.Entry, categories map[string]string, seesPayers bool) {
 	header := []string{"fecha", "tipo", "Categoría", "descripción", "monto", "registrado por", "revertido", "con comprobante"}
 	if seesPayers {
@@ -62,7 +62,7 @@ func writeLedgerCSV(cw *csv.Writer, entries []finance.Entry, categories map[stri
 		row := []string{csvText(e.Date), csvKind(e.Direction), csvText(categories[e.CategoryID]), csvText(e.Description), csvAmount(amount),
 			csvText(e.RecordedBy), csvYesNo(e.ReversalID != ""), csvYesNo(false)}
 		if seesPayers {
-			row = append(row, "")
+			row = append(row, csvText(e.RosterMemberName))
 		}
 		_ = cw.Write(row)
 	}

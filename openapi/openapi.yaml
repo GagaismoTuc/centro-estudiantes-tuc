@@ -2788,7 +2788,9 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/NotFoundError" }
         "409":
-          description: The roster member is already exempt from this due (`already_exempt`). Nothing is written.
+          description: >
+            Nothing is written. `already_exempt`: the roster member is already exempt from this due.
+            `has_payments`: the roster member has payments for this due whose Entry was not reversed.
           content:
             application/json:
               schema:
@@ -2797,7 +2799,7 @@ paths:
                 properties:
                   error:
                     type: string
-                    enum: [already_exempt]
+                    enum: [already_exempt, has_payments]
         "422":
           description: >
             Nothing is written. `reason_required`: reason missing, null, empty or only spaces.
@@ -2812,6 +2814,83 @@ paths:
                   error:
                     type: string
                     enum: [reason_required, reason_too_long, not_owed]
+  /finance/dues/{id}/payments:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      operationId: postFinanceDuePayment
+      summary: Record a full or partial due payment for one roster member as an officer with MFA
+      description: >
+        Writes, in one transaction, the payment and its income Entry in the reserved category "Cuotas"
+        with the description "Pago de cuota: " followed by the due's name. Payments for one roster member
+        are serialized, so together they never exceed the due's amount. Reversing the payment's Entry
+        (`POST /finance/entries/{entryId}/reversal`) discounts the payment; the due stays frozen.
+        Errors never name the roster member.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewFinanceDuePayment"
+      responses:
+        "201":
+          description: Payment and its Entry recorded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FinanceDuePayment"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/DirectoryForbidden" }
+        "404":
+          description: Due or roster member not found in the active school (`not_found`). Nothing is written.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotFoundError" }
+        "422":
+          description: >
+            Nothing is written. `invalid_amount`: amount missing, zero or negative. `invalid_date` or
+            `future_date`: the payment date. `not_owed`: the roster member is not in the due's snapshot.
+            `overpayment`: the payment plus what was already paid exceeds the due's amount. `exempt`: the
+            roster member is exempt from the due.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [invalid_amount, invalid_date, future_date, not_owed, overpayment, exempt]
+  /finance/dues/{id}/members.csv:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getFinanceDueMembersCsv
+      summary: Download the per-student list of a due as CSV
+      description: >
+        Officers, school admins and veedors with a verified two-factor session. UTF-8 with a byte order
+        mark, `;` as separator, one row per roster member of the due's snapshot: name, paid, owing,
+        status and exemption reason. Never includes document numbers.
+      responses:
+        "200":
+          description: CSV file.
+          content:
+            text/csv:
+              schema: { type: string }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/DirectoryForbidden" }
+        "404":
+          description: Due not found in the active school (`not_found`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotFoundError" }
 components:
   parameters:
     ReportFrom:
@@ -3110,6 +3189,17 @@ components:
         reversedOn:
           type: string
           description: Present when this entry was reversed; the Reversal's date (YYYY-MM-DD, Argentina).
+        rosterMember:
+          $ref: "#/components/schemas/FinanceEntryRosterMember"
+    FinanceEntryRosterMember:
+      type: object
+      description: >
+        Present on a due payment's Entry for officers, school admins and veedors; absent for students
+        (ADR 0004).
+      required: [id, fullName]
+      properties:
+        id: { type: string }
+        fullName: { type: string }
     FinanceReceipt:
       type: object
       required: [id, contentType, sizeBytes, uploadedAt]
@@ -3181,10 +3271,14 @@ components:
       enum: [owing, paid, exempt]
     FinanceDueMember:
       type: object
-      required: [rosterMemberId, fullName, status]
+      required: [rosterMemberId, fullName, status, paidCents]
       properties:
         rosterMemberId: { type: string }
         fullName: { type: string }
+        paidCents:
+          type: integer
+          format: int64
+          description: Sum of the member's payments whose Entry has not been reversed.
         status:
           $ref: "#/components/schemas/FinanceDueStatus"
         exemptionReason:
@@ -3218,14 +3312,36 @@ components:
             $ref: "#/components/schemas/FinanceDueMember"
     MyFinanceDue:
       type: object
-      required: [id, name, amountCents, dueDate, status]
+      required: [id, name, amountCents, dueDate, status, paidCents]
       properties:
         id: { type: string }
         name: { type: string }
         amountCents: { type: integer, format: int64 }
+        paidCents:
+          type: integer
+          format: int64
+          description: Sum of the caller's payments whose Entry has not been reversed.
         dueDate: { type: string }
         status:
           $ref: "#/components/schemas/FinanceDueStatus"
+    NewFinanceDuePayment:
+      type: object
+      additionalProperties: false
+      required: [rosterMemberId, amountCents, date]
+      properties:
+        rosterMemberId: { type: string }
+        amountCents: { type: integer, format: int64 }
+        date: { type: string, description: "Payment date (YYYY-MM-DD), not in the future in Argentina." }
+    FinanceDuePayment:
+      type: object
+      required: [id, dueId, rosterMemberId, entryId, amountCents, date]
+      properties:
+        id: { type: string }
+        dueId: { type: string }
+        rosterMemberId: { type: string }
+        entryId: { type: string }
+        amountCents: { type: integer, format: int64 }
+        date: { type: string }
     ForbiddenError:
       type: object
       required: [error]
