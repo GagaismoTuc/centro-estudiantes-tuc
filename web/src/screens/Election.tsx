@@ -16,6 +16,7 @@ import {
   type ElectionList,
   type ElectionListsResponse,
 } from "./electionShared.ts";
+import { ResultsPanel } from "./Results.tsx";
 import { SecretBallotGuarantee, VotePanel } from "./Vote.tsx";
 
 type CommissionMember = components["schemas"]["CommissionMember"];
@@ -85,6 +86,7 @@ export function Election() {
       )}
       {election && <ElectionDetails election={election} />}
       {election?.state === "open" && listsData && <VotePanel election={election} lists={approvedLists} />}
+      {election?.state === "closed" && <ResultsPanel electionId={election.id} />}
       {election && <SecretBallotGuarantee />}
       {election && election.state !== "draft" && election.state !== "annulled" && listsData && (
         <section className="panel" aria-labelledby="approved-lists-title">
