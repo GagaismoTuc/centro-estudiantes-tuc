@@ -33,6 +33,11 @@ export function SharedDirectory() {
   const statusRef = useRef<HTMLDivElement>(null);
   const seqRef = useRef(0);
 
+  // Defer past React commit so `.form-status:empty { display: none; }` is visible before focus moves.
+  const focusStatus = useCallback(() => {
+    requestAnimationFrame(() => statusRef.current?.focus());
+  }, []);
+
   const handleAuthError = useCallback(
     (code: string) => {
       if (code === "mfa_required" || code === "unauthenticated") void refresh();
@@ -64,9 +69,9 @@ export function SharedDirectory() {
       }
       handleAuthError(res.code);
       setStatus({ tone: "error", text: errorMessage(res.code) });
-      statusRef.current?.focus();
+      focusStatus();
     });
-  }, [canRead, headingFilter, zoneFilter, page, handleAuthError]);
+  }, [canRead, headingFilter, zoneFilter, page, handleAuthError, focusStatus]);
 
   async function copyContact(contact: SharedContact) {
     if (copyingId !== null) return;
@@ -83,11 +88,13 @@ export function SharedDirectory() {
         tone: "ok",
         text: `Se copió a ${res.data.name} a tus contactos (rubro ${res.data.headingName}).`,
       });
+      // Disabling the button while copying blurs focus to body; move focus to status.
+      focusStatus();
       return;
     }
     handleAuthError(res.code);
     setStatus({ tone: "error", text: errorMessage(res.code) });
-    statusRef.current?.focus();
+    focusStatus();
   }
 
   if (!canRead) {

@@ -40,6 +40,12 @@ function isActivelyShared(contact: Contact): boolean {
   return hasApprovedShare(contact) || hasPendingShare(contact);
 }
 
+// shortcut: marks outdated locally on reference-price add/delete without refetching GET /contacts;
+// if the user adds and then deletes the exact same price, the notice clears on next reload (upgrade by returning Contact from price endpoints).
+function markOutdatedIfApproved(contact: Contact): Contact {
+  return hasApprovedShare(contact) ? { ...contact, shareOutdated: true } : contact;
+}
+
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function parsePesosToCents(raw: string): number | null {
@@ -533,6 +539,11 @@ export function Contacts() {
 
   const statusRef = useRef<HTMLDivElement>(null);
 
+  // Defer past React commit so `.form-status:empty { display: none; }` is visible before focus moves.
+  const focusStatus = useCallback(() => {
+    requestAnimationFrame(() => statusRef.current?.focus());
+  }, []);
+
   const handleAuthError = useCallback(
     (code: string) => {
       if (code === "mfa_required" || code === "unauthenticated") void refresh();
@@ -610,12 +621,12 @@ export function Contacts() {
           : `Se envió a ${contact.name} para compartir. Quedará visible cuando lo aprueben.`,
       });
       // The share button unmounts when status becomes pending; move focus to status instead of body.
-      requestAnimationFrame(() => statusRef.current?.focus());
+      focusStatus();
       return;
     }
     handleAuthError(res.code);
     setStatus({ tone: "error", text: errorMessage(res.code) });
-    statusRef.current?.focus();
+    focusStatus();
   }
 
   async function withdrawShare(contact: Contact) {
@@ -629,6 +640,10 @@ export function Contacts() {
       setContacts((prev) =>
         prev.map((c) => {
           if (c.id !== contact.id) return c;
+          // Withdraw only removes active (pending/approved) rows; keep a newer rejected/removed latest status to match GET /contacts.
+          if (c.shareStatus === "rejected" || c.shareStatus === "removed") {
+            return { ...c, hasApprovedShare: false, shareOutdated: false };
+          }
           const { shareStatus: _, ...rest } = c;
           return { ...rest, hasApprovedShare: false, shareOutdated: false };
         }),
@@ -638,12 +653,12 @@ export function Contacts() {
         text: `Se dejó de compartir a ${contact.name}. Ya no aparece en el directorio compartido.`,
       });
       // The "Dejar de compartir" button unmounts when withdrawn; move focus to status instead of body.
-      requestAnimationFrame(() => statusRef.current?.focus());
+      focusStatus();
       return;
     }
     handleAuthError(res.code);
     setStatus({ tone: "error", text: errorMessage(res.code) });
-    statusRef.current?.focus();
+    focusStatus();
   }
 
   async function deletePrice(target: { contactId: string; priceId: string; description: string }) {
@@ -658,11 +673,10 @@ export function Contacts() {
       setContacts((prev) =>
         prev.map((c) =>
           c.id === target.contactId
-            ? {
+            ? markOutdatedIfApproved({
                 ...c,
                 referencePrices: c.referencePrices.filter((p) => p.id !== target.priceId),
-                ...(hasApprovedShare(c) ? { shareOutdated: true } : {}),
-              }
+              })
             : c,
         ),
       );
@@ -671,7 +685,7 @@ export function Contacts() {
     }
     handleAuthError(res.code);
     setStatus({ tone: "error", text: errorMessage(res.code) });
-    statusRef.current?.focus();
+    focusStatus();
   }
 
   if (!canRead) {
@@ -834,6 +848,7 @@ export function Contacts() {
                           type="button"
                           className="button button--secondary button--small"
                           disabled={shareBusyId !== null}
+                          aria-busy={shareBusyId === contact.id || undefined}
                           onClick={() => setConfirmShareContact(contact)}
                         >
                           {hasApprovedShare(contact) ? "Compartir de nuevo" : "Compartir"}
@@ -844,6 +859,7 @@ export function Contacts() {
                           type="button"
                           className="button button--secondary button--small"
                           disabled={shareBusyId !== null}
+                          aria-busy={shareBusyId === contact.id || undefined}
                           onClick={() => setConfirmWithdrawContact(contact)}
                         >
                           Dejar de compartir
@@ -903,11 +919,7 @@ export function Contacts() {
                         setContacts((prev) =>
                           prev.map((c) =>
                             c.id === contact.id
-                              ? {
-                                  ...c,
-                                  referencePrices: [price, ...c.referencePrices],
-                                  ...(hasApprovedShare(c) ? { shareOutdated: true } : {}),
-                                }
+                              ? markOutdatedIfApproved({ ...c, referencePrices: [price, ...c.referencePrices] })
                               : c,
                           ),
                         );
@@ -985,28 +997,33 @@ export function Contacts() {
         </ConfirmDialog>
       )}
 
-      {confirmShareContact && (
-        <ConfirmDialog
-          title={hasApprovedShare(confirmShareContact) ? "Compartir de nuevo" : "Compartir contacto"}
-          confirmLabel={hasApprovedShare(confirmShareContact) ? "Compartir de nuevo" : "Compartir"}
-          onConfirm={() => void shareContact(confirmShareContact)}
-          onCancel={() => setConfirmShareContact(null)}
-        >
-          {hasApprovedShare(confirmShareContact) ? (
+      {confirmShareContact && (() => {
+        const isReshare = hasApprovedShare(confirmShareContact);
+        return (
+          <ConfirmDialog
+            title={isReshare ? "Compartir de nuevo" : "Compartir contacto"}
+            confirmLabel={isReshare ? "Compartir de nuevo" : "Compartir"}
+            onConfirm={() => void shareContact(confirmShareContact)}
+            onCancel={() => setConfirmShareContact(null)}
+          >
             <p>
-              ¿Querés enviar una nueva versión de <strong>{confirmShareContact.name}</strong> para revisión? La versión
-              aprobada seguirá visible en el directorio compartido hasta que se apruebe la nueva. Nunca se comparten tus
-              notas ni el nombre de tu escuela.
+              {isReshare ? (
+                <>
+                  ¿Querés enviar una nueva versión de <strong>{confirmShareContact.name}</strong> para revisión? La
+                  versión aprobada seguirá visible en el directorio compartido hasta que se apruebe la nueva.{" "}
+                </>
+              ) : (
+                <>
+                  ¿Querés compartir a <strong>{confirmShareContact.name}</strong> con los centros de estudiantes de
+                  otras escuelas? Se enviarán nombre, rubro, teléfono, mail, zona y precios de referencia para
+                  revisión.{" "}
+                </>
+              )}
+              Nunca se comparten tus notas ni el nombre de tu escuela.
             </p>
-          ) : (
-            <p>
-              ¿Querés compartir a <strong>{confirmShareContact.name}</strong> con los centros de estudiantes de otras
-              escuelas? Se enviarán nombre, rubro, teléfono, mail, zona y precios de referencia para revisión. Nunca se
-              comparten tus notas ni el nombre de tu escuela.
-            </p>
-          )}
-        </ConfirmDialog>
-      )}
+          </ConfirmDialog>
+        );
+      })()}
 
       {confirmWithdrawContact && (
         <ConfirmDialog

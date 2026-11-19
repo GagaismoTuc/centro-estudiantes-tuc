@@ -1616,6 +1616,11 @@ select[aria-invalid="true"] {
   flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
+  min-inline-size: 0;
+}
+.contact-card__title .badge {
+  max-inline-size: 100%;
+  white-space: normal;
 }
 .contact-card__meta {
   display: grid;

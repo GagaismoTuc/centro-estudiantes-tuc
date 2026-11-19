@@ -261,11 +261,14 @@ describe("Shared directory and contact sharing", () => {
     const card1 = await screen.findByTestId("shared-contact-sc-1");
     const card2 = screen.getByTestId("shared-contact-sc-2");
 
-    // Officer copies sc-1 -> falls back to heading "otros" and confirms in live status.
+    // Officer copies sc-1 -> falls back to heading "otros", confirms in live status, and moves focus off disabled button.
     const copyBtn1 = within(card1).getByRole("button", { name: "Copiar a nuestros contactos" });
     fireEvent.click(copyBtn1);
     expect(await screen.findByText(/Se copió a Gazebos Ficticios SRL.*otros/i)).toBeTruthy();
     expect(sentTo(sent, "POST /shared-contacts/sc-1/copy")).toHaveLength(1);
+    await waitFor(() => {
+      expect(document.activeElement?.classList.contains("form-status")).toBe(true);
+    });
 
     // Copying twice is allowed (R2: no deduplication).
     fireEvent.click(within(card1).getByRole("button", { name: "Copiar a nuestros contactos" }));
@@ -318,6 +321,14 @@ describe("Shared directory and contact sharing", () => {
         shareStatus: "approved" as const,
         hasApprovedShare: true,
       },
+      {
+        ...contactsFixture[1]!,
+        id: "c-approved-rejected-v2",
+        name: "Fotografía Con Rechazo v2",
+        shareStatus: "rejected" as const,
+        hasApprovedShare: true,
+        shareOutdated: true,
+      },
     ];
 
     const sent = mockApi({
@@ -327,6 +338,7 @@ describe("Shared directory and contact sharing", () => {
       "DELETE /contacts/c-approved/share": noContent(),
       "DELETE /contacts/c-pending/share": noContent(),
       "DELETE /contacts/c-error/share": fail(404, "not_shared"),
+      "DELETE /contacts/c-approved-rejected-v2/share": noContent(),
     });
 
     window.history.replaceState(null, "", "/contactos");
@@ -382,18 +394,32 @@ describe("Shared directory and contact sharing", () => {
     expect(within(cardError).getByText("Compartido")).toBeTruthy();
     expect(within(cardError).getByRole("button", { name: "Dejar de compartir" })).toBeTruthy();
 
-    // Non-officer (school_admin) does not see "Dejar de compartir" or "Compartir de nuevo" (R6).
-    cleanup();
-    mockApi({
-      "GET /auth/me": ok(me({ role: "school_admin", roles: ["school_admin"], mfa: "satisfied" })),
-      "GET /contacts/headings": ok(sampleHeadings),
-      "GET /contacts": ok([sharedContacts[0]!]),
+    // Withdrawing an approved v1 that also had a rejected v2 drops "Compartido" and R4 notice while preserving "Rechazado" (matches GET /contacts).
+    const cardRejV2 = screen.getByTestId("contact-c-approved-rejected-v2");
+    fireEvent.click(within(cardRejV2).getByRole("button", { name: "Dejar de compartir" }));
+    fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Dejar de compartir" }));
+    await waitFor(() => {
+      expect(sentTo(sent, "DELETE /contacts/c-approved-rejected-v2/share")).toHaveLength(1);
     });
-    window.history.replaceState(null, "", "/contactos");
-    render(<App />);
-    const readOnlyCard = await screen.findByTestId("contact-c-approved");
-    expect(within(readOnlyCard).getByText("Compartido")).toBeTruthy();
-    expect(within(readOnlyCard).queryByRole("button", { name: /Dejar de compartir|Compartir de nuevo/i })).toBeNull();
+    expect(within(cardRejV2).queryByText("Compartido")).toBeNull();
+    expect(within(cardRejV2).queryByText("La versión compartida es anterior a tus cambios")).toBeNull();
+    expect(within(cardRejV2).getByText("Rechazado")).toBeTruthy();
+    expect(within(cardRejV2).getByRole("button", { name: "Compartir" })).toBeTruthy();
+
+    // Non-officers (school_admin, veedor) do not see "Dejar de compartir" or "Compartir de nuevo" (R6).
+    for (const role of ["school_admin", "veedor"] as const) {
+      cleanup();
+      mockApi({
+        "GET /auth/me": ok(me({ role: role as never, roles: [role as never], mfa: "satisfied" })),
+        "GET /contacts/headings": ok(sampleHeadings),
+        "GET /contacts": ok([sharedContacts[0]!]),
+      });
+      window.history.replaceState(null, "", "/contactos");
+      render(<App />);
+      const readOnlyCard = await screen.findByTestId("contact-c-approved");
+      expect(within(readOnlyCard).getByText("Compartido")).toBeTruthy();
+      expect(within(readOnlyCard).queryByRole("button", { name: /Dejar de compartir|Compartir de nuevo/i })).toBeNull();
+    }
   });
 
   test('R4: editing an approved shared contact shows "La versión compartida es anterior a tus cambios"', async () => {
@@ -417,6 +443,14 @@ describe("Shared directory and contact sharing", () => {
       hasApprovedShare: true,
       shareOutdated: false,
     };
+    const deletePriceContact = {
+      ...contactsFixture[0]!,
+      id: "c-del-price",
+      name: "Sonido Borrar Precio",
+      shareStatus: "approved" as const,
+      hasApprovedShare: true,
+      shareOutdated: false,
+    };
     const addedPrice = {
       id: "p-new",
       description: "Show 2 horas",
@@ -428,9 +462,10 @@ describe("Shared directory and contact sharing", () => {
     const sent = mockApi({
       "GET /auth/me": ok(me({ role: "officer", roles: ["student", "officer"], mfa: "satisfied" })),
       "GET /contacts/headings": ok(sampleHeadings),
-      "GET /contacts": ok([approvedContact, priceContact]),
+      "GET /contacts": ok([approvedContact, priceContact, deletePriceContact]),
       "PATCH /contacts/c-edit": ok(editedContact),
       "POST /contacts/c-price/reference-prices": ok(addedPrice, 201),
+      "DELETE /contacts/c-del-price/reference-prices/p-1": noContent(),
     });
 
     window.history.replaceState(null, "", "/contactos");
@@ -463,6 +498,14 @@ describe("Shared directory and contact sharing", () => {
     fireEvent.submit(priceForm);
 
     expect(await within(cardPrice).findByText("La versión compartida es anterior a tus cambios")).toBeTruthy();
+
+    // Deleting a reference price from an approved shared contact also flags R4 warning locally.
+    const cardDelPrice = screen.getByTestId("contact-c-del-price");
+    expect(within(cardDelPrice).queryByText("La versión compartida es anterior a tus cambios")).toBeNull();
+    fireEvent.click(within(cardDelPrice).getByRole("button", { name: "Borrar precio Gazebo 3×3" }));
+    fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Borrar" }));
+    expect(await within(cardDelPrice).findByText("La versión compartida es anterior a tus cambios")).toBeTruthy();
+    expect(sentTo(sent, "DELETE /contacts/c-del-price/reference-prices/p-1")).toHaveLength(1);
   });
 
   test('R5: officer re-shares an approved contact via "Compartir de nuevo", handles already_pending, and preserves "Compartido" when a re-share is rejected', async () => {
