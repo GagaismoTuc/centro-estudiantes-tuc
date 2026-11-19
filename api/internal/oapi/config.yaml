@@ -3,3 +3,8 @@ output: api.gen.go
 generate:
   std-http-server: true
   models: true
+output-options:
+  # Go's ServeMux needs a wildcard to fill a whole segment, so `{id}.csv` cannot be registered;
+  # GetFinanceAccountabilityReport serves it from the `{id}` route.
+  exclude-operation-ids:
+    - getFinanceAccountabilityReportCsv
