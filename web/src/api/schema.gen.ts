@@ -1042,6 +1042,72 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/elections/{electionId}/vote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                electionId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cast a secret ballot
+         * @description A student of the election's Electorate (the whole roster of the school when voting opened) votes once, for an approved list of the election or blank, while voting is open: from `startsAt` (inclusive) until `endsAt` (exclusive). The Voter registry and the Ballot are written in one transaction; the Ballot keeps no link to the voter, and nothing about the choice is logged. No second factor is needed beyond what the session already requires. Checks, in order: `unauthenticated`, `not_found` (election or list unknown in the active school, whether or not it exists in another), `forbidden` (no membership), `election_annulled`, `election_not_open`, `no_approved_lists`, `not_in_electorate` (no roster entry, or added to the roster after voting opened), `invalid_choice`, `already_voted`. Every error writes nothing; retrying a vote that was stored answers `already_voted`. Responses carry `Cache-Control: no-store`.
+         */
+        post: operations["postElectionVote"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/elections/{electionId}/turnout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                electionId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * How many students of the Electorate voted
+         * @description Any member of the active school, from `startsAt` on: "X of Y voted" and whether the caller voted. It never says who voted nor the votes per list. The first access after the start takes the Electorate snapshot. An annulled election no longer shows its turnout (`election_annulled`). Responses carry `Cache-Control: no-store`.
+         */
+        get: operations["getElectionTurnout"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/elections/{electionId}/results": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                electionId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Votes per list of an election
+         * @description Any member of the active school. Not available yet: publishing the result is a later feature, so every election answers `results_not_available`; while voting is open nobody sees votes per list. Responses carry `Cache-Control: no-store`.
+         */
+        get: operations["getElectionResults"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/finance/categories": {
         parameters: {
             query?: never;
@@ -1713,6 +1779,18 @@ export interface components {
          * @enum {string}
          */
         ElectionState: "draft" | "submission" | "scheduled" | "open" | "closed" | "annulled";
+        VoteRequest: {
+            /** @description The id of an approved list of the election, or `blank` for a Blank vote. Missing, null or empty answers `invalid_choice`. */
+            choice?: string | null;
+        };
+        Turnout: {
+            /** @description How many students of the Electorate voted (X). */
+            voted: number;
+            /** @description The size of the Electorate, taken when voting opened (Y). */
+            electorate: number;
+            /** @description Whether the caller voted; nobody learns whether anyone else did. */
+            hasVoted: boolean;
+        };
         AnnulmentRequest: {
             /** @description Public: every member of the school sees it next to the election. Trimmed; 1 to 500 characters once trimmed (`reason_required`, `reason_too_long`). The request body is capped at 4 KiB (`bad_request`). */
             reason: string;
@@ -2056,7 +2134,7 @@ export interface components {
                 };
             };
         };
-        /** @description Nothing was written. `submission_closed` (outside the submission period), `list_name_taken` (another non-rejected list in the election has that name), or `candidate_on_other_list` (a candidate is already on a pending or approved list in the election). */
+        /** @description Nothing was written. `election_frozen` (voting already started: from `startsAt` on the lists never change), `submission_closed` (outside the submission period), `list_name_taken` (another non-rejected list in the election has that name), or `candidate_on_other_list` (a candidate is already on a pending or approved list in the election). */
         ElectionListConflict: {
             headers: {
                 [name: string]: unknown;
@@ -2064,7 +2142,7 @@ export interface components {
             content: {
                 "application/json": {
                     /** @enum {string} */
-                    error: "submission_closed" | "list_name_taken" | "candidate_on_other_list";
+                    error: "election_frozen" | "submission_closed" | "list_name_taken" | "candidate_on_other_list";
                 };
             };
         };
@@ -2076,11 +2154,11 @@ export interface components {
             content: {
                 "application/json": {
                     /** @enum {string} */
-                    error: "submission_closed" | "list_frozen" | "list_rejected" | "list_name_taken" | "candidate_on_other_list";
+                    error: "election_frozen" | "submission_closed" | "list_frozen" | "list_rejected" | "list_name_taken" | "candidate_on_other_list";
                 };
             };
         };
-        /** @description Nothing was written. `submission_closed` (outside the submission period), `list_frozen` (already approved), or `list_rejected` (already rejected). */
+        /** @description Nothing was written. `election_frozen` (voting already started), `submission_closed` (outside the submission period), `list_frozen` (already approved), or `list_rejected` (already rejected). */
         ElectionListReviewConflict: {
             headers: {
                 [name: string]: unknown;
@@ -2088,7 +2166,7 @@ export interface components {
             content: {
                 "application/json": {
                     /** @enum {string} */
-                    error: "submission_closed" | "list_frozen" | "list_rejected";
+                    error: "election_frozen" | "submission_closed" | "list_frozen" | "list_rejected";
                 };
             };
         };
@@ -4230,7 +4308,7 @@ export interface operations {
                     "application/json": components["schemas"]["NotFoundError"];
                 };
             };
-            /** @description The election was annulled (`election_annulled`), or it is no longer a draft (`election_not_draft`). */
+            /** @description The election was annulled (`election_annulled`), voting already started (`election_frozen`: from `startsAt` on its configuration never changes), or it is no longer a draft (`election_not_draft`). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -4238,7 +4316,7 @@ export interface operations {
                 content: {
                     "application/json": {
                         /** @enum {string} */
-                        error: "election_annulled" | "election_not_draft";
+                        error: "election_annulled" | "election_frozen" | "election_not_draft";
                     };
                 };
             };
@@ -4697,6 +4775,174 @@ export interface operations {
                     "application/json": {
                         /** @enum {string} */
                         error: "reason_required";
+                    };
+                };
+            };
+        };
+    };
+    postElectionVote: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                electionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VoteRequest"];
+            };
+        };
+        responses: {
+            /** @description The vote was stored. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            /** @description `forbidden` (no membership in the active school) or `not_in_electorate` (the account is not linked to a student of the Electorate: a school admin or officer without a roster entry, or a student added to the roster after voting opened). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "forbidden" | "not_in_electorate";
+                    };
+                };
+            };
+            /** @description No such election, or no such list, in the active school (`not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotFoundError"];
+                };
+            };
+            /** @description Nothing was written. `election_annulled` (the election was annulled), `election_not_open` (before `startsAt` or from `endsAt` on), `no_approved_lists` (no list was approved, so voting never opens) or `already_voted` (this student already voted). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "election_annulled" | "election_not_open" | "no_approved_lists" | "already_voted";
+                    };
+                };
+            };
+            /** @description Nothing was written. `invalid_choice`: `choice` missing, null or empty, neither `blank` nor a list id, or a list of the election that is not approved (pending or rejected) or a list of another election. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "invalid_choice";
+                    };
+                };
+            };
+        };
+    };
+    getElectionTurnout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                electionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The turnout. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Turnout"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description The account has no membership in the active school (`forbidden`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForbiddenError"];
+                };
+            };
+            /** @description No such election in the active school (`not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotFoundError"];
+                };
+            };
+            /** @description `election_annulled` (the election was annulled), `election_not_open` (before `startsAt`) or `no_approved_lists` (voting never opened). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "election_annulled" | "election_not_open" | "no_approved_lists";
+                    };
+                };
+            };
+        };
+    };
+    getElectionResults: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                electionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            401: components["responses"]["Unauthenticated"];
+            /** @description The account has no membership in the active school (`forbidden`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForbiddenError"];
+                };
+            };
+            /** @description No such election in the active school (`not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotFoundError"];
+                };
+            };
+            /** @description The votes per list are not available (`results_not_available`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "results_not_available";
                     };
                 };
             };

@@ -31,7 +31,8 @@ var (
 	ErrEmptyCommission = errors.New("elections: empty commission")
 	// ErrNoAccount means a designated roster member has no account in the tenant.
 	ErrNoAccount = errors.New("elections: roster member has no account")
-	// ErrElectionFrozen means the commission's election already opened, so it cannot be replaced.
+	// ErrElectionFrozen means the election already opened (see Frozen), so its configuration, its
+	// lists and its commission can no longer change.
 	ErrElectionFrozen = errors.New("elections: election frozen")
 	// ErrNoCommission means the tenant has no current Electoral commission.
 	ErrNoCommission = errors.New("elections: no current commission")
@@ -296,8 +297,9 @@ func (s *Store) createElection(ctx context.Context, tx pgx.Tx, tenant string, d 
 }
 
 // UpdateDraft replaces the name, mode, dates and positions of a draft election, after checkDraft.
-// Errors: ErrNotFound, ErrElectionAnnulled, ErrNotDraft (published or past StatusDraft at the store's
-// clock) and those of checkDraft. It does no authorization: Edit is the entry point for requests.
+// Errors: ErrNotFound, ErrElectionAnnulled, ErrElectionFrozen (from StartsAt on, S4), ErrNotDraft
+// (published or past StatusDraft at the store's clock) and those of checkDraft. It does no
+// authorization: Edit is the entry point for requests.
 func (s *Store) UpdateDraft(ctx context.Context, tenant, id string, d Draft) (Election, error) {
 	var out Election
 	err := db.WithTenant(ctx, s.pool, tenant, func(tx pgx.Tx) error {
@@ -318,6 +320,9 @@ func (s *Store) updateDraft(ctx context.Context, tx pgx.Tx, tenant, id string, d
 	}
 	if cur.AnnulledAt != nil {
 		return Election{}, ErrElectionAnnulled
+	}
+	if Frozen(s.now(), cur) {
+		return Election{}, ErrElectionFrozen
 	}
 	if cur.PublishedAt != nil || State(s.now(), cur) != StatusDraft {
 		return Election{}, ErrNotDraft

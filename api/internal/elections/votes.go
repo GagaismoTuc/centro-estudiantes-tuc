@@ -223,8 +223,12 @@ func (s *Store) turnout(ctx context.Context, tx pgx.Tx, tenant, electionID, rost
 			return out, err
 		}
 	}
+	// The database decides the flush by its own clock: it refuses one while its now() (the
+	// transaction start) is before the end, which the app clock may already have passed.
 	if closed {
-		if _, err := tx.Exec(ctx, `SELECT election_ballots_flush($1)`, electionID); err != nil {
+		if _, err := tx.Exec(ctx, `
+			SELECT election_ballots_flush(id) FROM elections
+			WHERE tenant_id = $1 AND id = $2 AND now() >= ends_at`, tenant, electionID); err != nil {
 			return out, err
 		}
 	}

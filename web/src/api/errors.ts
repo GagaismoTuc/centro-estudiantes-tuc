@@ -82,6 +82,12 @@ const messages: Record<string, string> = {
   list_name_taken: "Ya hay otra lista con ese nombre en esta elección.",
   candidate_on_other_list: "Uno de los alumnos elegidos ya es candidato en otra lista.",
   query_too_short: "Escribí al menos 3 letras para buscar.",
+  election_not_open: "La votación no está abierta.",
+  no_approved_lists: "La votación no se abrió porque no hay listas aprobadas.",
+  not_in_electorate: "No estás en el padrón electoral de esta elección.",
+  invalid_choice: "Elegí una lista aprobada o votá en blanco.",
+  already_voted: "Ya votaste.",
+  results_not_available: "Los resultados se ven cuando cierra la elección.",
   network: "No pudimos conectarnos. Revisá tu conexión e intentá de nuevo.",
 };
 
@@ -108,6 +114,7 @@ const contextual: Record<ErrorContext, Record<string, string>> = {
   "election-list": {
     invalid_name: "Escribí un nombre para la lista de hasta 80 caracteres.",
     reason_required: "Escribí el motivo del rechazo (hasta 500 caracteres).",
+    election_frozen: "La votación ya empezó: las listas no se pueden cambiar.",
   },
   mfa: {
     invalid_code: "El código no es correcto o ya se usó. Probá con el próximo que muestre tu app.",
