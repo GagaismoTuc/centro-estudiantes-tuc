@@ -17,6 +17,7 @@ import {
   type Election,
   type ElectionList,
 } from "./electionShared.ts";
+import { SecretBallotGuarantee } from "./Vote.tsx";
 
 /** The "Centro de estudiantes" section: members of the Electoral commission create and edit the draft,
  *  and review or load election lists during the submission period. */
@@ -162,6 +163,7 @@ export function CommissionPanel() {
           )}
         </>
       )}
+      {commission?.isMember && election && <SecretBallotGuarantee />}
       {commission?.isMember && election && annullable.includes(election.state) && (
         <Annulment
           election={election}
@@ -338,7 +340,7 @@ function DraftForm({ election, onSaved }: { election: Election | null; onSaved: 
       return;
     }
     if (result.code === "mfa_required" || result.code === "unauthenticated") void refresh();
-    setStatus({ tone: "error", text: errorMessage(result.code) });
+    setStatus({ tone: "error", text: errorMessage(result.code, "election") });
     form.failed(result.code);
   }
 

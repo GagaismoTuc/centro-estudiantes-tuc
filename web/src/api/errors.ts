@@ -92,7 +92,7 @@ const messages: Record<string, string> = {
 };
 
 /** Where the error happened, when the same code needs different advice. */
-export type ErrorContext = "finance" | "due-exemption" | "access-code" | "change-password" | "election-list" | "mfa" | "mfa-recovery" | "reset" | "verify";
+export type ErrorContext = "finance" | "due-exemption" | "access-code" | "change-password" | "election" | "election-list" | "mfa" | "mfa-recovery" | "reset" | "verify";
 
 const contextual: Record<ErrorContext, Record<string, string>> = {
   finance: {
@@ -110,6 +110,9 @@ const contextual: Record<ErrorContext, Record<string, string>> = {
   },
   "change-password": {
     invalid_credentials: "La contraseña actual no es correcta.",
+  },
+  election: {
+    election_frozen: "La votación ya empezó: la elección no se puede cambiar.",
   },
   "election-list": {
     invalid_name: "Escribí un nombre para la lista de hasta 80 caracteres.",
