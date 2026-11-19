@@ -1182,6 +1182,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/finance/calculator-summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Officer-only totals for the financial calculators
+         * @description Returns the active school's current roster headcount, Fund balance and total still owed
+         *     across all Dues (excluding exempt Roster members). Read-only; returns totals only, never
+         *     names or per-student data. Restricted to Officers with a verified second factor.
+         */
+        get: operations["getFinanceCalculatorSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/finance/entries": {
         parameters: {
             query?: never;
@@ -1649,6 +1671,14 @@ export interface components {
         FinanceBalance: {
             /** @description The exact sum; may exceed int64. */
             balanceCents: number;
+        };
+        FinanceCalculatorSummary: {
+            /** @description Current number of Roster members in the active school. */
+            rosterCount: number;
+            /** @description Current Fund balance in integer cents; exact sum, may exceed int64 and may be negative. */
+            balance: number;
+            /** @description Total in integer cents still owed across all Dues by non-exempt Roster members; exact sum, may exceed int64. */
+            owedOnDues: number;
         };
         NewFinanceDue: {
             name: string;
@@ -5189,6 +5219,28 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
+        };
+    };
+    getFinanceCalculatorSummary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current calculator totals in integer cents plus roster count. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinanceCalculatorSummary"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["DirectoryForbidden"];
         };
     };
     getFinanceEntries: {

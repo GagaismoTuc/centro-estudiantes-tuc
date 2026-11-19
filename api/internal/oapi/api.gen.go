@@ -1684,6 +1684,18 @@ type FinanceBalance struct {
 	BalanceCents int `json:"balanceCents"`
 }
 
+// FinanceCalculatorSummary defines model for FinanceCalculatorSummary.
+type FinanceCalculatorSummary struct {
+	// Balance Current Fund balance in integer cents; exact sum, may exceed int64 and may be negative.
+	Balance int `json:"balance"`
+
+	// OwedOnDues Total in integer cents still owed across all Dues by non-exempt Roster members; exact sum, may exceed int64.
+	OwedOnDues int `json:"owedOnDues"`
+
+	// RosterCount Current number of Roster members in the active school.
+	RosterCount int `json:"rosterCount"`
+}
+
 // FinanceCategory defines model for FinanceCategory.
 type FinanceCategory struct {
 	Active    bool   `json:"active"`
@@ -2746,6 +2758,9 @@ type ServerInterface interface {
 	// GetFinanceBalance Fund balance in cents
 	// (GET /finance/balance)
 	GetFinanceBalance(w http.ResponseWriter, r *http.Request)
+	// GetFinanceCalculatorSummary Officer-only totals for the financial calculators
+	// (GET /finance/calculator-summary)
+	GetFinanceCalculatorSummary(w http.ResponseWriter, r *http.Request)
 	// GetFinanceCategories List categories in the active school
 	// (GET /finance/categories)
 	GetFinanceCategories(w http.ResponseWriter, r *http.Request)
@@ -4142,6 +4157,20 @@ func (siw *ServerInterfaceWrapper) GetFinanceBalance(w http.ResponseWriter, r *h
 	handler.ServeHTTP(w, r)
 }
 
+// GetFinanceCalculatorSummary operation middleware
+func (siw *ServerInterfaceWrapper) GetFinanceCalculatorSummary(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetFinanceCalculatorSummary(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetFinanceCategories operation middleware
 func (siw *ServerInterfaceWrapper) GetFinanceCategories(w http.ResponseWriter, r *http.Request) {
 
@@ -5177,6 +5206,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/finance/categories/{id}", wrapper.PatchFinanceCategory)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/finance/categories/{id}/archive", wrapper.PostFinanceCategoryArchive)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/balance", wrapper.GetFinanceBalance)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/calculator-summary", wrapper.GetFinanceCalculatorSummary)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/entries", wrapper.GetFinanceEntries)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/finance/entries", wrapper.PostFinanceEntries)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/report", wrapper.GetFinanceReport)
