@@ -256,7 +256,7 @@ func (s *Store) IsCommissionMember(ctx context.Context, tenant, userID string) (
 }
 
 // CreateElection stores d as an election of the tenant's current commission, after checkDraft.
-// Errors: those of checkDraft, ErrNoCommission and ErrElectionInProgress (decided by the database, so
+// Errors: ErrNoCommission, then those of checkDraft, and ErrElectionInProgress (decided by the database, so
 // of two concurrent calls exactly one wins). A closed election (EndsAt reached at the store's clock,
 // not annulled) is first published (see publishClosed), which ends its commission's mandate. It does
 // no authorization: Create is the entry point for requests.
@@ -278,15 +278,17 @@ func (s *Store) createElection(ctx context.Context, tx pgx.Tx, tenant string, d 
 	if err := s.publishClosed(ctx, tx, tenant); err != nil {
 		return Election{}, err
 	}
-	d, err := checkDraft(s.now(), d)
-	if err != nil {
-		return Election{}, err
-	}
+	// The commission comes before the draft: a mandate that the publication just ended answers
+	// ErrNoCommission (Create: ErrForbidden) whatever the draft says (#58 S6).
 	var commission string
-	err = tx.QueryRow(ctx, `SELECT id::text FROM electoral_commissions WHERE tenant_id = $1 AND ended_at IS NULL`, tenant).Scan(&commission)
+	err := tx.QueryRow(ctx, `SELECT id::text FROM electoral_commissions WHERE tenant_id = $1 AND ended_at IS NULL`, tenant).Scan(&commission)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Election{}, ErrNoCommission
 	}
+	if err != nil {
+		return Election{}, err
+	}
+	d, err = checkDraft(s.now(), d)
 	if err != nil {
 		return Election{}, err
 	}

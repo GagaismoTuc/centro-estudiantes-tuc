@@ -411,6 +411,20 @@ func TestCommissionMandateEndsWithThePublication(t *testing.T) {
 			}
 		})
 	}
+	// Nobody read the result: the create itself publishes it, which ends the caller's mandate, so even
+	// an invalid draft gets 403 forbidden (not 422), and the refused create writes nothing.
+	t.Run("create publishes, invalid draft", func(t *testing.T) {
+		v := handoverSchool(t, ctx, []string{"Presidente"})
+		v.clk.t = vEnd
+		wantResponse(t, v.create(v.member, encode(with(draft(), "name", ""))), http.StatusForbidden, forbiddenBody)
+		if published, _, ended := publication(t, ctx, v.electionID); published || ended {
+			t.Fatalf("published = %t, commission ended = %t; want the refused create to write nothing", published, ended)
+		}
+		var elections int
+		if err := tdb.Super.QueryRow(ctx, `SELECT count(*) FROM elections WHERE tenant_id = $1`, v.tenant).Scan(&elections); err != nil || elections != 1 {
+			t.Fatalf("elections = %d (%v), want 1", elections, err)
+		}
+	})
 }
 
 // S8 (A20, ADR 0001 2FA rules 1 and 5): a winning candidate's Officer operations demand the second
@@ -456,16 +470,15 @@ func TestHandoverTouchesOnlyItsSchool(t *testing.T) {
 	v := handoverSchool(t, ctx, defaultPositions)
 	seedCandidates(t, ctx, v.tenant, v.electionID, v.blue, seedMember(t, ctx, v.tenant, "Ana Ficticia", "30444082"))
 	seedBallots(t, ctx, v.tenant, v.electionID, v.blue, 1)
-	other.clk.t = vEnd
+	// Snapshots before the other school's close: from its end on, its own reads (GET /members)
+	// publish its election, so the isolation checks below read as superuser first.
 	otherBoard, otherStored := other.board(t), storedBoard(t, ctx, other.tenant)
 	otherCommission := storedMembers(t, ctx, other.tenant)
+	other.clk.t = vEnd
 
 	v.publish(t, ctx)
 	if got, want := v.board(t), []string{"Ana Ficticia|Presidente"}; !slices.Equal(got, want) {
 		t.Fatalf("board = %v, want %v", got, want)
-	}
-	if got := other.board(t); !slices.Equal(got, otherBoard) {
-		t.Fatalf("other school's board = %v, want unchanged %v", got, otherBoard)
 	}
 	if got := storedBoard(t, ctx, other.tenant); !slices.Equal(got, otherStored) {
 		t.Fatalf("other school's stored board = %v, want unchanged %v", got, otherStored)
@@ -475,5 +488,9 @@ func TestHandoverTouchesOnlyItsSchool(t *testing.T) {
 	}
 	if published, winner, ended := publication(t, ctx, other.electionID); published || winner != "" || ended {
 		t.Fatalf("other school's election: published = %t, winner = %q, commission ended = %t; want untouched", published, winner, ended)
+	}
+	// Its own read now publishes its closed election, which had no votes: its Board stays as it was.
+	if got := other.board(t); !slices.Equal(got, otherBoard) {
+		t.Fatalf("other school's board = %v, want unchanged %v", got, otherBoard)
 	}
 }

@@ -20,10 +20,14 @@ var (
 )
 
 // boardElected returns ErrBoardElected when the latest published, non-annulled election of tenant
-// had a winner. It first takes a share lock on the tenant's elections, so it waits for a publication
+// had a winner. A closed election nobody read yet is published first (#57: published at its close),
+// taking its row lock as a read of its result does. It then takes a share lock on the tenant's elections, so it waits for a publication
 // in progress (which holds its election's row lock while it hands the Board over) and then reads
 // what it committed: a manual change never lands on top of a handover.
-func boardElected(ctx context.Context, tx pgx.Tx, tenant string) error {
+func (s *Store) boardElected(ctx context.Context, tx pgx.Tx, tenant string) error {
+	if err := s.publishClosed(ctx, tx, tenant); err != nil {
+		return err
+	}
 	if _, err := tx.Exec(ctx, `SELECT FROM elections WHERE tenant_id = $1 FOR SHARE`, tenant); err != nil {
 		return err
 	}
@@ -48,6 +52,10 @@ type SchoolMember struct {
 func (s *Store) ListMembers(ctx context.Context, sess auth.Session) ([]SchoolMember, error) {
 	out := []SchoolMember{}
 	err := s.asAdmin(ctx, sess, func(tx pgx.Tx) error {
+		// The Board shown is the one a closed election hands over, even before anyone reads its result.
+		if err := s.publishClosed(ctx, tx, sess.TenantID); err != nil {
+			return err
+		}
 		rows, err := tx.Query(ctx, `
 			SELECT u.email, rm.full_name, rm.id::text, p.position,
 			       ARRAY(SELECT role FROM memberships x WHERE x.tenant_id=$1 AND x.user_id=u.id
@@ -79,7 +87,7 @@ func (s *Store) AssignOfficer(ctx context.Context, sess auth.Session, member, po
 		default:
 			return ErrInvalidPosition
 		}
-		if err := boardElected(ctx, tx, sess.TenantID); err != nil {
+		if err := s.boardElected(ctx, tx, sess.TenantID); err != nil {
 			return err
 		}
 		var locked string
@@ -116,7 +124,7 @@ func (s *Store) RemoveOfficer(ctx context.Context, sess auth.Session, member str
 		if !uuidPattern.MatchString(member) {
 			return ErrNotFound
 		}
-		if err := boardElected(ctx, tx, sess.TenantID); err != nil {
+		if err := s.boardElected(ctx, tx, sess.TenantID); err != nil {
 			return err
 		}
 		tag, err := tx.Exec(ctx, `DELETE FROM officer_positions WHERE tenant_id=$1 AND roster_member_id=$2`, sess.TenantID, member)

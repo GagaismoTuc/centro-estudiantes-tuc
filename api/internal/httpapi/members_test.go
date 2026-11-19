@@ -383,3 +383,52 @@ func TestManualBoardChangesAfterAnElection(t *testing.T) {
 		stillManual(t, v)
 	})
 }
+
+// S7/S10 (#58): the result is published at the close (#57), so a manual change after the close and
+// before anyone reads the result gets 409 board_elected and is not silently discarded, and the
+// "Miembros" screen already shows the new Board.
+func TestManualBoardChangeBetweenCloseAndFirstRead(t *testing.T) {
+	ctx := integration(t)
+	closed := func(t *testing.T) (*voteSchool, string) {
+		t.Helper()
+		v := handoverSchool(t, ctx, defaultPositions)
+		ana := seedMember(t, ctx, v.tenant, "Ana Ficticia", "30555001")
+		seedCandidates(t, ctx, v.tenant, v.electionID, v.blue, ana)
+		seedBallots(t, ctx, v.tenant, v.electionID, v.blue, 1)
+		v.clk.t = vEnd
+		return v, ana
+	}
+	wantBoard := func(t *testing.T, v *voteSchool) {
+		t.Helper()
+		if got, want := v.board(t), []string{"Ana Ficticia|Presidente"}; !slices.Equal(got, want) {
+			t.Fatalf("board = %v, want %v", got, want)
+		}
+	}
+	t.Run("assign", func(t *testing.T) {
+		v, _ := closed(t)
+		x := seedMember(t, ctx, v.tenant, "Xime Ficticia", "30555099")
+		wantResponse(t, v.do(http.MethodPost, "/api/members/"+x+"/officer", `{"position":"Tesorero"}`, electionIP, v.admin,
+			map[string]string{"Content-Type": "application/json"}), http.StatusConflict, `{"error":"board_elected"}`)
+		wantBoard(t, v)
+	})
+	t.Run("remove", func(t *testing.T) {
+		v, _ := closed(t)
+		var member string // Beto Ficticio, Presidente of the outgoing Board
+		if err := tdb.Super.QueryRow(ctx, `SELECT roster_member_id::text FROM officer_positions WHERE tenant_id = $1`, v.tenant).Scan(&member); err != nil {
+			t.Fatal(err)
+		}
+		wantResponse(t, v.do(http.MethodDelete, "/api/members/"+member+"/officer", "", electionIP, v.admin, nil),
+			http.StatusConflict, `{"error":"board_elected"}`)
+		wantBoard(t, v)
+	})
+	t.Run("members list", func(t *testing.T) {
+		v, ana := closed(t)
+		wantBoard(t, v)
+		if got, want := storedBoard(t, ctx, v.tenant), []string{"position:" + ana + ":Presidente"}; !slices.Equal(got, want) {
+			t.Fatalf("stored board = %v, want %v", got, want)
+		}
+		if published, winner, _ := publication(t, ctx, v.electionID); !published || winner != v.blue {
+			t.Fatalf("published = %t, winner = %q; want published with %s", published, winner, v.blue)
+		}
+	})
+}

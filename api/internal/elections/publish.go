@@ -65,6 +65,12 @@ func (s *Store) handOver(ctx context.Context, tx pgx.Tx, tenant, election, list 
 	return err
 }
 
+// PublishClosed is publishClosed for callers outside this package that change what a publication
+// decides (the roster's manual Board changes, #58 S7), run in their own transaction tx of tenant.
+func (s *Store) PublishClosed(ctx context.Context, tx pgx.Tx, tenant string) error {
+	return s.publishClosed(ctx, tx, tenant)
+}
+
 // publishClosed publishes the tenant's election in progress once its end has passed at the store's
 // clock, as a read of its result would (see result): there is no background process, so whatever
 // needs the tenant past that election (a new election, a new commission) publishes it first. When
