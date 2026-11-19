@@ -356,6 +356,13 @@ input:user-invalid {
   min-inline-size: 0;
   overflow-wrap: anywhere;
 }
+/* Voting on a phone: the whole row is the tap target (44 px), not just the 20 px radio. */
+.vote-choices .check label {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  min-block-size: 2.75rem;
+}
 
 /* ---------- Signed-out layout ---------- */
 .auth {

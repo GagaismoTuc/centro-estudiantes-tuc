@@ -145,6 +145,19 @@ test("the commission edits positions of the draft and a 422 marks and focuses th
   });
 });
 
+test("S4: saving the draft after voting started says the election can no longer change", async () => {
+  mockApi({
+    "GET /auth/me": ok(me({ role: "student", mfa: "satisfied" })),
+    "GET /electoral-commission": status({ isMember: true }),
+    "GET /elections/current": ok({ ...election, state: "draft" }),
+    "PUT /elections/e1": fail(409, "election_frozen"),
+  });
+  renderAt("/centro-de-estudiantes");
+  fireEvent.click(await screen.findByRole("button", { name: "Guardar cambios" }));
+  expect(await screen.findByText("La votación ya empezó: la elección no se puede cambiar.")).toBeTruthy();
+  expect(screen.queryByText("La elección ya abrió: no se puede cambiar el Centro de estudiantes.")).toBeNull();
+});
+
 test("whoever can designate picks the members of the Centro de estudiantes and saves them", async () => {
   const sent = mockApi({
     "GET /auth/me": ok(me({ role: "school_admin", mfa: "satisfied" })),
