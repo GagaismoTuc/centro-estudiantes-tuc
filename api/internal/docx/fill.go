@@ -13,7 +13,7 @@ import (
 
 const wordNamespace = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 
-var fieldPattern = regexp.MustCompile(`\{\{([#/]?[A-Za-z0-9_]+)\}\}`)
+var fieldPattern = regexp.MustCompile(`\{\{([^{}]+)\}\}`)
 
 type span struct {
 	start, end int
