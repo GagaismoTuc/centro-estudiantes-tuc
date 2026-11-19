@@ -86,7 +86,18 @@ test("S16: a student votes for an approved list after confirming it, in voseo, a
   expect(radios.map((r) => r.labels?.[0]?.textContent)).toEqual(["Lista Azul", "En blanco"]);
   expect(screen.getByText("3 de 10 votaron")).toBeTruthy();
 
+  // Seguir without a choice says what to do and focuses the first option, already described by the message.
+  let describedAtFocus: string | null = null;
+  radios[0]!.addEventListener("focus", () => (describedAtFocus = radios[0]!.getAttribute("aria-describedby")), { once: true });
+  fireEvent.click(screen.getByRole("button", { name: "Seguir" }));
+  const choiceError = await screen.findByText("Elegí una lista o votá en blanco para seguir.");
+  await waitFor(() => expect(describedAtFocus).toBe(choiceError.closest("[id]")?.id));
+  expect(radios.map((r) => r.getAttribute("aria-invalid"))).toEqual(["true", "true"]);
+  expect(document.activeElement).toBe(radios[0]);
+  expect(screen.queryByRole("heading", { name: "Confirmá tu voto" })).toBeNull();
+
   const confirm = await pick("Lista Azul");
+  await waitFor(() => expect(document.activeElement).toBe(confirm));
   const step = confirm.closest("section") as HTMLElement;
   expect(within(step).getByText("Lista Azul")).toBeTruthy();
   fireEvent.click(within(step).getByRole("button", { name: "Confirmar" }));
@@ -106,7 +117,9 @@ test("S16: a blank vote sends blank, and Volver goes back to the choice", async 
   });
   await pick("En blanco");
   fireEvent.click(screen.getByRole("button", { name: "Volver" }));
-  expect(((await screen.findByRole("radio", { name: "En blanco" })) as HTMLInputElement).checked).toBe(true);
+  const blank = (await screen.findByRole("radio", { name: "En blanco" })) as HTMLInputElement;
+  expect(blank.checked).toBe(true);
+  await waitFor(() => expect(document.activeElement).toBe(blank));
   fireEvent.click(screen.getByRole("button", { name: "Seguir" }));
   const step = (await screen.findByRole("heading", { name: "Confirmá tu voto" })).closest("section") as HTMLElement;
   expect(within(step).getByText("En blanco")).toBeTruthy();
@@ -154,6 +167,33 @@ test("S16: another error shows its message and keeps the choice so retrying is o
   await waitFor(() => expect(sentTo(sent, "POST /elections/e1/vote").map((s) => s.body)).toEqual([{ choice: "l1" }, { choice: "l1" }]));
   fireEvent.click(screen.getByRole("button", { name: "Volver" }));
   expect(((await screen.findByRole("radio", { name: "Lista Azul" })) as HTMLInputElement).checked).toBe(true);
+});
+
+test("S16: when the turnout cannot load, Reintentar loads it again and shows the ballot", async () => {
+  openElection({ "GET /elections/e1/turnout": turnout(3, false) });
+  // The first turnout request finds no signal.
+  const answer = vi.mocked(fetch).getMockImplementation()!;
+  let dropped = false;
+  vi.mocked(fetch).mockImplementation(async (input) => {
+    if (!dropped && new URL((input as Request).url).pathname.endsWith("/turnout")) {
+      dropped = true;
+      throw new TypeError("Failed to fetch");
+    }
+    return answer(input);
+  });
+
+  expect(await screen.findByText("No pudimos conectarnos. Revisá tu conexión e intentá de nuevo.")).toBeTruthy();
+  expect(ballot()).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Reintentar" }));
+
+  expect(await screen.findByRole("group", { name: "Elegí una lista o votá en blanco" })).toBeTruthy();
+  expect(screen.getByText("3 de 10 votaron")).toBeTruthy();
+  expect(screen.queryByText("No pudimos conectarnos. Revisá tu conexión e intentá de nuevo.")).toBeNull();
+  expect(screen.queryByRole("button", { name: "Reintentar" })).toBeNull();
+  // The button that held focus is gone: focus goes to the first option.
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("radio", { name: "Lista Azul" })));
+  const turnoutRequests = vi.mocked(fetch).mock.calls.filter(([req]) => new URL((req as Request).url).pathname === "/api/elections/e1/turnout");
+  expect(turnoutRequests).toHaveLength(2);
 });
 
 test("S13: the secret ballot guarantee shows on the Election screen, on Centro de estudiantes and in the school doc", async () => {
