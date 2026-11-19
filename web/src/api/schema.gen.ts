@@ -1751,7 +1751,7 @@ export interface components {
             dueDate: string;
             /** Format: int64 */
             amountCents: number;
-            /** @description Roster members who paid the Due in full at publication. */
+            /** @description Roster members who paid the Due in full by the period's `to`: payments dated up to `to` whose Entry has no Reversal dated up to `to`. */
             paidCount: number;
             /** @description Roster members who owe the Due, Exemptions excluded. */
             totalCount: number;

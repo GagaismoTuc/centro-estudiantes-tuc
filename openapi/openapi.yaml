@@ -3634,7 +3634,7 @@ components:
         name: { type: string }
         dueDate: { type: string }
         amountCents: { type: integer, format: int64 }
-        paidCount: { type: integer, description: Roster members who paid the Due in full at publication. }
+        paidCount: { type: integer, description: "Roster members who paid the Due in full by the period's `to`: payments dated up to `to` whose Entry has no Reversal dated up to `to`." }
         totalCount: { type: integer, description: "Roster members who owe the Due, Exemptions excluded." }
     AccountabilityEntry:
       type: object

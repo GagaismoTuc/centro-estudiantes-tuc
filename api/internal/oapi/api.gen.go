@@ -1458,7 +1458,7 @@ type AccountabilityDueTotal struct {
 	DueId       string `json:"dueId"`
 	Name        string `json:"name"`
 
-	// PaidCount Roster members who paid the Due in full at publication.
+	// PaidCount Roster members who paid the Due in full by the period's `to`: payments dated up to `to` whose Entry has no Reversal dated up to `to`.
 	PaidCount int `json:"paidCount"`
 
 	// TotalCount Roster members who owe the Due, Exemptions excluded.

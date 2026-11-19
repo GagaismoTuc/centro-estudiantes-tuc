@@ -502,3 +502,36 @@ func TestAccountabilityCSV(t *testing.T) {
 	}
 	wantResponse(t, other.get(acctPath+"/"+rep.ID+".csv", other.officer), http.StatusNotFound, `{"error":"not_found"}`)
 }
+
+// TestAccountabilityDuePaymentsUpToTheEnd covers the owner's cutoff for R3 (#83, "Opcion b"): a Due
+// counts only payments dated up to the period's `to`, and a Reversal dated after `to` does not
+// discount a payment, so a period gives the same count whenever it is published.
+func TestAccountabilityDuePaymentsUpToTheEnd(t *testing.T) {
+	rf := newAcctFixture(t)
+	members := map[string]string{}
+	for _, s := range []struct{ name, doc string }{{"Beto Ficticio", "30111223"}, {"Dana Ficticia", "30111224"}, {"Eva Ficticia", "30111225"}, {"Fede Ficticio", "30111226"}} {
+		_, _, members[s.name] = rf.student(t, rf.ctx, s.name, s.doc)
+	}
+	due := rf.createDue(t, "Cuota de noviembre", "2026-11-15", 200000)
+	rf.payDue(t, due, members["Beto Ficticio"], "2026-11-20", 200000) // on `to`: counted
+	rf.payDue(t, due, members["Dana Ficticia"], "2026-11-25", 200000) // after `to`: not counted
+	eva := rf.payDue(t, due, members["Eva Ficticia"], "2026-11-15", 200000)
+	rf.payDue(t, due, members["Fede Ficticio"], "2026-11-28", 200000)
+	// Eva's payment is reversed today, after `to`.
+	if r := rf.do(http.MethodPost, "/api/finance/entries/"+eva+"/reversal", "", reportIP, rf.officer, nil); r.Code != http.StatusCreated {
+		t.Fatalf("reversal: %d %s", r.Code, r.Body)
+	}
+
+	for _, c := range []struct {
+		to   string
+		paid int
+	}{
+		{"2026-11-20", 2}, // Beto and Eva
+		{"2026-11-30", 3}, // Beto, Dana and Fede; Eva's Reversal falls in the period
+	} {
+		rep, _ := rf.publishOK(t, rf.officer, "2026-11-01", c.to, "Gestión 2026")
+		if len(rep.Dues) != 1 || rep.Dues[0].PaidCount != c.paid || rep.Dues[0].TotalCount != 5 {
+			t.Fatalf("to %s: dues=%+v, want %d of 5", c.to, rep.Dues, c.paid)
+		}
+	}
+}

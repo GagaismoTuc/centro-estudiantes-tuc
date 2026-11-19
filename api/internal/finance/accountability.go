@@ -39,7 +39,8 @@ type FrozenTotal struct {
 }
 
 // DueTotal is how many Roster members paid a Due out of those who owe it (Exemptions excluded),
-// as of publication: "312 de 470 pagaron". It never names anyone.
+// counting only payments dated up to the period's end: "312 de 470 pagaron al 30/11/2026". It never
+// names anyone.
 type DueTotal struct {
 	DueID       string `json:"dueId"`
 	Name        string `json:"name"`
@@ -71,11 +72,19 @@ type NewAccountabilityReport struct {
 	From, To, Term string
 }
 
-// accountabilityDuesQuery counts, per Due whose due date falls in the period, who paid it in full
-// and who owes it (Exemptions excluded), with paidSQL like the Due list.
-var accountabilityDuesQuery = `
+// accountabilityPaidSQL is what a Roster member dm paid of a Due by the period's end ($3): their
+// payments dated up to it whose Entry has no Reversal dated up to it. The owner chose this cutoff
+// (#83) so a report reconciles with its period's Entries and a period gives the same count
+// whenever it is published.
+const accountabilityPaidSQL = `COALESCE((SELECT sum(p.amount_cents) FROM finance_due_payments p
+	WHERE p.tenant_id = $1 AND p.due_id = dm.due_id AND p.roster_member_id = dm.roster_member_id AND p.payment_date <= $3::date
+	  AND NOT EXISTS (SELECT 1 FROM finance_entries r WHERE r.tenant_id = p.tenant_id AND r.reverses_id = p.entry_id AND r.entry_date <= $3::date)), 0)::bigint`
+
+// accountabilityDuesQuery counts, per Due whose due date falls in the period, who paid it in full by
+// the period's end and who owes it (Exemptions excluded).
+const accountabilityDuesQuery = `
 	SELECT d.id::text, d.name, to_char(d.due_date, 'YYYY-MM-DD'), d.amount_cents,
-	       COUNT(dm.roster_member_id) FILTER (WHERE e.roster_member_id IS NULL AND ` + paidSQL("dm.due_id", "dm.roster_member_id") + ` >= d.amount_cents)::int,
+	       COUNT(dm.roster_member_id) FILTER (WHERE e.roster_member_id IS NULL AND ` + accountabilityPaidSQL + ` >= d.amount_cents)::int,
 	       COUNT(dm.roster_member_id) FILTER (WHERE e.roster_member_id IS NULL)::int
 	FROM finance_dues d
 	LEFT JOIN finance_due_members dm ON dm.tenant_id = d.tenant_id AND dm.due_id = d.id
