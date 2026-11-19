@@ -1260,6 +1260,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/finance/accountability-reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Published Financial accountability reports (Rendiciones de cuentas), newest first
+         * @description Any member of the active school reads them (Officers, Students, School admins and, once it exists, the Veedor). Lists period, Term and who published; the frozen copy is at `/finance/accountability-reports/{id}`.
+         */
+        get: operations["getFinanceAccountabilityReports"];
+        put?: never;
+        /**
+         * Publish a frozen Financial accountability report as an Officer with MFA
+         * @description Any current Officer publishes any period, also one of the previous Term, and may publish overlapping periods more than once. The Fund report of the period, its totals per Category, its balances and the totals per Due whose due date falls in the period are read in one consistent snapshot and stored with the publisher's name; the copy never changes and never names a Roster member. There is no PUT or DELETE.
+         */
+        post: operations["postFinanceAccountabilityReports"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/finance/accountability-reports/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The report id. The router also routes `/finance/accountability-reports/{id}.csv` here, because a path wildcard must be a whole segment; see that path for the CSV. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * One published Financial accountability report with its frozen copy
+         * @description Same readers as the list. Every read returns the same copy, whatever Reversals, Category renames or payments came after publication.
+         */
+        get: operations["getFinanceAccountabilityReport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/finance/accountability-reports/{id}.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * One published Financial accountability report as a CSV download
+         * @description Same readers as the list; served by the `{id}` route (excluded from code generation). Same encoding and escaping as `/finance/report.csv`. A header section (`concepto;valor`: Gestión, Período, Publicada por, Publicada el), an empty line, the summary of `/finance/report.csv`, an empty line, the totals per Due (`cuota;vencimiento;pagaron;de`), an empty line and the period's Entries with the columns of `/finance/entries.csv` without `alumno`, as published.
+         */
+        get: operations["getFinanceAccountabilityReportCsv"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/finance/entries/{entryId}": {
         parameters: {
             query?: never;
@@ -1645,6 +1714,64 @@ export interface components {
             totals: components["schemas"]["FinanceCategoryTotal"][];
             /** @description Entries in the range, oldest first. */
             entries: components["schemas"]["FinanceEntry"][];
+        };
+        NewAccountabilityReport: {
+            /** @description First day of the period, YYYY-MM-DD, inclusive. */
+            from: string;
+            /** @description Last day of the period, YYYY-MM-DD, inclusive; not after today. */
+            to: string;
+            /** @description The Term (Gestión) the report belongs to, such as "Gestión 2026". */
+            term: string;
+        };
+        AccountabilityReportSummary: {
+            id: string;
+            from: string;
+            to: string;
+            term: string;
+            /** @description The publishing Officer's Roster name. */
+            publishedBy: string;
+            /** Format: date-time */
+            publishedAt: string;
+        };
+        AccountabilityReport: components["schemas"]["AccountabilityReportSummary"] & {
+            /** Format: int64 */
+            openingCents: number;
+            /** Format: int64 */
+            closingCents: number;
+            /** @description Categories with Entries in the period, with their names at publication. */
+            totals: components["schemas"]["FinanceCategoryTotal"][];
+            /** @description Dues whose due date falls in the period, by due date. */
+            dues: components["schemas"]["AccountabilityDueTotal"][];
+            /** @description Entries in the period as published, oldest first; never who paid. */
+            entries: components["schemas"]["AccountabilityEntry"][];
+        };
+        AccountabilityDueTotal: {
+            dueId: string;
+            name: string;
+            dueDate: string;
+            /** Format: int64 */
+            amountCents: number;
+            /** @description Roster members who paid the Due in full at publication. */
+            paidCount: number;
+            /** @description Roster members who owe the Due, Exemptions excluded. */
+            totalCount: number;
+        };
+        AccountabilityEntry: {
+            id: string;
+            date: string;
+            /** @enum {string} */
+            direction: "income" | "expense";
+            categoryId: string;
+            /** @description The Category's name at publication. */
+            category: string;
+            description: string;
+            /** Format: int64 */
+            amountCents: number;
+            recordedBy: string;
+            /** @description Set on a Reversal. */
+            reversesId?: string;
+            /** @description Whether the Entry had a Reversal at publication. */
+            reversed: boolean;
         };
         FinanceBalance: {
             /** @description The exact sum; may exceed int64. */
@@ -5340,6 +5467,142 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["MemberForbidden"];
             422: components["responses"]["InvalidRange"];
+        };
+    };
+    getFinanceAccountabilityReports: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The school's reports, newest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountabilityReportSummary"][];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["MemberForbidden"];
+        };
+    };
+    postFinanceAccountabilityReports: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewAccountabilityReport"];
+            };
+        };
+        responses: {
+            /** @description The published report with its frozen copy. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountabilityReport"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            /** @description The user is not an Officer of the active school (`forbidden`), or is one without a verified two-factor session (`mfa_required`). Nothing is read or written. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `from` or `to` missing, malformed or reversed (`invalid_range`), `to` after today in Argentina (`future_date`), or a blank Term (`term_required`). Nothing is written. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "invalid_range" | "future_date" | "term_required";
+                    };
+                };
+            };
+        };
+    };
+    getFinanceAccountabilityReport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The report id. The router also routes `/finance/accountability-reports/{id}.csv` here, because a path wildcard must be a whole segment; see that path for the CSV. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The report. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountabilityReport"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["MemberForbidden"];
+            /** @description No such report in the active school (`not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotFoundError"];
+                };
+            };
+        };
+    };
+    getFinanceAccountabilityReportCsv: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Attachment `rendicion-de-cuentas-<from>-a-<to>.csv`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["MemberForbidden"];
+            /** @description No such report in the active school (`not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotFoundError"];
+                };
+            };
         };
     };
     getFinanceEntry: {
