@@ -26,7 +26,7 @@ cgo tooling such as `sqlc` and `go test -race`.
 Create a `.env` file at the repository root (never commit it) with `POSTGRES_PASSWORD=<a local password>`, then:
 
 ```sh
-docker compose up -d              # PostgreSQL for development
+docker compose -f compose.yaml -f compose.dev.yaml up -d  # PostgreSQL and loopback-only Gotenberg
 
 cd api && go run ./cmd/server     # API on http://localhost:8080
 cd api && go test ./...           # Postgres integration tests need Docker running; add -short to skip them
@@ -49,6 +49,10 @@ cp docs/dev/devvars.example.sh "$HOME/centro-dev/devvars.sh"
 ```
 
 Use separate database roles as described below, and generate fresh keys rather than using the placeholders. The Compose `.env` file and this shell file serve different purposes; keep both private.
+For an API running on the host, set `GOTENBERG_URL=http://127.0.0.1:3000` after starting the
+development-only override above. The override publishes the converter on loopback only. Without it,
+`compose.yaml` publishes no Gotenberg port; an API on the same Docker network can use the default
+`http://gotenberg:3000`.
 
 | Variable | Purpose |
 |---|---|
@@ -64,8 +68,9 @@ Use separate database roles as described below, and generate fresh keys rather t
 | `MAIL_DEV_DIR` | Development only, used when `SMTP_HOST` is empty: every email is written as an `.eml` file in this directory instead of being sent. With neither variable the server refuses to start |
 | `TRUSTED_PROXIES` | Comma-separated CIDRs of the reverse proxies in front of the API, e.g. `127.0.0.1/32` for a Caddy on the same host (default empty). Only when the TCP peer is inside one of them does the server read `X-Forwarded-For`, taking the right-most address that is not itself a trusted proxy as the client (ports such as `1.2.3.4:5678` or `[2001:db8::1]:443` are ignored; if every hop is trusted, the left-most one; an unparsable hop before any untrusted one puts the request in one shared `unparsable` bucket, never the proxy's); otherwise the header is ignored, so clients cannot forge their address. Write IPv4 proxies as IPv4 CIDRs: IPv4-mapped prefixes (`::ffff:…`) are refused at startup. IPv6 clients are rate limited per /64. Behind a proxy, leaving it empty makes every request share the proxy's limit |
 | `ADDR` | Listen address (default `:8080`) |
+| `GOTENBERG_URL` | Private Gotenberg origin (default `http://gotenberg:3000`); PDF conversion times out after 30 seconds |
 
-The server stops gracefully on SIGINT/SIGTERM: in-flight requests get up to 15 s, then queued emails get up to 10 s before it exits (25 s in total). Docker's default grace period is 10 s, so the app service of a deployment's compose file must set `stop_grace_period: 30s` (the development `compose.yaml` only runs PostgreSQL). Queued emails are kept in memory: a crash loses them, and when the backlog (256) is full a message is dropped and logged at WARN with the running count of dropped messages (never its content). Expired sessions are deleted every 10 minutes.
+The server stops gracefully on SIGINT/SIGTERM: in-flight requests get up to 15 s, then queued emails get up to 10 s before it exits (25 s in total). Docker's default grace period is 10 s, so the app service of a deployment's compose file must set `stop_grace_period: 30s` (the development `compose.yaml` runs PostgreSQL and Gotenberg, not the API). Queued emails are kept in memory: a crash loses them, and when the backlog (256) is full a message is dropped and logged at WARN with the running count of dropped messages (never its content). Expired sessions are deleted every 10 minutes.
 
 Roster files are CSV UTF-8 with the header `full_name,document_number`; Excel's semicolon-separated CSV (Argentine locale) is accepted too, detected from the header line. Document numbers have 7 to 9 digits, written plain (`40111222`) or with dots in every thousands position (`40.111.222`, `9.876.543`). Names may not contain invisible format characters (bidirectional overrides, zero-width characters).
 

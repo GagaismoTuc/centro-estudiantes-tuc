@@ -50,6 +50,17 @@ func TestConvertUnavailable(t *testing.T) {
 	if _, err := gotenberg.New(closed.URL).Convert(context.Background(), []byte("fixture")); err == nil {
 		t.Fatal("expected an error for a refused connection")
 	}
+	var forwarded atomic.Bool
+	receiver := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { forwarded.Store(true) }))
+	defer receiver.Close()
+	redirect := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, receiver.URL, http.StatusTemporaryRedirect)
+	}))
+	defer redirect.Close()
+	_, _ = gotenberg.New(redirect.URL).Convert(context.Background(), []byte("fixture"))
+	if forwarded.Load() {
+		t.Fatal("converter redirected the report to another host")
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
 	defer cancel()
 	_, err = client.Convert(ctx, []byte("fixture"))
@@ -89,5 +100,21 @@ func TestPinnedGotenbergCompose(t *testing.T) {
 	}
 	if len(svc.Ports) != 0 || svc.NetworkMode == "host" {
 		t.Fatalf("Gotenberg is exposed: %+v", svc)
+	}
+	dev, err := os.ReadFile("../../../compose.dev.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var override struct {
+		Services map[string]struct {
+			Ports []string `yaml:"ports"`
+		} `yaml:"services"`
+	}
+	if err := yaml.Unmarshal(dev, &override); err != nil {
+		t.Fatal(err)
+	}
+	ports := override.Services["gotenberg"].Ports
+	if len(ports) != 1 || ports[0] != "127.0.0.1:3000:3000" {
+		t.Fatalf("development ports must be loopback-only: %v", ports)
 	}
 }

@@ -20,7 +20,10 @@ type Client struct {
 
 // New creates a converter with the required 30-second deadline.
 func New(baseURL string) *Client {
-	return &Client{url: strings.TrimRight(baseURL, "/") + "/forms/libreoffice/convert", http: &http.Client{Timeout: 30 * time.Second}}
+	return &Client{url: strings.TrimRight(baseURL, "/") + "/forms/libreoffice/convert", http: &http.Client{
+		Timeout:       30 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}}
 }
 
 // Convert sends one DOCX and returns the converted PDF, without writing files.
