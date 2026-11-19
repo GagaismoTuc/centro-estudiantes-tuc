@@ -442,3 +442,63 @@ func TestAccountabilityIsolation(t *testing.T) {
 	}
 	wantResponse(t, b.get(acctPath, b.officer), http.StatusOK, `[]`)
 }
+
+// TestAccountabilityCSV covers the `{id}.csv` route the `{id}` handler serves: the published copy
+// as a CSV for any reader (header, summary, totals per Due, Entries without "alumno"), and 404
+// not_found for an unknown, empty or foreign id.
+func TestAccountabilityCSV(t *testing.T) {
+	rf := newAcctFixture(t)
+	_, student, beto := rf.student(t, rf.ctx, "Beto Ficticio", "30111223")
+	march := rf.record(t, "income/Ventas", "2026-03-10", 50000, "Kiosco de marzo")
+	rf.record(t, "expense/Alquileres", "2026-04-02", 20000, "Alquiler del salón")
+	due := rf.createDue(t, "Cuota de noviembre", "2026-11-15", 200000)
+	rf.payDue(t, due, beto, "2026-11-10", 200000)
+	if r := rf.do(http.MethodPost, "/api/finance/entries/"+march+"/reversal", "", reportIP, rf.officer, nil); r.Code != http.StatusCreated {
+		t.Fatalf("reversal: %d %s", r.Code, r.Body)
+	}
+	rep, _ := rf.publishOK(t, rf.officer, "2026-03-01", "2026-11-30", "Gestión 2026")
+
+	rec := rf.get(acctPath+"/"+rep.ID+".csv", student)
+	if !strings.Contains(rec.Body.String(), "\r\n\r\n") {
+		t.Fatalf("sections are not separated by an empty line: %q", rec.Body)
+	}
+	got := readCSV(t, rec, "rendicion-de-cuentas-2026-03-01-a-2026-11-30.csv")
+	want := [][]string{
+		{"concepto", "valor"},
+		{"Gestión", "Gestión 2026"},
+		{"Período", "2026-03-01 a 2026-11-30"},
+		{"Publicada por", "Carla Ficticia"},
+		{"Publicada el", rf.clk.t.In(time.FixedZone("Argentina", -3*60*60)).Format("2006-01-02 15:04")},
+		{"concepto", "tipo", "monto"},
+		{"Saldo inicial", "", "0,00"},
+		{"Cuotas", "ingreso", "2000,00"},
+		{"Ventas", "ingreso", "0,00"},
+		{"Alquileres", "gasto", "-200,00"},
+		{"Saldo final", "", "1800,00"},
+		{"cuota", "vencimiento", "pagaron", "de"},
+		{"Cuota de noviembre", "2026-11-15", "1", "2"},
+		{"fecha", "tipo", "Categoría", "descripción", "monto", "registrado por", "revertido", "con comprobante"},
+		{"2026-03-10", "ingreso", "Ventas", "Kiosco de marzo", "500,00", "Carla Ficticia", "sí", "no"},
+		{"2026-04-02", "gasto", "Alquileres", "Alquiler del salón", "-200,00", "Carla Ficticia", "no", "no"},
+		{"2026-11-10", "ingreso", "Cuotas", "Pago de cuota: Cuota de noviembre", "2000,00", "Carla Ficticia", "no", "no"},
+		{"2026-11-30", "gasto", "Ventas", "Reversión: Kiosco de marzo", "-500,00", "Carla Ficticia", "no", "no"},
+	}
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("CSV rows:\n%q\nwant:\n%q", got, want)
+	}
+	if officerCSV := rf.get(acctPath+"/"+rep.ID+".csv", rf.officer); !bytes.Equal(officerCSV.Body.Bytes(), rec.Body.Bytes()) {
+		t.Fatalf("the Officer's CSV differs from the Student's")
+	}
+
+	other := newReportFixture(t, rf.ctx, acctNow)
+	for name, path := range map[string]string{
+		"unknown id": acctPath + "/00000000-0000-4000-8000-000000000000.csv",
+		"empty id":   acctPath + "/.csv",
+		"not an id":  acctPath + "/r1.csv",
+	} {
+		t.Run(name, func(t *testing.T) {
+			wantResponse(t, rf.get(path, rf.officer), http.StatusNotFound, `{"error":"not_found"}`)
+		})
+	}
+	wantResponse(t, other.get(acctPath+"/"+rep.ID+".csv", other.officer), http.StatusNotFound, `{"error":"not_found"}`)
+}
