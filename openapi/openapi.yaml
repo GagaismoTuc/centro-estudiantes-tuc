@@ -2642,6 +2642,122 @@ paths:
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "403": { $ref: "#/components/responses/MemberForbidden" }
         "422": { $ref: "#/components/responses/InvalidRange" }
+  /finance/accountability-reports:
+    get:
+      operationId: getFinanceAccountabilityReports
+      summary: Published Financial accountability reports (Rendiciones de cuentas), newest first
+      description: >
+        Any member of the active school reads them (Officers, Students, School admins and, once it
+        exists, the Veedor). Lists period, Term and who published; the frozen copy is at
+        `/finance/accountability-reports/{id}`.
+      responses:
+        "200":
+          description: The school's reports, newest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AccountabilityReportSummary" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/MemberForbidden" }
+    post:
+      operationId: postFinanceAccountabilityReports
+      summary: Publish a frozen Financial accountability report as an Officer with MFA
+      description: >
+        Any current Officer publishes any period, also one of the previous Term, and may publish
+        overlapping periods more than once. The Fund report of the period, its totals per Category,
+        its balances and the totals per Due whose due date falls in the period are read in one
+        consistent snapshot and stored with the publisher's name; the copy never changes and never
+        names a Roster member. There is no PUT or DELETE.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NewAccountabilityReport" }
+      responses:
+        "201":
+          description: The published report with its frozen copy.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AccountabilityReport" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          description: >
+            The user is not an Officer of the active school (`forbidden`), or is one without a
+            verified two-factor session (`mfa_required`). Nothing is read or written.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "422":
+          description: >
+            `from` or `to` missing, malformed or reversed (`invalid_range`), `to` after today in
+            Argentina (`future_date`), or a blank Term (`term_required`). Nothing is written.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [invalid_range, future_date, term_required]
+  /finance/accountability-reports/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: >
+          The report id. The router also routes `/finance/accountability-reports/{id}.csv` here,
+          because a path wildcard must be a whole segment; see that path for the CSV.
+        schema: { type: string }
+    get:
+      operationId: getFinanceAccountabilityReport
+      summary: One published Financial accountability report with its frozen copy
+      description: >
+        Same readers as the list. Every read returns the same copy, whatever Reversals, Category
+        renames or payments came after publication.
+      responses:
+        "200":
+          description: The report.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AccountabilityReport" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/MemberForbidden" }
+        "404":
+          description: No such report in the active school (`not_found`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotFoundError" }
+  /finance/accountability-reports/{id}.csv:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getFinanceAccountabilityReportCsv
+      summary: One published Financial accountability report as a CSV download
+      description: >
+        Same readers as the list; served by the `{id}` route (excluded from code generation). Same
+        encoding and escaping as `/finance/report.csv`. A header section (`concepto;valor`: Gestión,
+        Período, Publicada por, Publicada el), an empty line, the summary of `/finance/report.csv`,
+        an empty line, the totals per Due (`cuota;vencimiento;pagaron;de`), an empty line and the
+        period's Entries with the columns of `/finance/entries.csv` without `alumno`, as published.
+      responses:
+        "200":
+          description: Attachment `rendicion-de-cuentas-<from>-a-<to>.csv`.
+          content:
+            text/csv:
+              schema: { type: string }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/MemberForbidden" }
+        "404":
+          description: No such report in the active school (`not_found`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotFoundError" }
   /finance/entries/{entryId}:
     parameters:
       - name: entryId
@@ -3472,6 +3588,68 @@ components:
           type: array
           description: Entries in the range, oldest first.
           items: { $ref: "#/components/schemas/FinanceEntry" }
+    NewAccountabilityReport:
+      type: object
+      additionalProperties: false
+      required: [from, to, term]
+      properties:
+        from: { type: string, description: "First day of the period, YYYY-MM-DD, inclusive." }
+        to: { type: string, description: "Last day of the period, YYYY-MM-DD, inclusive; not after today." }
+        term: { type: string, description: "The Term (Gestión) the report belongs to, such as \"Gestión 2026\"." }
+    AccountabilityReportSummary:
+      type: object
+      required: [id, from, to, term, publishedBy, publishedAt]
+      properties:
+        id: { type: string }
+        from: { type: string }
+        to: { type: string }
+        term: { type: string }
+        publishedBy: { type: string, description: The publishing Officer's Roster name. }
+        publishedAt: { type: string, format: date-time }
+    AccountabilityReport:
+      allOf:
+        - $ref: "#/components/schemas/AccountabilityReportSummary"
+        - type: object
+          required: [openingCents, closingCents, totals, dues, entries]
+          properties:
+            openingCents: { type: integer, format: int64 }
+            closingCents: { type: integer, format: int64 }
+            totals:
+              type: array
+              description: Categories with Entries in the period, with their names at publication.
+              items: { $ref: "#/components/schemas/FinanceCategoryTotal" }
+            dues:
+              type: array
+              description: Dues whose due date falls in the period, by due date.
+              items: { $ref: "#/components/schemas/AccountabilityDueTotal" }
+            entries:
+              type: array
+              description: Entries in the period as published, oldest first; never who paid.
+              items: { $ref: "#/components/schemas/AccountabilityEntry" }
+    AccountabilityDueTotal:
+      type: object
+      required: [dueId, name, dueDate, amountCents, paidCount, totalCount]
+      properties:
+        dueId: { type: string }
+        name: { type: string }
+        dueDate: { type: string }
+        amountCents: { type: integer, format: int64 }
+        paidCount: { type: integer, description: "Roster members who paid the Due in full by the period's `to`: payments dated up to `to` whose Entry has no Reversal dated up to `to`." }
+        totalCount: { type: integer, description: "Roster members who owe the Due, Exemptions excluded." }
+    AccountabilityEntry:
+      type: object
+      required: [id, date, direction, categoryId, category, description, amountCents, recordedBy, reversed]
+      properties:
+        id: { type: string }
+        date: { type: string }
+        direction: { type: string, enum: [income, expense] }
+        categoryId: { type: string }
+        category: { type: string, description: The Category's name at publication. }
+        description: { type: string }
+        amountCents: { type: integer, format: int64 }
+        recordedBy: { type: string }
+        reversesId: { type: string, description: Set on a Reversal. }
+        reversed: { type: boolean, description: Whether the Entry had a Reversal at publication. }
     FinanceBalance:
       type: object
       required: [balanceCents]
