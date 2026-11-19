@@ -129,4 +129,3 @@ func TestVeedorInvitationMigrationReverses(t *testing.T) {
 		t.Fatalf("up again: %v", err)
 	}
 }
-

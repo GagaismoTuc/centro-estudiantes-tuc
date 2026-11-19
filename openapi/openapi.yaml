@@ -1869,10 +1869,11 @@ paths:
       operationId: postElectionAnnulment
       summary: Annul an election before its result is published
       description: >
-        Members of the election's Electoral commission, or a Veedor, with a verified second factor. Checks, in order and
-        before the body is read: `forbidden` (no membership in the active school), `not_found` (no such election
+        Members of the election's Electoral commission, or a Veedor, with a verified second factor. Before the body
+        is read, a Veedor's role is checked and then MFA is required (`mfa_required`) before election data is read.
+        For other members, checks are `forbidden` (no membership in the active school), `not_found` (no such election
         in it, whether or not it exists in another), `forbidden` (not on the election's commission: students,
-        officers and school admins who are not on it), `mfa_required`. Then the reason (422) and the election's
+        officers and school admins who are not on it), then `mfa_required`. Then the reason (422) and the election's
         state (409). Annulling is irreversible: the election publishes no result, accepts no change and never
         reopens; the commission's mandate ends, so the school can organize another election once the officers
         designate a new commission. Of two simultaneous requests exactly one annuls. Every error writes nothing.
