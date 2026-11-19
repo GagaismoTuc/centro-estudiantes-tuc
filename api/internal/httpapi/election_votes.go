@@ -11,7 +11,7 @@ import (
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/oapi"
 )
 
-// writeVoteError maps the errors of a vote and of the turnout. An unexpected error is logged with
+// writeVoteError maps the errors of a vote, the turnout and the result. An unexpected error is logged with
 // its SQLSTATE only: never the error text, the choice or anything about the voter (S11, CS-8).
 func writeVoteError(w http.ResponseWriter, op string, err error) {
 	switch {
@@ -31,6 +31,8 @@ func writeVoteError(w http.ResponseWriter, op string, err error) {
 		writeError(w, http.StatusUnprocessableEntity, "invalid_choice")
 	case errors.Is(err, elections.ErrAlreadyVoted):
 		writeError(w, http.StatusConflict, "already_voted")
+	case errors.Is(err, elections.ErrResultsNotAvailable):
+		writeError(w, http.StatusConflict, "results_not_available")
 	default:
 		var pgErr *pgconn.PgError
 		code := "none"
@@ -81,15 +83,36 @@ func (s *server) GetElectionTurnout(w http.ResponseWriter, r *http.Request, elec
 	writeJSON(w, http.StatusOK, oapi.Turnout{Voted: t.Voted, Electorate: t.Electorate, HasVoted: t.HasVoted})
 }
 
-// GetElectionResults never shows votes per list yet: publishing the result is #57.
+// GetElectionResults shows the result from the election's end on (see elections.Store.ViewResult):
+// per list counts only once published, never anything about a voter or a Ballot.
 func (s *server) GetElectionResults(w http.ResponseWriter, r *http.Request, electionID string) {
 	sess, ok := rosterSession(w, r)
 	if !ok {
 		return
 	}
-	if _, err := s.elections.View(r.Context(), sess, electionID); err != nil {
-		writeElectionsError(w, "read results", err)
+	res, err := s.elections.ViewResult(r.Context(), sess, electionID)
+	if err != nil {
+		writeVoteError(w, "read results", err)
 		return
 	}
-	writeError(w, http.StatusConflict, "results_not_available")
+	writeJSON(w, http.StatusOK, electionResult(res))
+}
+
+func electionResult(res elections.Result) oapi.ElectionResult {
+	if res.Annulled {
+		return oapi.ElectionResult{Status: oapi.ElectionResultStatusAnnulled, AnnulmentReason: &res.AnnulmentReason}
+	}
+	mode, outcome := oapi.Secret, oapi.ElectionResultOutcome(res.Outcome)
+	lists := make([]oapi.ElectionResultList, 0, len(res.Lists))
+	for _, l := range res.Lists {
+		lists = append(lists, oapi.ElectionResultList{Id: l.ID, Name: l.Name, Votes: l.Votes})
+	}
+	out := oapi.ElectionResult{
+		Status: oapi.ElectionResultStatusPublished, Mode: &mode, Lists: &lists,
+		BlankVotes: &res.Blank, Voted: &res.Voted, Electorate: &res.Electorate, Outcome: &outcome,
+	}
+	if res.Winner != nil {
+		out.Winner = &oapi.ElectionResultWinner{Id: res.Winner.ID, Name: res.Winner.Name}
+	}
+	return out
 }

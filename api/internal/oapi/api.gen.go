@@ -68,30 +68,72 @@ func (e ElectionMode) Valid() bool {
 	}
 }
 
+// Defines values for ElectionResultOutcome.
+const (
+	NoLists ElectionResultOutcome = "no_lists"
+	NoVotes ElectionResultOutcome = "no_votes"
+	Tie     ElectionResultOutcome = "tie"
+	Winner  ElectionResultOutcome = "winner"
+)
+
+// Valid indicates whether the value is a known member of the ElectionResultOutcome enum.
+func (e ElectionResultOutcome) Valid() bool {
+	switch e {
+	case NoLists:
+		return true
+	case NoVotes:
+		return true
+	case Tie:
+		return true
+	case Winner:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ElectionResultStatus.
+const (
+	ElectionResultStatusAnnulled  ElectionResultStatus = "annulled"
+	ElectionResultStatusPublished ElectionResultStatus = "published"
+)
+
+// Valid indicates whether the value is a known member of the ElectionResultStatus enum.
+func (e ElectionResultStatus) Valid() bool {
+	switch e {
+	case ElectionResultStatusAnnulled:
+		return true
+	case ElectionResultStatusPublished:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ElectionState.
 const (
-	Annulled   ElectionState = "annulled"
-	Closed     ElectionState = "closed"
-	Draft      ElectionState = "draft"
-	Open       ElectionState = "open"
-	Scheduled  ElectionState = "scheduled"
-	Submission ElectionState = "submission"
+	ElectionStateAnnulled   ElectionState = "annulled"
+	ElectionStateClosed     ElectionState = "closed"
+	ElectionStateDraft      ElectionState = "draft"
+	ElectionStateOpen       ElectionState = "open"
+	ElectionStateScheduled  ElectionState = "scheduled"
+	ElectionStateSubmission ElectionState = "submission"
 )
 
 // Valid indicates whether the value is a known member of the ElectionState enum.
 func (e ElectionState) Valid() bool {
 	switch e {
-	case Annulled:
+	case ElectionStateAnnulled:
 		return true
-	case Closed:
+	case ElectionStateClosed:
 		return true
-	case Draft:
+	case ElectionStateDraft:
 		return true
-	case Open:
+	case ElectionStateOpen:
 		return true
-	case Scheduled:
+	case ElectionStateScheduled:
 		return true
-	case Submission:
+	case ElectionStateSubmission:
 		return true
 	default:
 		return false
@@ -1687,6 +1729,53 @@ type ElectionListsResponse struct {
 // ElectionMode Only "Voto secreto"; any other value is 422 `mode_not_supported`.
 type ElectionMode string
 
+// ElectionResult With `status: annulled`, only `annulmentReason`. With `status: published`, every other property and `winner` only when `outcome` is `winner`.
+type ElectionResult struct {
+	// AnnulmentReason The public reason of the Annulment.
+	AnnulmentReason *string `json:"annulmentReason,omitempty"`
+
+	// BlankVotes Blank votes; counted, they never win.
+	BlankVotes *int `json:"blankVotes,omitempty"`
+
+	// Electorate The size of the Electorate (Y). When voting never opened (`no_lists`), the roster when the result was first read.
+	Electorate *int `json:"electorate,omitempty"`
+
+	// Lists Every approved list of the election, also those with 0 votes; most votes first, then by name.
+	Lists *[]ElectionResultList `json:"lists,omitempty"`
+
+	// Mode Only "Voto secreto"; any other value is 422 `mode_not_supported`.
+	Mode *ElectionMode `json:"mode,omitempty"`
+
+	// Outcome `winner`: one list has the most votes (simple majority, no quorum). `tie`: two or more lists share the most votes. `no_votes`: every list has 0 votes, even with Blank votes. `no_lists`: no approved list, so voting never opened.
+	Outcome *ElectionResultOutcome `json:"outcome,omitempty"`
+	Status  ElectionResultStatus   `json:"status"`
+
+	// Voted How many students of the Electorate voted (X); the votes of the lists plus `blankVotes`.
+	Voted *int `json:"voted,omitempty"`
+
+	// Winner The list with the most votes; only when `outcome` is `winner`.
+	Winner *ElectionResultWinner `json:"winner,omitempty"`
+}
+
+// ElectionResultOutcome `winner`: one list has the most votes (simple majority, no quorum). `tie`: two or more lists share the most votes. `no_votes`: every list has 0 votes, even with Blank votes. `no_lists`: no approved list, so voting never opened.
+type ElectionResultOutcome string
+
+// ElectionResultStatus defines model for ElectionResult.Status.
+type ElectionResultStatus string
+
+// ElectionResultList defines model for ElectionResultList.
+type ElectionResultList struct {
+	Id    string `json:"id"`
+	Name  string `json:"name"`
+	Votes int    `json:"votes"`
+}
+
+// ElectionResultWinner The list with the most votes; only when `outcome` is `winner`.
+type ElectionResultWinner struct {
+	Id   string `json:"id"`
+	Name string `json:"name"`
+}
+
 // ElectionState `annulled` once the election was annulled, whatever the clock says. Otherwise computed from the server clock against the dates; every window includes its start and excludes its end. `draft` before `submissionStartsAt`, `submission` until `submissionEndsAt`, `scheduled` until `startsAt`, `open` until `endsAt`, `closed` from `endsAt` on.
 type ElectionState string
 
@@ -2827,7 +2916,7 @@ type ServerInterface interface {
 	// PostRejectElectionList Reject a pending election list with a reason
 	// (POST /elections/{electionId}/lists/{listId}/reject)
 	PostRejectElectionList(w http.ResponseWriter, r *http.Request, electionId string, listId string)
-	// GetElectionResults Votes per list of an election
+	// GetElectionResults The result of an election, published at its close
 	// (GET /elections/{electionId}/results)
 	GetElectionResults(w http.ResponseWriter, r *http.Request, electionId string)
 	// GetElectionTurnout How many students of the Electorate voted
