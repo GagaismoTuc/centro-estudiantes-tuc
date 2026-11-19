@@ -1096,8 +1096,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Votes per list of an election
-         * @description Any member of the active school. Not available yet: publishing the result is a later feature, so every election answers `results_not_available`; while voting is open nobody sees votes per list. Responses carry `Cache-Control: no-store`.
+         * The result of an election, published at its close
+         * @description Any member of the active school, from `endsAt` on (inclusive): before it every election, annulled or not, answers `results_not_available` with no count. An annulled election publishes no result: it answers `status: annulled` with its reason. Otherwise the result is computed on read, from the Ballot box written once at the close, so every read returns the same result; it carries no voter nor Ballot identifier. Responses carry `Cache-Control: no-store`.
          */
         get: operations["getElectionResults"];
         put?: never;
@@ -1790,6 +1790,38 @@ export interface components {
             electorate: number;
             /** @description Whether the caller voted; nobody learns whether anyone else did. */
             hasVoted: boolean;
+        };
+        /** @description With `status: annulled`, only `annulmentReason`. With `status: published`, every other property and `winner` only when `outcome` is `winner`. */
+        ElectionResult: {
+            /** @enum {string} */
+            status: "published" | "annulled";
+            /** @description The public reason of the Annulment. */
+            annulmentReason?: string;
+            mode?: components["schemas"]["ElectionMode"];
+            /** @description Every approved list of the election, also those with 0 votes; most votes first, then by name. */
+            lists?: components["schemas"]["ElectionResultList"][];
+            /** @description Blank votes; counted, they never win. */
+            blankVotes?: number;
+            /** @description How many students of the Electorate voted (X); the votes of the lists plus `blankVotes`. */
+            voted?: number;
+            /** @description The size of the Electorate (Y). When voting never opened (`no_lists`), the roster when the result was first read. */
+            electorate?: number;
+            /**
+             * @description `winner`: one list has the most votes (simple majority, no quorum). `tie`: two or more lists share the most votes. `no_votes`: every list has 0 votes, even with Blank votes. `no_lists`: no approved list, so voting never opened.
+             * @enum {string}
+             */
+            outcome?: "winner" | "tie" | "no_votes" | "no_lists";
+            winner?: components["schemas"]["ElectionResultWinner"];
+        };
+        ElectionResultList: {
+            id: string;
+            name: string;
+            votes: number;
+        };
+        /** @description The list with the most votes; only when `outcome` is `winner`. */
+        ElectionResultWinner: {
+            id: string;
+            name: string;
         };
         AnnulmentRequest: {
             /** @description Public: every member of the school sees it next to the election. Trimmed; 1 to 500 characters once trimmed (`reason_required`, `reason_too_long`). The request body is capped at 4 KiB (`bad_request`). */
@@ -4915,6 +4947,15 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description The published result, or the annulment. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ElectionResult"];
+                };
+            };
             401: components["responses"]["Unauthenticated"];
             /** @description The account has no membership in the active school (`forbidden`). */
             403: {
@@ -4934,7 +4975,7 @@ export interface operations {
                     "application/json": components["schemas"]["NotFoundError"];
                 };
             };
-            /** @description The votes per list are not available (`results_not_available`). */
+            /** @description `results_not_available`: before `endsAt` by the server clock, or while the database clock has not reached it yet. */
             409: {
                 headers: {
                     [name: string]: unknown;
