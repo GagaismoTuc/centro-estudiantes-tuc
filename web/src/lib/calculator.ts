@@ -49,6 +49,37 @@ export type RaffleOutcome =
   | { ok: true; result: RaffleResult }
   | { ok: false; errors: RaffleErrors };
 
+export type DueAmountResult = {
+  payingCount: number;
+  exemptCount: number;
+  amountPerStudentCents: number;
+  exactPerStudentCents: number;
+  formattedAmountPerStudent: string;
+  formattedExactPerStudent: string;
+};
+
+export type DueAmountOutcome =
+  | { ok: true; result: DueAmountResult }
+  | { ok: false; error: string };
+
+export type SpendableComparison = {
+  status: "short" | "covered_today" | "covered_if_collected";
+  differenceCents: string;
+  message: string;
+};
+
+export type SpendableResult = {
+  balanceCents: string;
+  owedOnDuesCents: string;
+  totalWithOwedCents: string;
+  formattedBalance: string;
+  formattedOwedOnDues: string;
+  formattedTotalWithOwed: string;
+  summaryMessage: string;
+  comparison: SpendableComparison | null;
+  plannedCostError?: string | undefined;
+};
+
 /**
  * Parses a decimal string (supporting Argentine `,` decimals and `.` thousand separators)
  * into integer hundredths without floating-point arithmetic.
@@ -123,6 +154,14 @@ function parsePositiveInteger(raw: string): number | null {
   return value;
 }
 
+function parseNonNegativeInteger(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (!/^\d+$/.test(trimmed)) return null;
+  const value = Number(trimmed);
+  if (!Number.isSafeInteger(value) || value < 0) return null;
+  return value;
+}
+
 // shortcut: JS safe integer centavos (up to ~$90 trillion ARS); return BigInt if multi-trillion amounts are ever needed.
 /** Multiplies integer centavos by an integer quantity without floating-point error. */
 export function multiplyCents(cents: number, quantity: number): number {
@@ -138,14 +177,14 @@ export function roundUpTo100Pesos(cents: number): number {
 }
 
 /** Formats integer centavos as `$ 4.400` (omitting `,00` for whole pesos, keeping `,cc` otherwise). */
-export function formatPesos(cents: number): string {
-  const rounded = Math.trunc(cents);
-  const sign = rounded < 0 ? "-" : "";
-  const abs = Math.abs(rounded);
-  const whole = Math.floor(abs / 100);
-  const frac = abs % 100;
-  const wholeFormatted = String(whole).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-  const fracFormatted = frac === 0 ? "" : `,${String(frac).padStart(2, "0")}`;
+export function formatPesos(cents: number | bigint): string {
+  const value = typeof cents === "bigint" ? cents : BigInt(Math.trunc(cents));
+  const sign = value < 0n ? "-" : "";
+  const abs = value < 0n ? -value : value;
+  const whole = abs / PESO_CENTS;
+  const frac = abs % PESO_CENTS;
+  const wholeFormatted = whole.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  const fracFormatted = frac === 0n ? "" : `,${frac.toString().padStart(2, "0")}`;
   return `${sign}$ ${wholeFormatted}${fracFormatted}`;
 }
 
@@ -245,5 +284,143 @@ export function calculateRaffle(input: {
       formattedProfitOrLoss,
       lossMessage,
     },
+  };
+}
+
+const DUE_AMOUNT_ERROR = "Revisá la meta y la cantidad de alumnos";
+
+/**
+ * Calculates the per-student Due amount from a target goal, the current roster count and an
+ * optional count of expected exemptions (default 0), rounding up to multiples of $100.
+ */
+export function calculateDueAmount(input: {
+  goal: string;
+  rosterCount: number;
+  expectedExempt?: string;
+}): DueAmountOutcome {
+  const parsedGoal = parsePesosToCents(input.goal);
+  if (!parsedGoal.ok || parsedGoal.cents <= 0) {
+    return { ok: false, error: DUE_AMOUNT_ERROR };
+  }
+
+  const rawExempt = (input.expectedExempt ?? "").trim();
+  const exemptCount = rawExempt === "" ? 0 : parseNonNegativeInteger(rawExempt);
+  if (
+    exemptCount === null ||
+    !Number.isSafeInteger(input.rosterCount) ||
+    input.rosterCount <= 0 ||
+    exemptCount >= input.rosterCount
+  ) {
+    return { ok: false, error: DUE_AMOUNT_ERROR };
+  }
+
+  const payingCount = input.rosterCount - exemptCount;
+  const goalBig = BigInt(parsedGoal.cents);
+  const payingBig = BigInt(payingCount);
+
+  const exactPerStudentCents = Number((goalBig + payingBig / 2n) / payingBig);
+  const step = ROUND_STEP_CENTS * payingBig;
+  const amountPerStudentCents = Number(((goalBig + step - 1n) / step) * ROUND_STEP_CENTS);
+
+  return {
+    ok: true,
+    result: {
+      payingCount,
+      exemptCount,
+      amountPerStudentCents,
+      exactPerStudentCents,
+      formattedAmountPerStudent: formatPesos(amountPerStudentCents),
+      formattedExactPerStudent: formatPesos(exactPerStudentCents),
+    },
+  };
+}
+
+/**
+ * Calculates how much the Student center can spend today (current Fund balance) and if all pending
+ * Dues are collected, optionally comparing against a planned cost.
+ */
+export function calculateSpendable(input: {
+  balanceCents: string;
+  owedOnDuesCents: string;
+  plannedCost?: string;
+}): SpendableResult {
+  const balance = BigInt(input.balanceCents);
+  const owed = BigInt(input.owedOnDuesCents);
+  const totalWithOwed = balance + owed;
+
+  const formattedBalance = formatPesos(balance);
+  const formattedOwedOnDues = formatPesos(owed);
+  const formattedTotalWithOwed = formatPesos(totalWithOwed);
+  const summaryMessage = `Hoy tenés ${formattedBalance}; si cobrás lo que falta, ${formattedTotalWithOwed}`;
+
+  const rawPlanned = (input.plannedCost ?? "").trim();
+  if (rawPlanned === "") {
+    return {
+      balanceCents: balance.toString(),
+      owedOnDuesCents: owed.toString(),
+      totalWithOwedCents: totalWithOwed.toString(),
+      formattedBalance,
+      formattedOwedOnDues,
+      formattedTotalWithOwed,
+      summaryMessage,
+      comparison: null,
+    };
+  }
+
+  const parsedPlanned = parsePesosToCents(rawPlanned);
+  if (!parsedPlanned.ok) {
+    return {
+      balanceCents: balance.toString(),
+      owedOnDuesCents: owed.toString(),
+      totalWithOwedCents: totalWithOwed.toString(),
+      formattedBalance,
+      formattedOwedOnDues,
+      formattedTotalWithOwed,
+      summaryMessage,
+      comparison: null,
+      plannedCostError: "Ingresá un costo planeado válido",
+    };
+  }
+
+  const planned = BigInt(parsedPlanned.cents);
+  const diffToday = balance - planned;
+  const diffWithOwed = totalWithOwed - planned;
+
+  let comparison: SpendableComparison;
+  if (diffWithOwed < 0n) {
+    comparison = {
+      status: "short",
+      differenceCents: diffWithOwed.toString(),
+      message: `Aunque cobres todo, te faltan ${formatPesos(-diffWithOwed)}`,
+    };
+  } else if (diffToday >= 0n) {
+    comparison = {
+      status: "covered_today",
+      differenceCents: diffToday.toString(),
+      message:
+        diffToday === 0n
+          ? "Te alcanza justo con lo que tenés hoy"
+          : `Te alcanza hoy y te sobran ${formatPesos(diffToday)}`,
+    };
+  } else {
+    comparison = {
+      status: "covered_if_collected",
+      differenceCents: diffWithOwed.toString(),
+      message:
+        diffWithOwed === 0n
+          ? `Hoy te faltan ${formatPesos(-diffToday)}, pero si cobrás lo que falta te alcanza justo`
+          : `Hoy te faltan ${formatPesos(-diffToday)}, pero si cobrás lo que falta te sobran ${formatPesos(diffWithOwed)}`,
+    };
+  }
+
+  return {
+    balanceCents: balance.toString(),
+    owedOnDuesCents: owed.toString(),
+    totalWithOwedCents: totalWithOwed.toString(),
+    formattedBalance,
+    formattedOwedOnDues,
+    formattedTotalWithOwed,
+    summaryMessage,
+    comparison,
   };
 }

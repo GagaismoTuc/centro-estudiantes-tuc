@@ -1,7 +1,9 @@
 import { describe, expect, test } from "vitest";
 import {
+  calculateDueAmount,
   calculatePricePerPerson,
   calculateRaffle,
+  calculateSpendable,
   formatPesos,
   multiplyCents,
   parsePesosToCents,
@@ -141,5 +143,116 @@ describe("R3 — Redondeo y centavos enteros", () => {
       expect(raffleCents.result.maxRevenueCents).toBe(30);
       expect(raffleCents.result.formattedProfitOrLoss).toBe("$ 0,30");
     }
+  });
+});
+
+describe("R2 (#84) — Monto de Cuota", () => {
+  test("computes due amount from goal and roster with optional expected exemptions and rejects invalid inputs", () => {
+    // Goal $600.000, roster 480, default 0 exempt -> exact $1.250, rounded up to $100 -> $1.300.
+    const base = calculateDueAmount({ goal: "600000", rosterCount: 480 });
+    expect(base).toEqual({
+      ok: true,
+      result: {
+        payingCount: 480,
+        exemptCount: 0,
+        amountPerStudentCents: 130_000,
+        exactPerStudentCents: 125_000,
+        formattedAmountPerStudent: "$ 1.300",
+        formattedExactPerStudent: "$ 1.250",
+      },
+    });
+
+    // Goal $600.000, roster 480, 30 expected exempt (450 paying) -> $1.333,33 -> $1.400.
+    const withExempt = calculateDueAmount({ goal: "600.000", rosterCount: 480, expectedExempt: "30" });
+    expect(withExempt.ok).toBe(true);
+    if (withExempt.ok) {
+      expect(withExempt.result.payingCount).toBe(450);
+      expect(withExempt.result.exemptCount).toBe(30);
+      expect(withExempt.result.formattedExactPerStudent).toBe("$ 1.333,33");
+      expect(withExempt.result.formattedAmountPerStudent).toBe("$ 1.400");
+    }
+
+    // Exact multiple of $100 stays unchanged ($480.000 / 480 = $1.000).
+    const exactMultiple = calculateDueAmount({ goal: "480000", rosterCount: 480, expectedExempt: "0" });
+    expect(exactMultiple.ok).toBe(true);
+    if (exactMultiple.ok) {
+      expect(exactMultiple.result.formattedAmountPerStudent).toBe("$ 1.000");
+    }
+
+    // Negative cases: exempt >= roster, empty/0 goal, negative exempt, empty roster.
+    for (const invalid of [
+      { goal: "600000", rosterCount: 480, expectedExempt: "480" },
+      { goal: "600000", rosterCount: 480, expectedExempt: "500" },
+      { goal: "", rosterCount: 480, expectedExempt: "0" },
+      { goal: "0", rosterCount: 480, expectedExempt: "0" },
+      { goal: "-1000", rosterCount: 480, expectedExempt: "0" },
+      { goal: "600000", rosterCount: 0, expectedExempt: "0" },
+      { goal: "600000", rosterCount: 480, expectedExempt: "-1" },
+    ]) {
+      expect(calculateDueAmount(invalid)).toEqual({
+        ok: false,
+        error: "Revisá la meta y la cantidad de alumnos",
+      });
+    }
+  });
+});
+
+describe("R4 (#84) — Cuánto podemos gastar", () => {
+  test("computes spendable totals, planned cost shortfall/surplus, and negative balance", () => {
+    // Balance $150.000 + owed $316.000 (158 * $2.000) = $466.000.
+    const base = calculateSpendable({ balanceCents: "15000000", owedOnDuesCents: "31600000" });
+    expect(base.formattedBalance).toBe("$ 150.000");
+    expect(base.formattedOwedOnDues).toBe("$ 316.000");
+    expect(base.formattedTotalWithOwed).toBe("$ 466.000");
+    expect(base.summaryMessage).toBe("Hoy tenés $ 150.000; si cobrás lo que falta, $ 466.000");
+    expect(base.comparison).toBeNull();
+    expect(base.plannedCostError).toBeUndefined();
+
+    // Planned cost $500.000 -> shortfall $34.000.
+    const short = calculateSpendable({
+      balanceCents: "15000000",
+      owedOnDuesCents: "31600000",
+      plannedCost: "500.000",
+    });
+    expect(short.comparison).toEqual({
+      status: "short",
+      differenceCents: "-3400000",
+      message: "Aunque cobres todo, te faltan $ 34.000",
+    });
+
+    // Planned cost covered today ($100.000 -> surplus today $50.000).
+    const coveredToday = calculateSpendable({
+      balanceCents: "15000000",
+      owedOnDuesCents: "31600000",
+      plannedCost: "100000",
+    });
+    expect(coveredToday.comparison?.status).toBe("covered_today");
+    expect(coveredToday.comparison?.message).toBe("Te alcanza hoy y te sobran $ 50.000");
+
+    // Planned cost covered only if dues are collected ($300.000 -> short today $150.000, surplus with dues $166.000).
+    const coveredIfCollected = calculateSpendable({
+      balanceCents: "15000000",
+      owedOnDuesCents: "31600000",
+      plannedCost: "300000",
+    });
+    expect(coveredIfCollected.comparison?.status).toBe("covered_if_collected");
+    expect(coveredIfCollected.comparison?.message).toBe(
+      "Hoy te faltan $ 150.000, pero si cobrás lo que falta te sobran $ 166.000",
+    );
+
+    // Negative balance is displayed in negative.
+    const negative = calculateSpendable({ balanceCents: "-2000000", owedOnDuesCents: "1000000" });
+    expect(negative.formattedBalance).toBe("-$ 20.000");
+    expect(negative.formattedTotalWithOwed).toBe("-$ 10.000");
+    expect(negative.summaryMessage).toBe("Hoy tenés -$ 20.000; si cobrás lo que falta, -$ 10.000");
+
+    // Invalid planned cost surfaces an error without breaking the summary.
+    const badCost = calculateSpendable({
+      balanceCents: "15000000",
+      owedOnDuesCents: "31600000",
+      plannedCost: "-100",
+    });
+    expect(badCost.comparison).toBeNull();
+    expect(badCost.plannedCostError).toBe("Ingresá un costo planeado válido");
   });
 });
