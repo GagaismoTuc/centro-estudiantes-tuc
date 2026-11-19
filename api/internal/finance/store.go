@@ -66,21 +66,29 @@ type NewEntry struct {
 type Store struct {
 	pool *pgxpool.Pool
 	now  func() time.Time
+	// afterReportRead runs, when set by a test, while a publication holds its snapshot: after the
+	// Fund report was read and before the Due totals are.
+	afterReportRead func()
 }
 
 func NewStore(pool *pgxpool.Pool, now func() time.Time) *Store {
 	if now == nil {
 		panic("finance: clock required")
 	}
-	return &Store{pool, now}
+	return &Store{pool: pool, now: now}
 }
 
 // withMember rechecks the active tenant membership on every operation.
 func (s *Store) withMember(ctx context.Context, sess auth.Session, officer bool, fn func(pgx.Tx) error) error {
+	return s.withMemberOptions(ctx, sess, officer, pgx.TxOptions{}, fn)
+}
+
+// withMemberOptions is withMember with explicit transaction options.
+func (s *Store) withMemberOptions(ctx context.Context, sess auth.Session, officer bool, opts pgx.TxOptions, fn func(pgx.Tx) error) error {
 	if sess.TenantID == "" || sess.UserID == "" {
 		return ErrForbidden
 	}
-	return db.WithTenant(ctx, s.pool, sess.TenantID, func(tx pgx.Tx) error {
+	return db.WithTenantOptions(ctx, s.pool, sess.TenantID, opts, func(tx pgx.Tx) error {
 		var member, isOfficer, isVeedor bool
 		err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM memberships WHERE tenant_id=$1 AND user_id=$2),
    EXISTS(SELECT 1 FROM memberships m WHERE m.tenant_id=$1 AND m.user_id=$2 AND (m.role='officer' OR EXISTS

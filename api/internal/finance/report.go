@@ -131,24 +131,8 @@ func (s *Store) Report(ctx context.Context, sess auth.Session, from, to string) 
 		return Report{}, err
 	}
 	err = s.withMember(ctx, sess, false, func(tx pgx.Tx) error {
-		rows, e := tx.Query(ctx, reportTotalsQuery, sess.TenantID, from, to)
-		if e != nil {
-			return e
-		}
-		all, e := pgx.CollectRows(rows, pgx.RowToStructByPos[CategoryTotal])
-		if e != nil {
-			return e
-		}
-		out.OpeningCents, out.ClosingCents = all[0].TotalCents, all[0].TotalCents
-		out.Totals = all[1:]
-		for _, c := range out.Totals {
-			out.ClosingCents += c.TotalCents
-		}
-		rows, e = tx.Query(ctx, ledgerQuery, sess.TenantID, from, to)
-		if e != nil {
-			return e
-		}
-		if out.Entries, e = pgx.CollectRows(rows, pgx.RowToStructByPos[Entry]); e != nil {
+		var e error
+		if out, e = buildReport(ctx, tx, sess.TenantID, from, to); e != nil {
 			return e
 		}
 		if e = hidePayers(ctx, tx, sess, out.Entries); e != nil {
@@ -158,6 +142,32 @@ func (s *Store) Report(ctx context.Context, sess auth.Session, from, to string) 
 		return e
 	})
 	if err != nil {
+		return Report{}, err
+	}
+	return out, nil
+}
+
+// buildReport computes the Fund report of tenant for a validated range inside tx, with payer names
+// still set on payment Entries; callers decide who may see them.
+func buildReport(ctx context.Context, tx pgx.Tx, tenant, from, to string) (out Report, err error) {
+	rows, err := tx.Query(ctx, reportTotalsQuery, tenant, from, to)
+	if err != nil {
+		return Report{}, err
+	}
+	all, err := pgx.CollectRows(rows, pgx.RowToStructByPos[CategoryTotal])
+	if err != nil {
+		return Report{}, err
+	}
+	out.OpeningCents, out.ClosingCents = all[0].TotalCents, all[0].TotalCents
+	out.Totals = all[1:]
+	for _, c := range out.Totals {
+		out.ClosingCents += c.TotalCents
+	}
+	rows, err = tx.Query(ctx, ledgerQuery, tenant, from, to)
+	if err != nil {
+		return Report{}, err
+	}
+	if out.Entries, err = pgx.CollectRows(rows, pgx.RowToStructByPos[Entry]); err != nil {
 		return Report{}, err
 	}
 	out.From, out.To = from, to

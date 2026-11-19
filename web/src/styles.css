@@ -1623,6 +1623,11 @@ select[aria-invalid="true"] {
   flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
+  min-inline-size: 0;
+}
+.contact-card__title .badge {
+  max-inline-size: 100%;
+  white-space: normal;
 }
 .contact-card__meta {
   display: grid;
@@ -1651,6 +1656,16 @@ select[aria-invalid="true"] {
   margin: 0;
   color: var(--muted);
   font-size: 0.9375rem;
+  overflow-wrap: anywhere;
+}
+.contact-card__notice {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 0.875rem;
   overflow-wrap: anywhere;
 }
 .contact-prices {

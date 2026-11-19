@@ -633,7 +633,7 @@ func TestVoteLogsNeverLinkTheChoiceToTheVoter(t *testing.T) {
 }
 
 // S12: while open every member sees "X of Y voted" and whether they voted themselves, nothing
-// else; the per-list votes get 409 results_not_available.
+// else; the per-list votes get 409 results_not_available until the end publishes them (#57).
 func TestTurnoutShowsOnlyHowManyVoted(t *testing.T) {
 	ctx := integration(t)
 	v := newVoteSchool(t, ctx)
@@ -662,7 +662,8 @@ func TestTurnoutShowsOnlyHowManyVoted(t *testing.T) {
 
 	v.clk.t = vEnd
 	wantTurnout(t, v.turnout(darioTok, v.electionID), 1, size, false)
-	wantVoteError(t, v.results(carlaTok, v.electionID), http.StatusConflict, "results_not_available")
+	wantPublished(t, v.results(carlaTok, v.electionID),
+		[]resultList{{v.blue, "Lista Azul", 1}, {v.green, "Lista Verde", 0}}, 0, 1, size, "winner", v.blue)
 }
 
 // S12: turnout right at the close answers from the Voter registry even while the database clock is

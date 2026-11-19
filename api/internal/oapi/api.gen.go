@@ -14,6 +14,24 @@ import (
 	"github.com/oapi-codegen/runtime"
 )
 
+// Defines values for AccountabilityEntryDirection.
+const (
+	AccountabilityEntryDirectionExpense AccountabilityEntryDirection = "expense"
+	AccountabilityEntryDirectionIncome  AccountabilityEntryDirection = "income"
+)
+
+// Valid indicates whether the value is a known member of the AccountabilityEntryDirection enum.
+func (e AccountabilityEntryDirection) Valid() bool {
+	switch e {
+	case AccountabilityEntryDirectionExpense:
+		return true
+	case AccountabilityEntryDirectionIncome:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AnnulmentAnnulledBy.
 const (
 	AnnulmentAnnulledByVeedor AnnulmentAnnulledBy = "veedor"
@@ -65,30 +83,72 @@ func (e ElectionMode) Valid() bool {
 	}
 }
 
+// Defines values for ElectionResultOutcome.
+const (
+	NoLists ElectionResultOutcome = "no_lists"
+	NoVotes ElectionResultOutcome = "no_votes"
+	Tie     ElectionResultOutcome = "tie"
+	Winner  ElectionResultOutcome = "winner"
+)
+
+// Valid indicates whether the value is a known member of the ElectionResultOutcome enum.
+func (e ElectionResultOutcome) Valid() bool {
+	switch e {
+	case NoLists:
+		return true
+	case NoVotes:
+		return true
+	case Tie:
+		return true
+	case Winner:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ElectionResultStatus.
+const (
+	ElectionResultStatusAnnulled  ElectionResultStatus = "annulled"
+	ElectionResultStatusPublished ElectionResultStatus = "published"
+)
+
+// Valid indicates whether the value is a known member of the ElectionResultStatus enum.
+func (e ElectionResultStatus) Valid() bool {
+	switch e {
+	case ElectionResultStatusAnnulled:
+		return true
+	case ElectionResultStatusPublished:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ElectionState.
 const (
-	Annulled   ElectionState = "annulled"
-	Closed     ElectionState = "closed"
-	Draft      ElectionState = "draft"
-	Open       ElectionState = "open"
-	Scheduled  ElectionState = "scheduled"
-	Submission ElectionState = "submission"
+	ElectionStateAnnulled   ElectionState = "annulled"
+	ElectionStateClosed     ElectionState = "closed"
+	ElectionStateDraft      ElectionState = "draft"
+	ElectionStateOpen       ElectionState = "open"
+	ElectionStateScheduled  ElectionState = "scheduled"
+	ElectionStateSubmission ElectionState = "submission"
 )
 
 // Valid indicates whether the value is a known member of the ElectionState enum.
 func (e ElectionState) Valid() bool {
 	switch e {
-	case Annulled:
+	case ElectionStateAnnulled:
 		return true
-	case Closed:
+	case ElectionStateClosed:
 		return true
-	case Draft:
+	case ElectionStateDraft:
 		return true
-	case Open:
+	case ElectionStateOpen:
 		return true
-	case Scheduled:
+	case ElectionStateScheduled:
 		return true
-	case Submission:
+	case ElectionStateSubmission:
 		return true
 	default:
 		return false
@@ -1082,6 +1142,27 @@ func (e PutElectoralCommission422JSONResponseBodyError) Valid() bool {
 	}
 }
 
+// Defines values for PostFinanceAccountabilityReports422JSONResponseBodyError.
+const (
+	PostFinanceAccountabilityReports422JSONResponseBodyErrorFutureDate   PostFinanceAccountabilityReports422JSONResponseBodyError = "future_date"
+	PostFinanceAccountabilityReports422JSONResponseBodyErrorInvalidRange PostFinanceAccountabilityReports422JSONResponseBodyError = "invalid_range"
+	PostFinanceAccountabilityReports422JSONResponseBodyErrorTermRequired PostFinanceAccountabilityReports422JSONResponseBodyError = "term_required"
+)
+
+// Valid indicates whether the value is a known member of the PostFinanceAccountabilityReports422JSONResponseBodyError enum.
+func (e PostFinanceAccountabilityReports422JSONResponseBodyError) Valid() bool {
+	switch e {
+	case PostFinanceAccountabilityReports422JSONResponseBodyErrorFutureDate:
+		return true
+	case PostFinanceAccountabilityReports422JSONResponseBodyErrorInvalidRange:
+		return true
+	case PostFinanceAccountabilityReports422JSONResponseBodyErrorTermRequired:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PostFinanceCategories409JSONResponseBodyError.
 const (
 	PostFinanceCategories409JSONResponseBodyErrorCategoryExists PostFinanceCategories409JSONResponseBodyError = "category_exists"
@@ -1514,6 +1595,78 @@ func (e PostMemberOfficer422JSONResponseBodyError) Valid() bool {
 	}
 }
 
+// AccountabilityDueTotal defines model for AccountabilityDueTotal.
+type AccountabilityDueTotal struct {
+	AmountCents int64  `json:"amountCents"`
+	DueDate     string `json:"dueDate"`
+	DueId       string `json:"dueId"`
+	Name        string `json:"name"`
+
+	// PaidCount Roster members who paid the Due in full by the period's `to`: payments dated up to `to` whose Entry has no Reversal dated up to `to`.
+	PaidCount int `json:"paidCount"`
+
+	// TotalCount Roster members who owe the Due, Exemptions excluded.
+	TotalCount int `json:"totalCount"`
+}
+
+// AccountabilityEntry defines model for AccountabilityEntry.
+type AccountabilityEntry struct {
+	AmountCents int64 `json:"amountCents"`
+
+	// Category The Category's name at publication.
+	Category    string                       `json:"category"`
+	CategoryId  string                       `json:"categoryId"`
+	Date        string                       `json:"date"`
+	Description string                       `json:"description"`
+	Direction   AccountabilityEntryDirection `json:"direction"`
+	Id          string                       `json:"id"`
+	RecordedBy  string                       `json:"recordedBy"`
+
+	// Reversed Whether the Entry had a Reversal at publication.
+	Reversed bool `json:"reversed"`
+
+	// ReversesId Set on a Reversal.
+	ReversesId *string `json:"reversesId,omitempty"`
+}
+
+// AccountabilityEntryDirection defines model for AccountabilityEntry.Direction.
+type AccountabilityEntryDirection string
+
+// AccountabilityReport defines model for AccountabilityReport.
+type AccountabilityReport struct {
+	ClosingCents int64 `json:"closingCents"`
+
+	// Dues Dues whose due date falls in the period, by due date.
+	Dues []AccountabilityDueTotal `json:"dues"`
+
+	// Entries Entries in the period as published, oldest first; never who paid.
+	Entries      []AccountabilityEntry `json:"entries"`
+	From         string                `json:"from"`
+	Id           string                `json:"id"`
+	OpeningCents int64                 `json:"openingCents"`
+	PublishedAt  time.Time             `json:"publishedAt"`
+
+	// PublishedBy The publishing Officer's Roster name.
+	PublishedBy string `json:"publishedBy"`
+	Term        string `json:"term"`
+	To          string `json:"to"`
+
+	// Totals Categories with Entries in the period, with their names at publication.
+	Totals []FinanceCategoryTotal `json:"totals"`
+}
+
+// AccountabilityReportSummary defines model for AccountabilityReportSummary.
+type AccountabilityReportSummary struct {
+	From        string    `json:"from"`
+	Id          string    `json:"id"`
+	PublishedAt time.Time `json:"publishedAt"`
+
+	// PublishedBy The publishing Officer's Roster name.
+	PublishedBy string `json:"publishedBy"`
+	Term        string `json:"term"`
+	To          string `json:"to"`
+}
+
 // Annulment defines model for Annulment.
 type Annulment struct {
 	AnnulledAt time.Time `json:"annulledAt"`
@@ -1683,6 +1836,53 @@ type ElectionListsResponse struct {
 
 // ElectionMode Only "Voto secreto"; any other value is 422 `mode_not_supported`.
 type ElectionMode string
+
+// ElectionResult With `status: annulled`, only `annulmentReason`. With `status: published`, every other property and `winner` only when `outcome` is `winner`.
+type ElectionResult struct {
+	// AnnulmentReason The public reason of the Annulment.
+	AnnulmentReason *string `json:"annulmentReason,omitempty"`
+
+	// BlankVotes Blank votes; counted, they never win.
+	BlankVotes *int `json:"blankVotes,omitempty"`
+
+	// Electorate The size of the Electorate (Y). When voting never opened (`no_lists`), the roster when the result was first read.
+	Electorate *int `json:"electorate,omitempty"`
+
+	// Lists Every approved list of the election, also those with 0 votes; most votes first, then by name.
+	Lists *[]ElectionResultList `json:"lists,omitempty"`
+
+	// Mode Only "Voto secreto"; any other value is 422 `mode_not_supported`.
+	Mode *ElectionMode `json:"mode,omitempty"`
+
+	// Outcome `winner`: one list has the most votes (simple majority, no quorum). `tie`: two or more lists share the most votes. `no_votes`: every list has 0 votes, even with Blank votes. `no_lists`: no approved list, so voting never opened.
+	Outcome *ElectionResultOutcome `json:"outcome,omitempty"`
+	Status  ElectionResultStatus   `json:"status"`
+
+	// Voted How many students of the Electorate voted (X); the votes of the lists plus `blankVotes`.
+	Voted *int `json:"voted,omitempty"`
+
+	// Winner The list with the most votes; only when `outcome` is `winner`.
+	Winner *ElectionResultWinner `json:"winner,omitempty"`
+}
+
+// ElectionResultOutcome `winner`: one list has the most votes (simple majority, no quorum). `tie`: two or more lists share the most votes. `no_votes`: every list has 0 votes, even with Blank votes. `no_lists`: no approved list, so voting never opened.
+type ElectionResultOutcome string
+
+// ElectionResultStatus defines model for ElectionResult.Status.
+type ElectionResultStatus string
+
+// ElectionResultList defines model for ElectionResultList.
+type ElectionResultList struct {
+	Id    string `json:"id"`
+	Name  string `json:"name"`
+	Votes int    `json:"votes"`
+}
+
+// ElectionResultWinner The list with the most votes; only when `outcome` is `winner`.
+type ElectionResultWinner struct {
+	Id   string `json:"id"`
+	Name string `json:"name"`
+}
 
 // ElectionState `annulled` once the election was annulled, whatever the clock says. Otherwise computed from the server clock against the dates; every window includes its start and excludes its end. `draft` before `submissionStartsAt`, `submission` until `submissionEndsAt`, `scheduled` until `startsAt`, `open` until `endsAt`, `closed` from `endsAt` on.
 type ElectionState string
@@ -2066,6 +2266,18 @@ type MyFinanceDue struct {
 	// PaidCents Sum of the caller's payments whose Entry has not been reversed.
 	PaidCents int64            `json:"paidCents"`
 	Status    FinanceDueStatus `json:"status"`
+}
+
+// NewAccountabilityReport defines model for NewAccountabilityReport.
+type NewAccountabilityReport struct {
+	// From First day of the period, YYYY-MM-DD, inclusive.
+	From string `json:"from"`
+
+	// Term The Term (Gestión) the report belongs to, such as "Gestión 2026".
+	Term string `json:"term"`
+
+	// To Last day of the period, YYYY-MM-DD, inclusive; not after today.
+	To string `json:"to"`
 }
 
 // NewFinanceCategory defines model for NewFinanceCategory.
@@ -2474,6 +2686,9 @@ type PutElectoralCommission409JSONResponseBodyError string
 // PutElectoralCommission422JSONResponseBodyError defines parameters for PutElectoralCommission.
 type PutElectoralCommission422JSONResponseBodyError string
 
+// PostFinanceAccountabilityReports422JSONResponseBodyError defines parameters for PostFinanceAccountabilityReports.
+type PostFinanceAccountabilityReports422JSONResponseBodyError string
+
 // PostFinanceCategories409JSONResponseBodyError defines parameters for PostFinanceCategories.
 type PostFinanceCategories409JSONResponseBodyError string
 
@@ -2684,6 +2899,9 @@ type PostEventBudgetLineJSONRequestBody = EventBudgetLineInput
 // PutEventBudgetLineJSONRequestBody defines body for PutEventBudgetLine for application/json ContentType.
 type PutEventBudgetLineJSONRequestBody = EventBudgetLineInput
 
+// PostFinanceAccountabilityReportsJSONRequestBody defines body for PostFinanceAccountabilityReports for application/json ContentType.
+type PostFinanceAccountabilityReportsJSONRequestBody = NewAccountabilityReport
+
 // PostFinanceCategoriesJSONRequestBody defines body for PostFinanceCategories for application/json ContentType.
 type PostFinanceCategoriesJSONRequestBody = NewFinanceCategory
 
@@ -2842,7 +3060,7 @@ type ServerInterface interface {
 	// PostRejectElectionList Reject a pending election list with a reason
 	// (POST /elections/{electionId}/lists/{listId}/reject)
 	PostRejectElectionList(w http.ResponseWriter, r *http.Request, electionId string, listId string)
-	// GetElectionResults Votes per list of an election
+	// GetElectionResults The result of an election, published at its close
 	// (GET /elections/{electionId}/results)
 	GetElectionResults(w http.ResponseWriter, r *http.Request, electionId string)
 	// GetElectionTurnout How many students of the Electorate voted
@@ -2887,6 +3105,15 @@ type ServerInterface interface {
 	// PutEventBudgetLine Replace a budget line
 	// (PUT /event-budgets/{id}/lines/{lineId})
 	PutEventBudgetLine(w http.ResponseWriter, r *http.Request, id string, lineId string)
+	// GetFinanceAccountabilityReports Published Financial accountability reports (Rendiciones de cuentas), newest first
+	// (GET /finance/accountability-reports)
+	GetFinanceAccountabilityReports(w http.ResponseWriter, r *http.Request)
+	// PostFinanceAccountabilityReports Publish a frozen Financial accountability report as an Officer with MFA
+	// (POST /finance/accountability-reports)
+	PostFinanceAccountabilityReports(w http.ResponseWriter, r *http.Request)
+	// GetFinanceAccountabilityReport One published Financial accountability report with its frozen copy
+	// (GET /finance/accountability-reports/{id})
+	GetFinanceAccountabilityReport(w http.ResponseWriter, r *http.Request, id string)
 	// GetFinanceBalance Fund balance in cents
 	// (GET /finance/balance)
 	GetFinanceBalance(w http.ResponseWriter, r *http.Request)
@@ -4289,6 +4516,60 @@ func (siw *ServerInterfaceWrapper) PutEventBudgetLine(w http.ResponseWriter, r *
 	handler.ServeHTTP(w, r)
 }
 
+// GetFinanceAccountabilityReports operation middleware
+func (siw *ServerInterfaceWrapper) GetFinanceAccountabilityReports(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetFinanceAccountabilityReports(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostFinanceAccountabilityReports operation middleware
+func (siw *ServerInterfaceWrapper) PostFinanceAccountabilityReports(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostFinanceAccountabilityReports(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetFinanceAccountabilityReport operation middleware
+func (siw *ServerInterfaceWrapper) GetFinanceAccountabilityReport(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetFinanceAccountabilityReport(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetFinanceBalance operation middleware
 func (siw *ServerInterfaceWrapper) GetFinanceBalance(w http.ResponseWriter, r *http.Request) {
 
@@ -5359,6 +5640,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/report", wrapper.GetFinanceReport)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/report.csv", wrapper.GetFinanceReportCsv)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/entries.csv", wrapper.GetFinanceEntriesCsv)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/accountability-reports", wrapper.GetFinanceAccountabilityReports)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/finance/accountability-reports", wrapper.PostFinanceAccountabilityReports)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/accountability-reports/{id}", wrapper.GetFinanceAccountabilityReport)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/entries/{entryId}", wrapper.GetFinanceEntry)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/finance/entries/{entryId}/reversal", wrapper.PostFinanceEntryReversal)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/entries/{entryId}/receipts", wrapper.GetFinanceEntryReceipts)
