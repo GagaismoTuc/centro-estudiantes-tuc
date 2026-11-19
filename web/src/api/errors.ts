@@ -114,6 +114,7 @@ const contextual: Record<ErrorContext, Record<string, string>> = {
   "election-list": {
     invalid_name: "Escribí un nombre para la lista de hasta 80 caracteres.",
     reason_required: "Escribí el motivo del rechazo (hasta 500 caracteres).",
+    election_frozen: "La votación ya empezó: las listas no se pueden cambiar.",
   },
   mfa: {
     invalid_code: "El código no es correcto o ya se usó. Probá con el próximo que muestre tu app.",

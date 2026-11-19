@@ -39,6 +39,13 @@ describe("errorMessage", () => {
   });
 });
 
+describe("election_frozen", () => {
+  test("in the lists it says the lists can no longer change; elsewhere it keeps the commission message (S4)", () => {
+    expect(errorMessage("election_frozen", "election-list")).toBe("La votación ya empezó: las listas no se pueden cambiar.");
+    expect(errorMessage("election_frozen")).toBe("La elección ya abrió: no se puede cambiar el Centro de estudiantes.");
+  });
+});
+
 describe("shared error messages", () => {
   test("preserves contact and finance messages for shared error codes", () => {
     expect(errorMessage("description_required")).toBe("Escrib\u00ed una descripci\u00f3n para el precio de referencia.");

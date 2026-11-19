@@ -463,6 +463,9 @@ func TestVoteChoices(t *testing.T) {
 		{"unknown list", v.electionID, voteBody("00000000-0000-4000-8000-000000000000"), "not_found", http.StatusNotFound},
 		{"election of another school", foreign, voteBody(foreignList), "not_found", http.StatusNotFound},
 		{"election id not a uuid", "elección", voteBody(v.blue), "not_found", http.StatusNotFound},
+		{"unknown field", v.electionID, `{"choice":"blank","extra":1}`, "bad_request", http.StatusBadRequest},
+		{"choice not a string", v.electionID, `{"choice":1}`, "bad_request", http.StatusBadRequest},
+		{"malformed JSON", v.electionID, `{"choice":`, "bad_request", http.StatusBadRequest},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			wantVoteError(t, v.vote(carlaTok, tc.election, tc.body), tc.status, tc.code)
@@ -660,6 +663,31 @@ func TestTurnoutShowsOnlyHowManyVoted(t *testing.T) {
 	v.clk.t = vEnd
 	wantTurnout(t, v.turnout(darioTok, v.electionID), 1, size, false)
 	wantVoteError(t, v.results(carlaTok, v.electionID), http.StatusConflict, "results_not_available")
+}
+
+// S12: turnout right at the close answers from the Voter registry even while the database clock is
+// still before the end (app and database clocks apart, or a transaction begun just before the end):
+// the box is written only once the database itself sees the election closed.
+func TestTurnoutAtTheCloseBeforeTheDatabaseClock(t *testing.T) {
+	ctx := integration(t)
+	s := newSchool(t, ctx)
+	// Dates ahead of the real clock: the database never sees this election closed.
+	e := decodeElection(t, s.create(s.member, encode(draft())), http.StatusCreated)
+	rep := seedMember(t, ctx, s.tenant, "Rita Apoderada", "30333100")
+	blue := seedList(t, ctx, s.tenant, e.ID, "Lista Azul", rep, "approved")
+	v := &voteSchool{school: s, electionID: e.ID, blue: blue}
+	carla := v.voter(t, ctx, "Carla Ficticia", "30333101")
+	dario := v.voter(t, ctx, "Dario Ficticio", "30333102")
+	v.clk.t = exStart.Add(-time.Minute)
+	carlaTok, darioTok := v.loginOK(t, carla.email), v.loginOK(t, dario.email)
+	v.clk.t = exStart
+	wantVoted(t, v.vote(carlaTok, e.ID, voteBody(blue)))
+	size := rosterSize(t, ctx, s.tenant)
+
+	v.clk.t = exEnd
+	wantTurnout(t, v.turnout(carlaTok, e.ID), 1, size, true)
+	wantTurnout(t, v.turnout(darioTok, e.ID), 1, size, false)
+	wantBox(t, ctx, e.ID, 1, carla.member)
 }
 
 // S14: voting asks for no second factor: a student session votes, and so does an Officer who is a
