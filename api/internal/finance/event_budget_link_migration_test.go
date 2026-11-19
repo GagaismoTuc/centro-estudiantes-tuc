@@ -16,11 +16,11 @@ import (
 )
 
 // TestFinanceEntryEventBudgetMigration checks, as the app role, the database guarantees of
-// migration 00036 (R1, R2, R7): both-or-neither CHECK, composite tenant FKs, RESTRICT delete,
+// migration 00037 (R1, R2, R7): both-or-neither CHECK, composite tenant FKs, RESTRICT delete,
 // unchanged append-only grants, and Down/Up round-trip.
 func TestFinanceEntryEventBudgetMigration(t *testing.T) {
-	if _, err := migrations.FS.ReadFile("00036_finance_entry_event_budget.sql"); err != nil {
-		t.Fatalf("migration 00036 is missing: %v", err)
+	if _, err := migrations.FS.ReadFile("00037_finance_entry_event_budget.sql"); err != nil {
+		t.Fatalf("migration 00037 is missing: %v", err)
 	}
 	ctx := context.Background()
 	env, stop, err := testdb.Start(ctx)
@@ -140,15 +140,26 @@ func TestFinanceEntryEventBudgetMigration(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := p.DownTo(ctx, 35); err != nil {
-			t.Fatalf("down: %v", err)
+		// Down/Up pinned between the latest earlier migration and 00037 so earlier
+		// (e.g. 00036) or later migrations never shift what this test rolls back.
+		var prevVersion int64
+		for _, src := range p.ListSources() {
+			if src.Version < 37 && src.Version > prevVersion {
+				prevVersion = src.Version
+			}
+		}
+		if prevVersion == 0 {
+			t.Fatal("no migration found before 00037")
+		}
+		if _, err := p.DownTo(ctx, prevVersion); err != nil {
+			t.Fatalf("down to %d: %v", prevVersion, err)
 		}
 		var n int
 		if err := env.Super.QueryRow(ctx, `SELECT count(*) FROM information_schema.columns WHERE table_name='finance_entries' AND column_name IN ('event_budget_id','heading_id')`).Scan(&n); err != nil || n != 0 {
 			t.Fatalf("columns after down: n=%d err=%v", n, err)
 		}
-		if _, err := p.Up(ctx); err != nil {
-			t.Fatalf("up: %v", err)
+		if _, err := p.UpTo(ctx, 37); err != nil {
+			t.Fatalf("up to 37: %v", err)
 		}
 		if _, err := insert(a, catA, budgetA, headingA); err != nil {
 			t.Fatalf("insert after re-up: %v", err)
