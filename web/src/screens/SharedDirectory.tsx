@@ -3,7 +3,7 @@ import { call } from "../api/call.ts";
 import { apiClient } from "../api/client.ts";
 import { errorMessage } from "../api/errors.ts";
 import type { components } from "../api/schema.gen.ts";
-import { canReadContacts, useMe, useSession } from "../auth/session.tsx";
+import { canReadContacts, hasRole, useMe, useSession } from "../auth/session.tsx";
 import { FormStatus, type Status } from "../components/Form.tsx";
 import { PageTitle, useDocumentTitle } from "../components/Page.tsx";
 import { formatPesos } from "../lib/money.ts";
@@ -12,13 +12,14 @@ import { ContactMeta, NoContactsAccess } from "./contactShared.tsx";
 
 type SharedContact = components["schemas"]["SharedContact"];
 
-/** Read-only shared contact directory across schools of the installation (never shows school or notes). */
+/** Shared contact directory across schools of the installation (never shows school or notes); Officers can copy entries into their own directory. */
 export function SharedDirectory() {
   useDocumentTitle("Directorio compartido");
   const me = useMe();
   const { refresh } = useSession();
 
   const canRead = canReadContacts(me);
+  const canCopy = hasRole(me, "officer");
   const [items, setItems] = useState<SharedContact[]>([]);
   const [headings, setHeadings] = useState<string[]>([]);
   const [headingFilter, setHeadingFilter] = useState("");
@@ -27,9 +28,15 @@ export function SharedDirectory() {
   const [totalPages, setTotalPages] = useState(0);
   const [loading, setLoading] = useState(canRead);
   const [status, setStatus] = useState<Status>(null);
+  const [copyingId, setCopyingId] = useState<string | null>(null);
 
   const statusRef = useRef<HTMLDivElement>(null);
   const seqRef = useRef(0);
+
+  // Defer past React commit so `.form-status:empty { display: none; }` is visible before focus moves.
+  const focusStatus = useCallback(() => {
+    requestAnimationFrame(() => statusRef.current?.focus());
+  }, []);
 
   const handleAuthError = useCallback(
     (code: string) => {
@@ -62,9 +69,33 @@ export function SharedDirectory() {
       }
       handleAuthError(res.code);
       setStatus({ tone: "error", text: errorMessage(res.code) });
-      statusRef.current?.focus();
+      focusStatus();
     });
-  }, [canRead, headingFilter, zoneFilter, page, handleAuthError]);
+  }, [canRead, headingFilter, zoneFilter, page, handleAuthError, focusStatus]);
+
+  async function copyContact(contact: SharedContact) {
+    if (copyingId !== null) return;
+    setCopyingId(contact.id);
+    setStatus(null);
+    const res = await call(
+      apiClient.POST("/shared-contacts/{id}/copy", {
+        params: { path: { id: contact.id } },
+      }),
+    );
+    setCopyingId(null);
+    if (res.ok) {
+      setStatus({
+        tone: "ok",
+        text: `Se copió a ${res.data.name} a tus contactos (rubro ${res.data.headingName}).`,
+      });
+      // Disabling the button while copying blurs focus to body; move focus to status.
+      focusStatus();
+      return;
+    }
+    handleAuthError(res.code);
+    setStatus({ tone: "error", text: errorMessage(res.code) });
+    focusStatus();
+  }
 
   if (!canRead) {
     return (
@@ -157,6 +188,19 @@ export function SharedDirectory() {
                     </h2>
                     <span className="badge">{contact.headingName}</span>
                   </div>
+                  {canCopy && (
+                    <div className="panel__actions">
+                      <button
+                        type="button"
+                        className="button button--secondary button--small"
+                        disabled={copyingId !== null}
+                        aria-busy={copyingId === contact.id || undefined}
+                        onClick={() => void copyContact(contact)}
+                      >
+                        {copyingId === contact.id ? "Copiando…" : "Copiar a nuestros contactos"}
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 <ContactMeta phone={contact.phone} email={contact.email} zone={contact.zone} />
