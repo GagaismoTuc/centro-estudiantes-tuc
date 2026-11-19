@@ -181,7 +181,7 @@ function ReportView({ report }: { report: Report }) {
     {report.dues.length > 0 && <>
       <h3 id={`${ids}-dues`}>Cuotas</h3>
       <ul className="report-list" aria-labelledby={`${ids}-dues`}>
-        {report.dues.map((d) => <li key={d.dueId}><span>{d.name}</span><span>{d.paidCount} de {d.totalCount} pagaron</span></li>)}
+        {report.dues.map((d) => <li key={d.dueId}><span>{d.name}</span><span>{d.paidCount} de {d.totalCount} pagaron al {dayMonthYear(report.to)}</span></li>)}
       </ul>
     </>}
     <h3 id={`${ids}-entries`}>Movimientos</h3>

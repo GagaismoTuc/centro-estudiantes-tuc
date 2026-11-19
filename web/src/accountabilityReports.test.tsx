@@ -32,7 +32,7 @@ function fillAndPreview(term: string, from: string, to: string) {
   fireEvent.click(screen.getByRole("button", { name: "Vista previa" }));
 }
 
-test("R9 lists the published reports with period, Gestión and who published, and opens one with its CSV", async () => {
+test("R9 lists the published reports with period, Gestión and who published, and opens one with its CSV and its paid count up to the end", async () => {
   mockApi({ "GET /auth/me": ok(me()), "GET /finance/accountability-reports": ok([published]), "GET /finance/accountability-reports/r1": ok({ ...copy, ...published }) });
   open();
   const list = await screen.findByRole("region", { name: "Rendiciones publicadas" });
@@ -44,7 +44,7 @@ test("R9 lists the published reports with period, Gestión and who published, an
 
   fireEvent.click(within(item).getByRole("button", { name: "Ver" }));
   const view = await screen.findByRole("region", { name: "Gestión 2025" });
-  expect(within(view).getByText("Cuota de noviembre").nextElementSibling?.textContent).toBe("312 de 470 pagaron");
+  expect(within(view).getByText("Cuota de noviembre").nextElementSibling?.textContent).toBe("312 de 470 pagaron al 30/11/2025");
   expect(within(view).getByText("Saldo final").nextElementSibling?.textContent).toBe("$ 1.300,00");
   expect(within(view).getByText("Kiosco de marzo")).toBeTruthy();
 });
