@@ -20,7 +20,6 @@ import {
   calculatePricePerPerson,
   calculateRaffle,
   calculateSpendable,
-  parsePesosToCents,
 } from "../lib/calculator.ts";
 import { pesosInput } from "../lib/money.ts";
 import { Link } from "../lib/router.tsx";
@@ -99,7 +98,8 @@ function CalculatorPanel({
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (hasResult) return;
+    const hasRawError = fieldOrder.some((name) => Boolean(rawErrors[name]));
+    if (hasResult && !hasRawError) return;
     onSubmitInvalid();
     const form = formRef.current;
     if (!form) return;
@@ -483,18 +483,11 @@ function DueAmountCard({
   const ready = summaryState.status === "ready";
   const rosterCount = ready ? summaryState.data.rosterCount : 0;
   const outcome = ready ? calculateDueAmount({ goal, rosterCount, expectedExempt }) : null;
-  const rawErrors: Record<string, string | undefined> = {};
-  if (outcome && !outcome.ok) {
-    const parsedGoal = parsePesosToCents(goal);
-    const goalInvalid = !parsedGoal.ok || parsedGoal.cents <= 0 || rosterCount <= 0;
-    const trimmedExempt = expectedExempt.trim();
-    const exemptBadFormat = trimmedExempt !== "" && !/^\d+$/.test(trimmedExempt);
-    const exemptCount = trimmedExempt === "" ? 0 : Number(trimmedExempt);
-    const exemptInvalid = exemptBadFormat || rosterCount <= 0 || exemptCount >= rosterCount;
-    if (goalInvalid) rawErrors.dueGoal = outcome.error;
-    if (exemptInvalid) rawErrors.expectedExempt = outcome.error;
-    if (!goalInvalid && !exemptInvalid) rawErrors.dueGoal = outcome.error;
-  }
+  const outcomeErrors = outcome && !outcome.ok ? outcome.errors : {};
+  const rawErrors: Record<string, string | undefined> = {
+    dueGoal: outcomeErrors.goal,
+    expectedExempt: outcomeErrors.expectedExempt,
+  };
   const visibleErrors: Record<string, string | undefined> = {
     dueGoal: fields.isVisible("dueGoal") ? rawErrors.dueGoal : undefined,
     expectedExempt: fields.isVisible("expectedExempt") ? rawErrors.expectedExempt : undefined,
@@ -627,7 +620,7 @@ function SpendableCard({ summaryState, onRetry }: { summaryState: SummaryState; 
   const visibleErrors: Record<string, string | undefined> = {
     plannedCost: fields.isVisible("plannedCost") ? rawErrors.plannedCost : undefined,
   };
-  const hasResult = Boolean(spendable && !spendable.plannedCostError);
+  const hasResult = Boolean(spendable);
 
   function reset() {
     setPlannedCost("");
@@ -643,7 +636,7 @@ function SpendableCard({ summaryState, onRetry }: { summaryState: SummaryState; 
       visibleErrors={visibleErrors}
       activeField={fields.activeField}
       hasResult={hasResult}
-      tone={hasResult && spendable?.comparison?.status === "covered_today" ? "ok" : undefined}
+      tone={hasResult && !spendable?.plannedCostError && spendable?.comparison?.status === "covered_today" ? "ok" : undefined}
       emptyPrompt="Ingresá un costo planeado válido para comparar contra lo disponible."
       loading={summaryState.status === "loading" ? "Cargando saldo y cuotas pendientes…" : undefined}
       loadError={summaryState.status === "error" ? { text: summaryState.text, onRetry } : undefined}
@@ -658,6 +651,7 @@ function SpendableCard({ summaryState, onRetry }: { summaryState: SummaryState; 
               <li>Saldo actual de la caja: {spendable.formattedBalance}</li>
               <li>Pendiente de cuotas: {spendable.formattedOwedOnDues}</li>
             </ul>
+            {visibleErrors.plannedCost && <p className="muted small">{visibleErrors.plannedCost}</p>}
             {spendable.comparison && (
               <div
                 className="form-status"

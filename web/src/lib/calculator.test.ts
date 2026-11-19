@@ -181,18 +181,20 @@ describe("R2 (#84) — Monto de Cuota", () => {
 
     // Negative cases: exempt >= roster, empty/0 goal, negative exempt, empty roster.
     for (const invalid of [
-      { goal: "600000", rosterCount: 480, expectedExempt: "480" },
-      { goal: "600000", rosterCount: 480, expectedExempt: "500" },
-      { goal: "", rosterCount: 480, expectedExempt: "0" },
-      { goal: "0", rosterCount: 480, expectedExempt: "0" },
-      { goal: "-1000", rosterCount: 480, expectedExempt: "0" },
-      { goal: "600000", rosterCount: 0, expectedExempt: "0" },
-      { goal: "600000", rosterCount: 480, expectedExempt: "-1" },
+      { input: { goal: "600000", rosterCount: 480, expectedExempt: "480" }, field: "expectedExempt" as const },
+      { input: { goal: "600000", rosterCount: 480, expectedExempt: "500" }, field: "expectedExempt" as const },
+      { input: { goal: "", rosterCount: 480, expectedExempt: "0" }, field: "goal" as const },
+      { input: { goal: "0", rosterCount: 480, expectedExempt: "0" }, field: "goal" as const },
+      { input: { goal: "-1000", rosterCount: 480, expectedExempt: "0" }, field: "goal" as const },
+      { input: { goal: "600000", rosterCount: 0, expectedExempt: "0" }, field: "goal" as const },
+      { input: { goal: "600000", rosterCount: 480, expectedExempt: "-1" }, field: "expectedExempt" as const },
     ]) {
-      expect(calculateDueAmount(invalid)).toEqual({
-        ok: false,
-        error: "Revisá la meta y la cantidad de alumnos",
-      });
+      const result = calculateDueAmount(invalid.input);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error).toBe("Revisá la meta y la cantidad de alumnos");
+        expect(result.errors[invalid.field]).toBe("Revisá la meta y la cantidad de alumnos");
+      }
     }
   });
 });

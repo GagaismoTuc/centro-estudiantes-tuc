@@ -303,10 +303,17 @@ describe("R2, R3, R4, R7 (#84) — Calculators from real data", () => {
       await within(spendableSection).findByText("Hoy tenés $ 150.000; si cobrás lo que falta, $ 466.000"),
     ).toBeTruthy();
 
-    fireEvent.change(within(spendableSection).getByLabelText("Costo planeado opcional ($)"), {
-      target: { value: "500000" },
-    });
+    const plannedInput = within(spendableSection).getByLabelText("Costo planeado opcional ($)");
+    fireEvent.change(plannedInput, { target: { value: "500000" } });
     expect(within(spendableSection).getByText("Aunque cobres todo, te faltan $ 34.000")).toBeTruthy();
+
+    // Invalid optional plannedCost keeps the real spendable summary visible, marks aria-invalid, and focuses on submit (CS-9).
+    fireEvent.change(plannedInput, { target: { value: "-100" } });
+    expect(within(spendableSection).getByText("Hoy tenés $ 150.000; si cobrás lo que falta, $ 466.000")).toBeTruthy();
+    expect(plannedInput.getAttribute("aria-invalid")).toBe("true");
+    expect(within(spendableSection).getAllByText("Ingresá un costo planeado válido").length).toBeGreaterThan(0);
+    fireEvent.submit(spendableSection.querySelector("form")!);
+    expect(document.activeElement).toBe(plannedInput);
     expect(sent.filter((r) => ["POST", "PATCH", "DELETE"].includes(r.method))).toHaveLength(0);
 
     // Negative balance renders in negative.

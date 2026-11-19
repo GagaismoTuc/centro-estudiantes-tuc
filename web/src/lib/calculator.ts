@@ -49,6 +49,11 @@ export type RaffleOutcome =
   | { ok: true; result: RaffleResult }
   | { ok: false; errors: RaffleErrors };
 
+export type DueAmountErrors = {
+  goal?: string;
+  expectedExempt?: string;
+};
+
 export type DueAmountResult = {
   payingCount: number;
   exemptCount: number;
@@ -60,7 +65,7 @@ export type DueAmountResult = {
 
 export type DueAmountOutcome =
   | { ok: true; result: DueAmountResult }
-  | { ok: false; error: string };
+  | { ok: false; error: string; errors: DueAmountErrors };
 
 export type SpendableComparison = {
   status: "short" | "covered_today" | "covered_if_collected";
@@ -146,20 +151,20 @@ export function parsePesosToCents(raw: string): ParseCentsOutcome {
   return parsed.ok ? { ok: true, cents: parsed.hundredths } : parsed;
 }
 
-function parsePositiveInteger(raw: string): number | null {
+function parseInteger(raw: string, min: number): number | null {
   const trimmed = raw.trim();
   if (!/^\d+$/.test(trimmed)) return null;
   const value = Number(trimmed);
-  if (!Number.isSafeInteger(value) || value <= 0) return null;
+  if (!Number.isSafeInteger(value) || value < min) return null;
   return value;
 }
 
+function parsePositiveInteger(raw: string): number | null {
+  return parseInteger(raw, 1);
+}
+
 function parseNonNegativeInteger(raw: string): number | null {
-  const trimmed = raw.trim();
-  if (!/^\d+$/.test(trimmed)) return null;
-  const value = Number(trimmed);
-  if (!Number.isSafeInteger(value) || value < 0) return null;
-  return value;
+  return parseInteger(raw, 0);
 }
 
 // shortcut: JS safe integer centavos (up to ~$90 trillion ARS); return BigInt if multi-trillion amounts are ever needed.
@@ -298,20 +303,21 @@ export function calculateDueAmount(input: {
   rosterCount: number;
   expectedExempt?: string;
 }): DueAmountOutcome {
+  const errors: DueAmountErrors = {};
   const parsedGoal = parsePesosToCents(input.goal);
-  if (!parsedGoal.ok || parsedGoal.cents <= 0) {
-    return { ok: false, error: DUE_AMOUNT_ERROR };
+  const rosterValid = Number.isSafeInteger(input.rosterCount) && input.rosterCount > 0;
+  if (!parsedGoal.ok || parsedGoal.cents <= 0 || !rosterValid) {
+    errors.goal = DUE_AMOUNT_ERROR;
   }
 
   const rawExempt = (input.expectedExempt ?? "").trim();
   const exemptCount = rawExempt === "" ? 0 : parseNonNegativeInteger(rawExempt);
-  if (
-    exemptCount === null ||
-    !Number.isSafeInteger(input.rosterCount) ||
-    input.rosterCount <= 0 ||
-    exemptCount >= input.rosterCount
-  ) {
-    return { ok: false, error: DUE_AMOUNT_ERROR };
+  if (exemptCount === null || !rosterValid || exemptCount >= input.rosterCount) {
+    errors.expectedExempt = DUE_AMOUNT_ERROR;
+  }
+
+  if (Object.keys(errors).length > 0 || !parsedGoal.ok || exemptCount === null) {
+    return { ok: false, error: DUE_AMOUNT_ERROR, errors };
   }
 
   const payingCount = input.rosterCount - exemptCount;
@@ -351,35 +357,24 @@ export function calculateSpendable(input: {
   const formattedBalance = formatPesos(balance);
   const formattedOwedOnDues = formatPesos(owed);
   const formattedTotalWithOwed = formatPesos(totalWithOwed);
-  const summaryMessage = `Hoy tenés ${formattedBalance}; si cobrás lo que falta, ${formattedTotalWithOwed}`;
+  const base = {
+    balanceCents: balance.toString(),
+    owedOnDuesCents: owed.toString(),
+    totalWithOwedCents: totalWithOwed.toString(),
+    formattedBalance,
+    formattedOwedOnDues,
+    formattedTotalWithOwed,
+    summaryMessage: `Hoy tenés ${formattedBalance}; si cobrás lo que falta, ${formattedTotalWithOwed}`,
+  };
 
   const rawPlanned = (input.plannedCost ?? "").trim();
   if (rawPlanned === "") {
-    return {
-      balanceCents: balance.toString(),
-      owedOnDuesCents: owed.toString(),
-      totalWithOwedCents: totalWithOwed.toString(),
-      formattedBalance,
-      formattedOwedOnDues,
-      formattedTotalWithOwed,
-      summaryMessage,
-      comparison: null,
-    };
+    return { ...base, comparison: null };
   }
 
   const parsedPlanned = parsePesosToCents(rawPlanned);
   if (!parsedPlanned.ok) {
-    return {
-      balanceCents: balance.toString(),
-      owedOnDuesCents: owed.toString(),
-      totalWithOwedCents: totalWithOwed.toString(),
-      formattedBalance,
-      formattedOwedOnDues,
-      formattedTotalWithOwed,
-      summaryMessage,
-      comparison: null,
-      plannedCostError: "Ingresá un costo planeado válido",
-    };
+    return { ...base, comparison: null, plannedCostError: "Ingresá un costo planeado válido" };
   }
 
   const planned = BigInt(parsedPlanned.cents);
@@ -413,14 +408,5 @@ export function calculateSpendable(input: {
     };
   }
 
-  return {
-    balanceCents: balance.toString(),
-    owedOnDuesCents: owed.toString(),
-    totalWithOwedCents: totalWithOwed.toString(),
-    formattedBalance,
-    formattedOwedOnDues,
-    formattedTotalWithOwed,
-    summaryMessage,
-    comparison,
-  };
+  return { ...base, comparison };
 }
