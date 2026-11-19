@@ -36,7 +36,8 @@ var (
 	ErrElectionFrozen = errors.New("elections: election frozen")
 	// ErrNoCommission means the tenant has no current Electoral commission.
 	ErrNoCommission = errors.New("elections: no current commission")
-	// ErrElectionInProgress means the tenant already has an election neither published nor annulled.
+	// ErrElectionInProgress means the tenant already has an election neither published nor annulled;
+	// one past its EndsAt counts as published (CreateElection marks it).
 	ErrElectionInProgress = errors.New("elections: election in progress")
 	// ErrInvalidPositions means the position list is empty or has a blank or repeated
 	// (case-insensitive) name.
@@ -253,7 +254,8 @@ func (s *Store) IsCommissionMember(ctx context.Context, tenant, userID string) (
 
 // CreateElection stores d as an election of the tenant's current commission, after checkDraft.
 // Errors: those of checkDraft, ErrNoCommission and ErrElectionInProgress (decided by the database, so
-// of two concurrent calls exactly one wins). It does no authorization: Create is the entry point for
+// of two concurrent calls exactly one wins). A closed election (EndsAt reached at the store's clock,
+// not annulled) is first stored as published at its EndsAt. It does no authorization: Create is the entry point for
 // requests.
 func (s *Store) CreateElection(ctx context.Context, tenant string, d Draft) (Election, error) {
 	var out Election
@@ -276,6 +278,14 @@ func (s *Store) createElection(ctx context.Context, tx pgx.Tx, tenant string, d 
 		return Election{}, ErrNoCommission
 	}
 	if err != nil {
+		return Election{}, err
+	}
+	// The result is published at the close with no background process (#57 S1): an election whose
+	// end the clock reached is marked published at its end here, under its row lock, so it no longer
+	// holds elections_one_in_progress. Concurrent creates both run this; the index still decides.
+	if _, err := tx.Exec(ctx, `
+		UPDATE elections SET published_at = ends_at
+		WHERE tenant_id = $1 AND published_at IS NULL AND annulled_at IS NULL AND ends_at <= $2`, tenant, s.now()); err != nil {
 		return Election{}, err
 	}
 	now := s.stamp()

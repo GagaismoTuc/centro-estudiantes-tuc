@@ -4162,7 +4162,7 @@ export interface operations {
                     "application/json": components["schemas"]["ForbiddenError"];
                 };
             };
-            /** @description The school already has an election neither published nor annulled (`election_in_progress`). Of two simultaneous requests exactly one gets 201. */
+            /** @description The school already has an election neither published nor annulled (`election_in_progress`); an election's result is published at its `endsAt`, so from then on it no longer blocks a new one. Of two simultaneous requests exactly one gets 201. */
             409: {
                 headers: {
                     [name: string]: unknown;

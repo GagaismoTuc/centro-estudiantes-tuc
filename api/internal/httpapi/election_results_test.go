@@ -469,3 +469,36 @@ func TestResultsOfAnAnnulledElection(t *testing.T) {
 		t.Fatalf("result = %+v, want annulled with reason %q", r, exampleReason)
 	}
 }
+
+// S1 (#57 follow-up): the result is published at the close with no background process, so from the
+// end on, and without anyone reading the result, the commission creates the school's next election;
+// an instant before the end the election is still in progress. The closed election keeps its result
+// and is stored as published at its end.
+func TestNextElectionAfterTheClose(t *testing.T) {
+	ctx := integration(t)
+	v := newVoteSchool(t, ctx)
+	carla := v.voter(t, ctx, "Carla Ficticia", "30333101")
+	carlaTok := v.loginOK(t, carla.email)
+	v.clk.t = vStart
+	wantVoted(t, v.vote(carlaTok, v.electionID, voteBody(v.blue)))
+
+	v.clk.t = vEnd.Add(-time.Nanosecond)
+	wantResponse(t, v.create(v.member, encode(draft())), http.StatusConflict, `{"error":"election_in_progress"}`)
+
+	v.clk.t = vEnd
+	next := decodeElection(t, v.create(v.member, encode(draft())), http.StatusCreated)
+	for _, path := range []string{currentPath, latestPath} {
+		if got := decodeElection(t, v.get(carlaTok, path), http.StatusOK); got.ID != next.ID {
+			t.Fatalf("%s = %s, want the next election %s", path, got.ID, next.ID)
+		}
+	}
+	if got := decodeElection(t, v.get(carlaTok, electionsPath+"/"+v.electionID), http.StatusOK); got.State != "closed" {
+		t.Fatalf("closed election state = %q, want closed", got.State)
+	}
+	var published bool
+	if err := tdb.Super.QueryRow(ctx, `SELECT published_at = ends_at FROM elections WHERE id = $1`, v.electionID).Scan(&published); err != nil || !published {
+		t.Fatalf("published_at = ends_at: %t (%v), want true", published, err)
+	}
+	wantPublished(t, v.results(carlaTok, v.electionID),
+		[]resultList{{v.blue, "Lista Azul", 1}, {v.green, "Lista Verde", 0}}, 0, 1, rosterSize(t, ctx, v.tenant), "winner", v.blue)
+}
