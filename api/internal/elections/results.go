@@ -53,7 +53,8 @@ func (s *Store) ViewResult(ctx context.Context, sess auth.Session, id string) (R
 	return out, err
 }
 
-// result computes the result on read; nothing is stored. It holds the election row locked (FOR
+// result computes the result on read and, the first time, publishes it (see publish: the winner,
+// the end of the commission's mandate and the Board handover). It holds the election row locked (FOR
 // UPDATE), as castVote does before checking the clock, so no Ballot is cast while it counts nor,
 // the end having passed, after it. The box is written by election_ballots_flush, which the
 // database refuses until its own clock reaches the end: until then this is ErrResultsNotAvailable,
@@ -125,5 +126,5 @@ func (s *Store) result(ctx context.Context, tx pgx.Tx, tenant, id string) (Resul
 		out.Outcome = OutcomeWinner
 		out.Winner = &out.Lists[0]
 	}
-	return out, nil
+	return out, s.publish(ctx, tx, tenant, id, out)
 }
