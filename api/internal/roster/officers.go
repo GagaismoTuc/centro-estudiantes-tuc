@@ -14,7 +14,31 @@ var (
 	ErrAlreadyOfficer  = errors.New("roster: already officer")
 	ErrPositionTaken   = errors.New("roster: position taken")
 	ErrInvalidPosition = errors.New("roster: invalid position")
+	// ErrBoardElected means the tenant's latest published election had a winner, whose list is the
+	// Board: positions are no longer assigned or removed by hand (#58 S7).
+	ErrBoardElected = errors.New("roster: board elected")
 )
+
+// boardElected returns ErrBoardElected when the latest published, non-annulled election of tenant
+// had a winner. It first takes a share lock on the tenant's elections, so it waits for a publication
+// in progress (which holds its election's row lock while it hands the Board over) and then reads
+// what it committed: a manual change never lands on top of a handover.
+func boardElected(ctx context.Context, tx pgx.Tx, tenant string) error {
+	if _, err := tx.Exec(ctx, `SELECT FROM elections WHERE tenant_id = $1 FOR SHARE`, tenant); err != nil {
+		return err
+	}
+	var elected bool
+	if err := tx.QueryRow(ctx, `
+		SELECT coalesce((SELECT winner_list_id IS NOT NULL FROM elections
+		                 WHERE tenant_id = $1 AND published_at IS NOT NULL AND annulled_at IS NULL
+		                 ORDER BY published_at DESC, ends_at DESC LIMIT 1), false)`, tenant).Scan(&elected); err != nil {
+		return err
+	}
+	if elected {
+		return ErrBoardElected
+	}
+	return nil
+}
 
 type SchoolMember struct {
 	Email, FullName, RosterMemberID, Position *string
@@ -55,6 +79,9 @@ func (s *Store) AssignOfficer(ctx context.Context, sess auth.Session, member, po
 		default:
 			return ErrInvalidPosition
 		}
+		if err := boardElected(ctx, tx, sess.TenantID); err != nil {
+			return err
+		}
 		var locked string
 		if err := tx.QueryRow(ctx, `SELECT id::text FROM roster_members WHERE tenant_id=$1 AND id=$2 FOR UPDATE`, sess.TenantID, member).Scan(&locked); errors.Is(err, pgx.ErrNoRows) {
 			return ErrNotFound
@@ -88,6 +115,9 @@ func (s *Store) RemoveOfficer(ctx context.Context, sess auth.Session, member str
 	return s.asAdmin(ctx, sess, func(tx pgx.Tx) error {
 		if !uuidPattern.MatchString(member) {
 			return ErrNotFound
+		}
+		if err := boardElected(ctx, tx, sess.TenantID); err != nil {
+			return err
 		}
 		tag, err := tx.Exec(ctx, `DELETE FROM officer_positions WHERE tenant_id=$1 AND roster_member_id=$2`, sess.TenantID, member)
 		if err != nil {

@@ -1445,6 +1445,21 @@ func (e DeleteMemberOfficer404JSONResponseBodyError) Valid() bool {
 	}
 }
 
+// Defines values for DeleteMemberOfficer409JSONResponseBodyError.
+const (
+	DeleteMemberOfficer409JSONResponseBodyErrorBoardElected DeleteMemberOfficer409JSONResponseBodyError = "board_elected"
+)
+
+// Valid indicates whether the value is a known member of the DeleteMemberOfficer409JSONResponseBodyError enum.
+func (e DeleteMemberOfficer409JSONResponseBodyError) Valid() bool {
+	switch e {
+	case DeleteMemberOfficer409JSONResponseBodyErrorBoardElected:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PostMemberOfficer404JSONResponseBodyError.
 const (
 	PostMemberOfficer404JSONResponseBodyErrorNotFound PostMemberOfficer404JSONResponseBodyError = "not_found"
@@ -1462,16 +1477,19 @@ func (e PostMemberOfficer404JSONResponseBodyError) Valid() bool {
 
 // Defines values for PostMemberOfficer409JSONResponseBodyError.
 const (
-	AlreadyOfficer PostMemberOfficer409JSONResponseBodyError = "already_officer"
-	PositionTaken  PostMemberOfficer409JSONResponseBodyError = "position_taken"
+	PostMemberOfficer409JSONResponseBodyErrorAlreadyOfficer PostMemberOfficer409JSONResponseBodyError = "already_officer"
+	PostMemberOfficer409JSONResponseBodyErrorBoardElected   PostMemberOfficer409JSONResponseBodyError = "board_elected"
+	PostMemberOfficer409JSONResponseBodyErrorPositionTaken  PostMemberOfficer409JSONResponseBodyError = "position_taken"
 )
 
 // Valid indicates whether the value is a known member of the PostMemberOfficer409JSONResponseBodyError enum.
 func (e PostMemberOfficer409JSONResponseBodyError) Valid() bool {
 	switch e {
-	case AlreadyOfficer:
+	case PostMemberOfficer409JSONResponseBodyErrorAlreadyOfficer:
 		return true
-	case PositionTaken:
+	case PostMemberOfficer409JSONResponseBodyErrorBoardElected:
+		return true
+	case PostMemberOfficer409JSONResponseBodyErrorPositionTaken:
 		return true
 	default:
 		return false
@@ -2652,6 +2670,9 @@ type GetFinanceReportCsv422JSONResponseBodyError string
 
 // DeleteMemberOfficer404JSONResponseBodyError defines parameters for DeleteMemberOfficer.
 type DeleteMemberOfficer404JSONResponseBodyError string
+
+// DeleteMemberOfficer409JSONResponseBodyError defines parameters for DeleteMemberOfficer.
+type DeleteMemberOfficer409JSONResponseBodyError string
 
 // PostMemberOfficerJSONBody defines parameters for PostMemberOfficer.
 type PostMemberOfficerJSONBody struct {
