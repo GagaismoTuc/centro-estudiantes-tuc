@@ -17,6 +17,7 @@
 //     empty). Only when the TCP peer is in one of them is X-Forwarded-For used to find the client
 //     address for rate limits.
 //   - ADDR: listen address (default :8080).
+//   - GOTENBERG_URL: internal converter origin (default http://gotenberg:3000).
 //
 // SIGINT or SIGTERM stops the server gracefully: in-flight requests get up to 15 s, then the session
 // cleanup stops and queued mail gets up to 10 s before the process exits (25 s in total; give the
@@ -111,7 +112,7 @@ func run(getenv func(string) string) error {
 	queue := mail.NewQueue(4, 256)
 	srv := &http.Server{
 		Handler: httpapi.NewRouter(httpapi.Deps{Pool: pool, AccessCodeKey: codeKey, TOTPKey: totpKey, Mail: sender,
-			BaseURL: baseURL, Background: queue.Go, TrustedProxies: trusted}),
+			BaseURL: baseURL, Background: queue.Go, TrustedProxies: trusted, GotenbergURL: getenv("GOTENBERG_URL")}),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      15 * time.Second,
