@@ -243,6 +243,7 @@ export function Finance() {
     <header className="page-header"><PageTitle>Caja</PageTitle></header>
     <div className="page-actions">
       <Link className="button button--secondary" to="/caja/informe">Informe</Link>
+      <Link className="button button--secondary" to="/caja/rendiciones">Rendiciones</Link>
       <a className="button button--secondary" href="/api/finance/entries.csv" download>Descargar CSV</a>
     </div>
     <FormStatus status={status} {...form.statusProps} />
