@@ -1646,6 +1646,16 @@ select[aria-invalid="true"] {
   font-size: 0.9375rem;
   overflow-wrap: anywhere;
 }
+.contact-card__notice {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
 .contact-prices {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
