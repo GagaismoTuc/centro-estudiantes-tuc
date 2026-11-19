@@ -58,10 +58,16 @@ func Migrate(ctx context.Context, dsn string) error {
 // The transaction commits when fn returns nil and rolls back otherwise. tenantID is validated
 // as a UUID before any connection is used.
 func WithTenant(ctx context.Context, pool *pgxpool.Pool, tenantID string, fn func(pgx.Tx) error) error {
+	return WithTenantOptions(ctx, pool, tenantID, pgx.TxOptions{}, fn)
+}
+
+// WithTenantOptions is WithTenant with explicit transaction options, such as a REPEATABLE READ
+// isolation level so that every query of fn reads the same snapshot.
+func WithTenantOptions(ctx context.Context, pool *pgxpool.Pool, tenantID string, opts pgx.TxOptions, fn func(pgx.Tx) error) error {
 	if !uuidPattern.MatchString(tenantID) {
 		return ErrInvalidTenantID
 	}
-	return pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
+	return pgx.BeginTxFunc(ctx, pool, opts, func(tx pgx.Tx) error {
 		if err := SetTenant(ctx, tx, tenantID); err != nil {
 			return err
 		}
