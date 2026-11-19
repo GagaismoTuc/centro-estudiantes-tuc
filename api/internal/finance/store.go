@@ -67,6 +67,16 @@ const entryColumns = `e.id::text,e.category_id::text,e.direction,to_char(e.entry
   LEFT JOIN event_budgets eb ON eb.tenant_id=e.tenant_id AND eb.id=e.event_budget_id
   LEFT JOIN contact_headings ch ON ch.tenant_id=e.tenant_id AND ch.id=e.heading_id`
 
+// scanEntry scans one row produced by entryColumns into dst.
+func scanEntry(row pgx.Row, dst *Entry) error {
+	return row.Scan(
+		&dst.ID, &dst.CategoryID, &dst.Direction, &dst.Date, &dst.Description, &dst.RecordedBy,
+		&dst.AmountCents, &dst.RecordedAt, &dst.ReversesID, &dst.ReversalID, &dst.ReversedBy,
+		&dst.ReversedOn, &dst.RosterMemberID, &dst.RosterMemberName, &dst.HasReceipt,
+		&dst.EventBudgetID, &dst.EventBudgetName, &dst.HeadingID, &dst.HeadingName,
+	)
+}
+
 type NewEntry struct {
 	CategoryID, Direction, Date, Description string
 	AmountCents                              int64
@@ -248,7 +258,7 @@ func (s *Store) Reverse(ctx context.Context, sess auth.Session, id string) (out 
 			return ErrNotFound
 		}
 		var original Entry
-		e := tx.QueryRow(ctx, `SELECT `+entryColumns+` WHERE e.tenant_id=$1 AND e.id=$2`, sess.TenantID, id).Scan(&original.ID, &original.CategoryID, &original.Direction, &original.Date, &original.Description, &original.RecordedBy, &original.AmountCents, &original.RecordedAt, &original.ReversesID, &original.ReversalID, &original.ReversedBy, &original.ReversedOn, &original.RosterMemberID, &original.RosterMemberName, &original.HasReceipt, &original.EventBudgetID, &original.EventBudgetName, &original.HeadingID, &original.HeadingName)
+		e := scanEntry(tx.QueryRow(ctx, `SELECT `+entryColumns+` WHERE e.tenant_id=$1 AND e.id=$2`, sess.TenantID, id), &original)
 		if errors.Is(e, pgx.ErrNoRows) {
 			return ErrNotFound
 		}
@@ -327,7 +337,7 @@ func (s *Store) Get(ctx context.Context, sess auth.Session, id string) (out Entr
 		if !uuidPattern.MatchString(id) {
 			return ErrNotFound
 		}
-		e := tx.QueryRow(ctx, `SELECT `+entryColumns+` WHERE e.tenant_id=$1 AND e.id=$2`, sess.TenantID, id).Scan(&out.ID, &out.CategoryID, &out.Direction, &out.Date, &out.Description, &out.RecordedBy, &out.AmountCents, &out.RecordedAt, &out.ReversesID, &out.ReversalID, &out.ReversedBy, &out.ReversedOn, &out.RosterMemberID, &out.RosterMemberName, &out.HasReceipt, &out.EventBudgetID, &out.EventBudgetName, &out.HeadingID, &out.HeadingName)
+		e := scanEntry(tx.QueryRow(ctx, `SELECT `+entryColumns+` WHERE e.tenant_id=$1 AND e.id=$2`, sess.TenantID, id), &out)
 		if errors.Is(e, pgx.ErrNoRows) {
 			return ErrNotFound
 		}

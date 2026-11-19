@@ -188,6 +188,18 @@ func TestBudgetEntryLinkingAndDeleteProtection(t *testing.T) {
 		if rev.ReversesID != linked.ID || rev.EventBudgetID != budget.ID || rev.EventBudgetName != "Semana del Estudiante 2026" || rev.HeadingID != headings["mesas y sillas"] || rev.HeadingName != "mesas y sillas" {
 			t.Fatalf("reversal did not inherit link: %+v", rev)
 		}
+		// Read back via GET to verify the inherited link was persisted, not only populated in memory.
+		persistedRec := f.do(http.MethodGet, "/api/finance/entries/"+rev.ID, "", ip, officer, nil)
+		if persistedRec.Code != 200 {
+			t.Fatalf("get persisted reversal = %d %s", persistedRec.Code, persistedRec.Body)
+		}
+		var persistedRev linkedEntryDTO
+		if err := json.Unmarshal(persistedRec.Body.Bytes(), &persistedRev); err != nil {
+			t.Fatal(err)
+		}
+		if persistedRev.ReversesID != linked.ID || persistedRev.EventBudgetID != budget.ID || persistedRev.EventBudgetName != "Semana del Estudiante 2026" || persistedRev.HeadingID != headings["mesas y sillas"] || persistedRev.HeadingName != "mesas y sillas" {
+			t.Fatalf("persisted reversal missing inherited link: %+v", persistedRev)
+		}
 	})
 
 	t.Run("R6 authorization and student ledger visibility", func(t *testing.T) {
@@ -253,6 +265,37 @@ func TestBudgetEntryLinkingAndDeleteProtection(t *testing.T) {
 		if unlinked.EventBudgetID != "" || unlinked.EventBudgetName != "" || unlinked.HeadingID != "" || unlinked.HeadingName != "" {
 			t.Fatalf("unlinked entry has event fields: %+v", unlinked)
 		}
+		getUnlinked := f.do(http.MethodGet, "/api/finance/entries/"+unlinked.ID, "", ip, officer, nil)
+		if getUnlinked.Code != 200 {
+			t.Fatalf("get unlinked entry = %d %s", getUnlinked.Code, getUnlinked.Body)
+		}
+		var gotUnlinked linkedEntryDTO
+		if err := json.Unmarshal(getUnlinked.Body.Bytes(), &gotUnlinked); err != nil {
+			t.Fatal(err)
+		}
+		if gotUnlinked.ID != unlinked.ID || gotUnlinked.EventBudgetID != "" || gotUnlinked.HeadingID != "" {
+			t.Fatalf("unexpected get unlinked entry: %+v", gotUnlinked)
+		}
+		listRec := f.do(http.MethodGet, "/api/finance/entries", "", ip, officer, nil)
+		if listRec.Code != 200 {
+			t.Fatalf("list entries = %d %s", listRec.Code, listRec.Body)
+		}
+		var list []linkedEntryDTO
+		if err := json.Unmarshal(listRec.Body.Bytes(), &list); err != nil {
+			t.Fatal(err)
+		}
+		foundUnlinked := false
+		for _, item := range list {
+			if item.ID == unlinked.ID {
+				foundUnlinked = true
+				if item.EventBudgetID != "" || item.HeadingID != "" {
+					t.Fatalf("unlinked entry in list has event fields: %+v", item)
+				}
+			}
+		}
+		if !foundUnlinked {
+			t.Fatalf("unlinked entry %s missing from list", unlinked.ID)
+		}
 		revRec := f.do(http.MethodPost, "/api/finance/entries/"+unlinked.ID+"/reversal", "", ip, officer, nil)
 		if revRec.Code != 201 {
 			t.Fatalf("reverse unlinked entry = %d %s", revRec.Code, revRec.Body)
@@ -266,6 +309,9 @@ func TestBudgetEntryLinkingAndDeleteProtection(t *testing.T) {
 		}
 		if rep := f.do(http.MethodGet, "/api/finance/report?from=2026-11-01&to=2026-11-30", "", ip, student, nil); rep.Code != 200 || !strings.Contains(rep.Body.String(), "Alquiler de sillas") || !strings.Contains(rep.Body.String(), "Rifa escolar") {
 			t.Fatalf("finance report = %d %s", rep.Code, rep.Body)
+		}
+		if repCSV := f.do(http.MethodGet, "/api/finance/report.csv?from=2026-11-01&to=2026-11-30", "", ip, student, nil); repCSV.Code != 200 || !strings.Contains(repCSV.Body.String(), "Alquiler de sillas") || !strings.Contains(repCSV.Body.String(), "Rifa escolar") {
+			t.Fatalf("finance report csv = %d %s", repCSV.Code, repCSV.Body)
 		}
 		if csvRec := f.do(http.MethodGet, "/api/finance/entries.csv", "", ip, student, nil); csvRec.Code != 200 || !strings.Contains(csvRec.Body.String(), "Alquiler de sillas") || !strings.Contains(csvRec.Body.String(), "Rifa escolar") {
 			t.Fatalf("finance csv = %d %s", csvRec.Code, csvRec.Body)
@@ -291,10 +337,11 @@ func TestBudgetDeleteVsEntryLinkRace(t *testing.T) {
 	f, officer, _, _, _, alquileres, _, headings := setupBudgetActualFixture(t, ctx)
 	const ip = "198.51.100.83"
 
-	for round := range 8 {
-		created := f.do(http.MethodPost, "/api/event-budgets", fmt.Sprintf(`{"name":"Carrera %d","startsOn":"2026-09-21","endsOn":"2026-09-22"}`, round), ip, officer, nil)
+	makeBudgetWithLine := func(name string) string {
+		t.Helper()
+		created := f.do(http.MethodPost, "/api/event-budgets", fmt.Sprintf(`{"name":%q,"startsOn":"2026-09-21","endsOn":"2026-09-22"}`, name), ip, officer, nil)
 		if created.Code != 201 {
-			t.Fatalf("round %d create budget = %d %s", round, created.Code, created.Body)
+			t.Fatalf("create budget %s = %d %s", name, created.Code, created.Body)
 		}
 		var b struct {
 			ID string `json:"id"`
@@ -304,9 +351,85 @@ func TestBudgetDeleteVsEntryLinkRace(t *testing.T) {
 		}
 		lineBody := fmt.Sprintf(`{"kind":"cost","headingId":%q,"description":"Sillas","quantity":1,"unitAmountCents":100000}`, headings["mesas y sillas"])
 		if r := f.do(http.MethodPost, "/api/event-budgets/"+b.ID+"/lines", lineBody, ip, officer, nil); r.Code != 201 {
-			t.Fatalf("round %d add line = %d %s", round, r.Code, r.Body)
+			t.Fatalf("add line %s = %d %s", name, r.Code, r.Body)
 		}
-		entryBody := fmt.Sprintf(`{"categoryId":%q,"direction":"expense","date":"2026-11-14","amountCents":100000,"description":"Sillas %d","eventBudgetId":%q,"headingId":%q}`, alquileres, round, b.ID, headings["mesas y sillas"])
+		return b.ID
+	}
+
+	// Deterministic branch 1: DELETE commits while POST waits on FOR SHARE -> POST gets 404 not_found.
+	t.Run("delete wins under row lock yields 404 not_found on link", func(t *testing.T) {
+		bid := makeBudgetWithLine("Carrera deterministica delete")
+		blocker, err := tdb.Super.Begin(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer blocker.Rollback(ctx)
+		if _, err := blocker.Exec(ctx, `DELETE FROM event_budgets WHERE id=$1`, bid); err != nil {
+			t.Fatal(err)
+		}
+		entryBody := fmt.Sprintf(`{"categoryId":%q,"direction":"expense","date":"2026-11-14","amountCents":100000,"description":"Sillas","eventBudgetId":%q,"headingId":%q}`, alquileres, bid, headings["mesas y sillas"])
+		done := make(chan *httptest.ResponseRecorder, 1)
+		go func() {
+			done <- f.do(http.MethodPost, "/api/finance/entries", entryBody, ip, officer, nil)
+		}()
+		deadline := time.Now().Add(5 * time.Second)
+		for time.Now().Before(deadline) {
+			var waiting int
+			if err := tdb.Super.QueryRow(ctx, `SELECT count(*) FROM pg_stat_activity WHERE wait_event_type='Lock' AND query LIKE '%event_budgets%FOR SHARE%'`).Scan(&waiting); err == nil && waiting > 0 {
+				break
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		if err := blocker.Commit(ctx); err != nil {
+			t.Fatal(err)
+		}
+		wantResponse(t, <-done, 404, `{"error":"not_found"}`)
+		var count int
+		if err := tdb.Super.QueryRow(ctx, `SELECT count(*) FROM finance_entries WHERE event_budget_id=$1`, bid).Scan(&count); err != nil || count != 0 {
+			t.Fatalf("entry count = %d err=%v, want 0", count, err)
+		}
+	})
+
+	// Deterministic branch 2: link commits while DELETE waits on FOR UPDATE -> DELETE gets 409 budget_has_entries.
+	t.Run("link wins under row lock yields 409 budget_has_entries on delete", func(t *testing.T) {
+		bid := makeBudgetWithLine("Carrera deterministica link")
+		blocker, err := tdb.Super.Begin(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer blocker.Rollback(ctx)
+		if _, err := blocker.Exec(ctx, `SELECT 1 FROM event_budgets WHERE id=$1 FOR SHARE`, bid); err != nil {
+			t.Fatal(err)
+		}
+		done := make(chan *httptest.ResponseRecorder, 1)
+		go func() {
+			done <- f.do(http.MethodDelete, "/api/event-budgets/"+bid, "", ip, officer, nil)
+		}()
+		deadline := time.Now().Add(5 * time.Second)
+		for time.Now().Before(deadline) {
+			var waiting int
+			if err := tdb.Super.QueryRow(ctx, `SELECT count(*) FROM pg_stat_activity WHERE wait_event_type='Lock' AND query LIKE '%event_budgets%FOR UPDATE%'`).Scan(&waiting); err == nil && waiting > 0 {
+				break
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		entryBody := fmt.Sprintf(`{"categoryId":%q,"direction":"expense","date":"2026-11-14","amountCents":100000,"description":"Sillas","eventBudgetId":%q,"headingId":%q}`, alquileres, bid, headings["mesas y sillas"])
+		if postRec := f.do(http.MethodPost, "/api/finance/entries", entryBody, ip, officer, nil); postRec.Code != 201 {
+			t.Fatalf("post while FOR SHARE held = %d %s", postRec.Code, postRec.Body)
+		}
+		if err := blocker.Commit(ctx); err != nil {
+			t.Fatal(err)
+		}
+		wantResponse(t, <-done, 409, `{"error":"budget_has_entries"}`)
+		var exists bool
+		if err := tdb.Super.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM event_budgets WHERE id=$1)`, bid).Scan(&exists); err != nil || !exists {
+			t.Fatalf("budget missing after 409 delete: exists=%v err=%v", exists, err)
+		}
+	})
+
+	for round := range 8 {
+		bid := makeBudgetWithLine(fmt.Sprintf("Carrera %d", round))
+		entryBody := fmt.Sprintf(`{"categoryId":%q,"direction":"expense","date":"2026-11-14","amountCents":100000,"description":"Sillas %d","eventBudgetId":%q,"headingId":%q}`, alquileres, round, bid, headings["mesas y sillas"])
 
 		start := make(chan struct{})
 		var delRec, postRec *httptest.ResponseRecorder
@@ -315,7 +438,7 @@ func TestBudgetDeleteVsEntryLinkRace(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			<-start
-			delRec = f.do(http.MethodDelete, "/api/event-budgets/"+b.ID, "", ip, officer, nil)
+			delRec = f.do(http.MethodDelete, "/api/event-budgets/"+bid, "", ip, officer, nil)
 		}()
 		go func() {
 			defer wg.Done()
@@ -327,10 +450,10 @@ func TestBudgetDeleteVsEntryLinkRace(t *testing.T) {
 
 		var budgetExists bool
 		var entryCount int
-		if err := tdb.Super.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM event_budgets WHERE id=$1)`, b.ID).Scan(&budgetExists); err != nil {
+		if err := tdb.Super.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM event_budgets WHERE id=$1)`, bid).Scan(&budgetExists); err != nil {
 			t.Fatal(err)
 		}
-		if err := tdb.Super.QueryRow(ctx, `SELECT count(*) FROM finance_entries WHERE event_budget_id=$1`, b.ID).Scan(&entryCount); err != nil {
+		if err := tdb.Super.QueryRow(ctx, `SELECT count(*) FROM finance_entries WHERE event_budget_id=$1`, bid).Scan(&entryCount); err != nil {
 			t.Fatal(err)
 		}
 		switch {
