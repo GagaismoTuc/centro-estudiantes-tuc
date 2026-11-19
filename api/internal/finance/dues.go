@@ -385,12 +385,18 @@ func (s *Store) ListMyDues(ctx context.Context, sess auth.Session) (out []MyDue,
 		return nil, ErrForbidden
 	}
 	err = db.WithTenant(ctx, s.pool, sess.TenantID, func(tx pgx.Tx) error {
-		var isMember bool
-		if e := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM memberships WHERE tenant_id = $1 AND user_id = $2)`, sess.TenantID, sess.UserID).Scan(&isMember); e != nil {
+		var isMember, isVeedor bool
+		if e := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM memberships WHERE tenant_id = $1 AND user_id = $2),
+   EXISTS (SELECT 1 FROM memberships WHERE tenant_id = $1 AND user_id = $2 AND role = 'veedor')`, sess.TenantID, sess.UserID).Scan(&isMember, &isVeedor); e != nil {
 			return e
 		}
 		if !isMember {
 			return ErrForbidden
+		}
+		if isVeedor {
+			if err := auth.RequireMFA(sess); err != nil {
+				return err
+			}
 		}
 		var rosterMemberID string
 		e := tx.QueryRow(ctx, `

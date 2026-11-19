@@ -434,3 +434,34 @@ func TestAnnulmentAcrossSchools(t *testing.T) {
 		})
 	}
 }
+
+// R7 and R11: a Veedor can annul only its school's election, with a public reason and identity.
+func TestVeedorAnnulment(t *testing.T) {
+	ctx := integration(t)
+	s := newSchool(t, ctx)
+	e := decodeElection(t, s.create(s.member, encode(draft())), http.StatusCreated)
+	_, pending := s.signIn(t, ctx, "veedor")
+	_, veedor, _, _ := s.signInMFA(t, ctx, "veedor")
+	wantResponse(t, s.annul(pending, e.ID, reasonBody(exampleReason)), http.StatusForbidden, mfaBody)
+	s.wantNotAnnulled(t, ctx, e.ID)
+	wantResponse(t, s.annul(veedor, e.ID, reasonBody("")), http.StatusUnprocessableEntity, `{"error":"reason_required"}`)
+	s.wantNotAnnulled(t, ctx, e.ID)
+	other := newSchool(t, ctx)
+	foreign := decodeElection(t, other.create(other.member, encode(soonDraft(other.clk.Now()))), http.StatusCreated)
+	_, otherVeedor, _, _ := other.signInMFA(t, ctx, "veedor")
+	wantResponse(t, s.annul(veedor, foreign.ID, reasonBody(exampleReason)), http.StatusNotFound, `{"error":"not_found"}`)
+	other.clk.t = other.clk.t.Add(4 * time.Hour)
+	wantResponse(t, other.annul(otherVeedor, foreign.ID, reasonBody(exampleReason)), http.StatusConflict, `{"error":"election_published"}`)
+	other.wantNotAnnulled(t, ctx, foreign.ID)
+	result := s.annul(veedor, e.ID, reasonBody(exampleReason))
+	if result.Code != http.StatusOK || !strings.Contains(result.Body.String(), `"annulledBy":"veedor"`) {
+		t.Fatalf("annulment = %d %s", result.Code, result.Body)
+	}
+	for _, token := range []string{s.reader, veedor} {
+		r := s.get(token, electionsPath+"/"+e.ID)
+		if r.Code != http.StatusOK || !strings.Contains(r.Body.String(), `"annulledBy":"veedor"`) || !strings.Contains(r.Body.String(), exampleReason) {
+			t.Fatalf("public annulment = %d %s", r.Code, r.Body)
+		}
+	}
+	wantResponse(t, s.annul(veedor, e.ID, reasonBody("second")), http.StatusConflict, `{"error":"election_annulled"}`)
+}

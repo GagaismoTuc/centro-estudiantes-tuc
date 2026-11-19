@@ -23,13 +23,15 @@ type access struct {
 
 func readAccess(ctx context.Context, tx pgx.Tx, tenant, user string) (access, error) {
 	var a access
-	var officer, admin, officersExist bool
+	var officer, admin, veedor, officersExist, commissionExists bool
 	var rosterID *string
 	err := tx.QueryRow(ctx, `
 		SELECT EXISTS (SELECT FROM memberships WHERE tenant_id = $1 AND user_id = $2),
 		       EXISTS (SELECT FROM memberships m WHERE m.tenant_id = $1 AND m.user_id = $2 AND (m.role = 'officer'
 		               OR EXISTS (SELECT FROM officer_positions p WHERE p.tenant_id = m.tenant_id AND p.roster_member_id = m.roster_member_id))),
 		       EXISTS (SELECT FROM memberships WHERE tenant_id = $1 AND user_id = $2 AND role = 'school_admin'),
+		       EXISTS (SELECT FROM memberships WHERE tenant_id = $1 AND user_id = $2 AND role = 'veedor'),
+		       EXISTS (SELECT FROM electoral_commissions WHERE tenant_id = $1 AND ended_at IS NULL),
 		       EXISTS (SELECT FROM officer_positions WHERE tenant_id = $1)
 		       OR EXISTS (SELECT FROM memberships WHERE tenant_id = $1 AND role = 'officer'),
 		       EXISTS (SELECT FROM electoral_commission_members cm
@@ -38,12 +40,23 @@ func readAccess(ctx context.Context, tx pgx.Tx, tenant, user string) (access, er
 		               WHERE cm.tenant_id = $1 AND ms.user_id = $2),
 		       (SELECT roster_member_id::text FROM memberships WHERE tenant_id = $1 AND user_id = $2 AND roster_member_id IS NOT NULL LIMIT 1)`,
 		tenant, user).
-		Scan(&a.member, &officer, &admin, &officersExist, &a.onCommission, &rosterID)
+		Scan(&a.member, &officer, &admin, &veedor, &commissionExists, &officersExist, &a.onCommission, &rosterID)
 	if rosterID != nil {
 		a.rosterMemberID = *rosterID
 	}
-	a.designator = officer || (admin && !officersExist)
+	a.designator = officer || (admin && !officersExist) || (veedor && (!officersExist || commissionExists))
 	return a, err
+}
+
+func requireVeedorMFA(ctx context.Context, tx pgx.Tx, sess auth.Session) error {
+	var veedor bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT FROM memberships WHERE tenant_id=$1 AND user_id=$2 AND role='veedor')`, sess.TenantID, sess.UserID).Scan(&veedor); err != nil {
+		return err
+	}
+	if veedor {
+		return auth.RequireMFA(sess)
+	}
+	return nil
 }
 
 // asDesignator runs fn in the session's tenant after checking, in the same transaction, that the
@@ -54,6 +67,9 @@ func (s *Store) asDesignator(ctx context.Context, sess auth.Session, fn func(pgx
 		return ErrForbidden
 	}
 	return db.WithTenant(ctx, s.pool, sess.TenantID, func(tx pgx.Tx) error {
+		if err := requireVeedorMFA(ctx, tx, sess); err != nil {
+			return err
+		}
 		a, err := readAccess(ctx, tx, sess.TenantID, sess.UserID)
 		if err != nil {
 			return err
@@ -119,6 +135,9 @@ func (s *Store) Status(ctx context.Context, sess auth.Session) (CommissionStatus
 		return out, ErrForbidden
 	}
 	err := db.WithTenant(ctx, s.pool, sess.TenantID, func(tx pgx.Tx) error {
+		if err := requireVeedorMFA(ctx, tx, sess); err != nil {
+			return err
+		}
 		a, err := readAccess(ctx, tx, sess.TenantID, sess.UserID)
 		if err != nil {
 			return err
@@ -150,6 +169,13 @@ func (s *Store) asCommissionMember(ctx context.Context, sess auth.Session, fn fu
 		return ErrForbidden
 	}
 	return db.WithTenant(ctx, s.pool, sess.TenantID, func(tx pgx.Tx) error {
+		var veedor bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT FROM memberships WHERE tenant_id=$1 AND user_id=$2 AND role='veedor')`, sess.TenantID, sess.UserID).Scan(&veedor); err != nil {
+			return err
+		}
+		if veedor {
+			return ErrForbidden
+		}
 		if err := lockCommission(ctx, tx, sess.TenantID); err != nil {
 			return err
 		}
@@ -197,18 +223,23 @@ func (s *Store) Edit(ctx context.Context, sess auth.Session, id string, d Draft)
 }
 
 // asMember runs fn in the session's tenant when the user has a membership there (ErrForbidden
-// otherwise); no second factor is needed.
+// otherwise); a Veedor must prove the second factor before reading election data.
 func (s *Store) asMember(ctx context.Context, sess auth.Session, fn func(pgx.Tx) error) error {
 	if sess.TenantID == "" {
 		return ErrForbidden
 	}
 	return db.WithTenant(ctx, s.pool, sess.TenantID, func(tx pgx.Tx) error {
-		a, err := readAccess(ctx, tx, sess.TenantID, sess.UserID)
-		if err != nil {
+		var member, veedor bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT FROM memberships WHERE tenant_id = $1 AND user_id = $2), EXISTS (SELECT FROM memberships WHERE tenant_id = $1 AND user_id = $2 AND role = 'veedor')`, sess.TenantID, sess.UserID).Scan(&member, &veedor); err != nil {
 			return err
 		}
-		if !a.member {
+		if !member {
 			return ErrForbidden
+		}
+		if veedor {
+			if err := auth.RequireMFA(sess); err != nil {
+				return err
+			}
 		}
 		return fn(tx)
 	})

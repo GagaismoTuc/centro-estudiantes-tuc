@@ -70,8 +70,8 @@ func WithTenant(ctx context.Context, pool *pgxpool.Pool, tenantID string, fn fun
 }
 
 // SetTenant declares tenantID in the transaction-local app.tenant_id of tx. Besides WithTenant, only
-// code running inside WithCodeHash may call it, and only with the tenant of the code row it just
-// found: that is how claiming a code may write the new membership.
+// code running inside WithCodeHash or WithInvitationHash may call it, and only with the tenant of
+// the row it just found: that is how claiming a code may write the new membership.
 func SetTenant(ctx context.Context, tx pgx.Tx, tenantID string) error {
 	if !uuidPattern.MatchString(tenantID) {
 		return ErrInvalidTenantID
@@ -93,6 +93,20 @@ func WithCodeHash(ctx context.Context, pool *pgxpool.Pool, hash []byte, fn func(
 	return pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
 		if _, err := tx.Exec(ctx, `SELECT set_config('app.code_hash', $1, true)`, hex.EncodeToString(hash)); err != nil {
 			return fmt.Errorf("db: set code hash: %w", err)
+		}
+		return fn(tx)
+	})
+}
+
+// WithInvitationHash exposes only the invitation matching hash before its school is known.
+// After finding that row, callers may set only its tenant with SetTenant in the same transaction.
+func WithInvitationHash(ctx context.Context, pool *pgxpool.Pool, hash []byte, fn func(pgx.Tx) error) error {
+	if len(hash) != 32 {
+		return ErrInvalidCodeHash
+	}
+	return pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `SELECT set_config('app.invitation_hash', $1, true)`, hex.EncodeToString(hash)); err != nil {
+			return fmt.Errorf("db: set invitation hash: %w", err)
 		}
 		return fn(tx)
 	})

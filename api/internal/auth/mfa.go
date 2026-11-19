@@ -48,7 +48,7 @@ const CommissionRole = "electoral_commission"
 
 // Privileged reports whether role must use two-factor authentication.
 func Privileged(role string) bool {
-	return role == "school_admin" || role == "officer" || role == CommissionRole
+	return role == "school_admin" || role == "officer" || role == "veedor" || role == CommissionRole
 }
 
 // MFAStateOf returns the state of sess for role, the user's role in the session's active tenant.

@@ -824,3 +824,65 @@ func TestElectionCandidateSearch(t *testing.T) {
 		t.Fatalf("capped order/slice unexpected: first=%q last=%q", capped[0].FullName, capped[19].FullName)
 	}
 }
+
+// R9: a Veedor cannot organize elections or submit, approve or reject lists.
+func TestVeedorCannotOrganizeElection(t *testing.T) {
+	ctx := integration(t)
+	ls := newListSchool(t, ctx)
+	_, veedor, _, _ := ls.signInMFA(t, ctx, "veedor")
+	beforeElection := ls.get(ls.reader, electionsPath+"/"+ls.electionID).Body.String()
+	before := ls.snapshot(t, ctx)
+	body := listBody("Lista Azul", candidatesPayload(ls.betoID, ls.ciroID, ls.eliID, ls.fitoID))
+	existing := decodeList(t, ls.do(http.MethodPost, ls.listsPath(), body, electionIP, ls.betoTok, nil), http.StatusCreated)
+	before = ls.snapshot(t, ctx)
+	for _, tc := range []struct{ method, path, body string }{
+		{http.MethodPost, electionsPath, encode(draft())},
+		{http.MethodPut, electionsPath + "/" + ls.electionID, encode(draft())},
+		{http.MethodPost, ls.listsPath(), body},
+		{http.MethodPost, ls.commissionListsPath(), body},
+		{http.MethodPost, ls.listPath(existing.ID) + "/approve", ""},
+		{http.MethodPost, ls.listPath(existing.ID) + "/reject", `{"reason":"test"}`},
+	} {
+		wantResponse(t, ls.do(tc.method, tc.path, tc.body, electionIP, veedor, nil), http.StatusForbidden, forbiddenBody)
+	}
+	ls.assertSnapshotEqual(t, ctx, before, "veedor rejected actions")
+	if got := ls.get(ls.reader, electionsPath+"/"+ls.electionID).Body.String(); got != beforeElection {
+		t.Fatalf("election changed: %s", got)
+	}
+	var commissionUser string
+	if err := tdb.Super.QueryRow(ctx, `SELECT user_id::text FROM memberships WHERE tenant_id=$1 AND roster_member_id=$2`, ls.tenant, ls.commID).Scan(&commissionUser); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tdb.Super.Exec(ctx, `INSERT INTO memberships(tenant_id,user_id,role) VALUES($1,$2,'veedor')`, ls.tenant, commissionUser); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct{ method, path, body string }{
+		{http.MethodPost, electionsPath, encode(draft())},
+		{http.MethodPut, electionsPath + "/" + ls.electionID, encode(draft())},
+		{http.MethodPost, ls.listsPath(), body},
+		{http.MethodPost, ls.commissionListsPath(), body},
+		{http.MethodPost, ls.listPath(existing.ID) + "/approve", ""},
+		{http.MethodPost, ls.listPath(existing.ID) + "/reject", `{"reason":"test"}`},
+	} {
+		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			wantResponse(t, ls.do(tc.method, tc.path, tc.body, electionIP, ls.commNoMFA, nil), http.StatusForbidden, forbiddenBody)
+		})
+	}
+}
+
+// R4: Veedor list reads require MFA before election or list data is read.
+func TestVeedorListReadsRequireMFA(t *testing.T) {
+	ctx := integration(t)
+	ls := newListSchool(t, ctx)
+	body := encode(map[string]any{"name": "Lista de prueba", "representativeRosterMemberId": ls.danaID, "candidates": candidatesPayload(ls.betoID, ls.eliID, ls.fitoID, ls.gabiID)})
+	created := decodeList(t, ls.do(http.MethodPost, ls.commissionListsPath(), body, electionIP, ls.commTok, nil), http.StatusCreated)
+	created = decodeList(t, ls.do(http.MethodPost, ls.listPath(created.ID)+"/approve", "", electionIP, ls.commTok, nil), http.StatusOK)
+	_, pending := ls.signIn(t, ctx, "veedor")
+	_, verified, _, _ := ls.signInMFA(t, ctx, "veedor")
+	for _, path := range []string{ls.listsPath(), ls.listPath(created.ID)} {
+		wantResponse(t, ls.get(pending, path), http.StatusForbidden, mfaBody)
+		if got := ls.get(verified, path); got.Code != http.StatusOK {
+			t.Fatalf("verified %s: %d %s", path, got.Code, got.Body)
+		}
+	}
+}

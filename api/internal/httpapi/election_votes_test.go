@@ -748,3 +748,34 @@ func TestVoteOnAnAnnulledElection(t *testing.T) {
 	wantBox(t, ctx, v.electionID, 1, carla.member)
 	wantVoteError(t, v.turnout(carlaTok, v.electionID), http.StatusConflict, "election_annulled")
 }
+
+// R4-R6: a Veedor proves MFA to read turnout, cannot vote, and sees no live list results.
+func TestVeedorTurnoutAndVote(t *testing.T) {
+	ctx := integration(t)
+	v := newVoteSchool(t, ctx)
+	carla := v.voter(t, ctx, "Carla Ficticia", "30333101")
+	carlaToken := v.loginOK(t, carla.email)
+	_, pending := v.signIn(t, ctx, "veedor")
+	_, token, _, _ := v.signInMFA(t, ctx, "veedor")
+	v.clk.t = vStart
+	size := rosterSize(t, ctx, v.tenant)
+	wantVoteError(t, v.turnout(pending, v.electionID), http.StatusForbidden, "mfa_required")
+	wantTurnout(t, v.turnout(token, v.electionID), 0, size, false)
+	wantVoteError(t, v.vote(token, v.electionID, voteBody(v.blue)), http.StatusForbidden, "not_in_electorate")
+	wantVoted(t, v.vote(carlaToken, v.electionID, voteBody(v.blue)))
+	wantTurnout(t, v.turnout(token, v.electionID), 1, size, false)
+	wantVoteError(t, v.results(token, v.electionID), http.StatusConflict, "results_not_available")
+}
+
+// R5: Veedor cannot vote even when the existing account remains linked to the roster.
+func TestVeedorRoleOverridesExistingRosterForVoting(t *testing.T) {
+	ctx := integration(t)
+	v := newVoteSchool(t, ctx)
+	student := v.voter(t, ctx, "Carla Ficticia", "30333102")
+	if _, err := tdb.Super.Exec(ctx, `INSERT INTO memberships(tenant_id,user_id,role) VALUES($1,$2,'veedor')`, v.tenant, student.userID); err != nil {
+		t.Fatal(err)
+	}
+	token := v.loginOK(t, student.email)
+	v.clk.t = vStart
+	wantVoteError(t, v.vote(token, v.electionID, voteBody(v.blue)), http.StatusForbidden, "not_in_electorate")
+}
