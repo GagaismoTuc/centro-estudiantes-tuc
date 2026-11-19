@@ -1292,7 +1292,7 @@ export interface paths {
         put?: never;
         /**
          * Reverse an entry as any officer with MFA
-         * @description Records, in one transaction, a Reversal: an entry with the same amount and category, the opposite direction, today's date in Argentina and the description "Reversión: " followed by the original's. Old entries may be reversed; the Reversal falls in the current period.
+         * @description Records, in one transaction, a Reversal: an entry with the same amount and category (and optional event budget and heading link), the opposite direction, today's date in Argentina and the description "Reversión: " followed by the original's. Old entries may be reversed; the Reversal falls in the current period.
          */
         post: operations["postFinanceEntryReversal"];
         delete?: never;
@@ -1568,6 +1568,10 @@ export interface components {
             /** Format: int64 */
             amountCents: number;
             description: string;
+            /** @description Optional active Event budget id; must be paired with headingId. */
+            eventBudgetId?: string;
+            /** @description Optional Heading id with at least one line in eventBudgetId; must be paired with eventBudgetId. */
+            headingId?: string;
         };
         FinanceEntry: {
             id: string;
@@ -1582,6 +1586,14 @@ export interface components {
             recordedAt: string;
             /** @description True when at least one Receipt backs this entry. */
             hasReceipt: boolean;
+            /** @description Present when this entry is linked to an Event budget. */
+            eventBudgetId?: string;
+            /** @description Present when this entry is linked to an Event budget; visible to all school members in the ledger. */
+            eventBudgetName?: string;
+            /** @description Present when this entry is linked to an Event budget; the Heading id. */
+            headingId?: string;
+            /** @description Present when this entry is linked to an Event budget; the Heading name. */
+            headingName?: string;
             /** @description Present when this entry is a Reversal; the id of the entry it reverses. */
             reversesId?: string;
             /** @description Present when this entry was reversed; the id of its Reversal. */
@@ -3184,6 +3196,18 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Budget has linked finance entries (`budget_has_entries`); archive it instead. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "budget_has_entries";
+                    };
                 };
             };
         };
@@ -5238,7 +5262,7 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
-            /** @description Category not found in the active school (`not_found`). */
+            /** @description Category, event budget or heading not found in the active school (`not_found`). */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -5247,13 +5271,16 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Invalid input: invalid_amount, invalid_date, future_date, description_required, description_too_long, invalid_category, reserved_category. */
+            /** @description Invalid input: `invalid_amount`, `invalid_date`, `future_date`, `description_required`, `description_too_long`, `invalid_category`, `reserved_category`, `invalid_event_link`, `heading_not_in_budget`. */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Error"];
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "invalid_amount" | "invalid_date" | "future_date" | "description_required" | "description_too_long" | "invalid_category" | "reserved_category" | "invalid_event_link" | "heading_not_in_budget";
+                    };
                 };
             };
         };

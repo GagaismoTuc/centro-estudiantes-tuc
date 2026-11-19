@@ -789,6 +789,17 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/Error"}
+        "409":
+          description: Budget has linked finance entries (`budget_has_entries`); archive it instead.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [budget_has_entries]
   /event-budgets/{id}/archive:
     post:
       operationId: postEventBudgetArchive
@@ -2567,15 +2578,33 @@ paths:
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404":
-          description: Category not found in the active school (`not_found`).
+          description: Category, event budget or heading not found in the active school (`not_found`).
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
         "422":
-          description: "Invalid input: invalid_amount, invalid_date, future_date, description_required, description_too_long, invalid_category, reserved_category."
+          description: >
+            Invalid input: `invalid_amount`, `invalid_date`, `future_date`, `description_required`,
+            `description_too_long`, `invalid_category`, `reserved_category`, `invalid_event_link`,
+            `heading_not_in_budget`.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/Error" }
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - invalid_amount
+                      - invalid_date
+                      - future_date
+                      - description_required
+                      - description_too_long
+                      - invalid_category
+                      - reserved_category
+                      - invalid_event_link
+                      - heading_not_in_budget
   /finance/report:
     get:
       operationId: getFinanceReport
@@ -2674,9 +2703,10 @@ paths:
       operationId: postFinanceEntryReversal
       summary: Reverse an entry as any officer with MFA
       description: >
-        Records, in one transaction, a Reversal: an entry with the same amount and category, the
-        opposite direction, today's date in Argentina and the description "Reversión: " followed by
-        the original's. Old entries may be reversed; the Reversal falls in the current period.
+        Records, in one transaction, a Reversal: an entry with the same amount and category (and
+        optional event budget and heading link), the opposite direction, today's date in Argentina
+        and the description "Reversión: " followed by the original's. Old entries may be reversed;
+        the Reversal falls in the current period.
       responses:
         "201":
           description: Reversal recorded.
@@ -3395,6 +3425,12 @@ components:
         date: { type: string }
         amountCents: { type: integer, format: int64 }
         description: { type: string }
+        eventBudgetId:
+          type: string
+          description: Optional active Event budget id; must be paired with headingId.
+        headingId:
+          type: string
+          description: Optional Heading id with at least one line in eventBudgetId; must be paired with eventBudgetId.
     FinanceEntry:
       type: object
       required: [id, categoryId, direction, date, amountCents, description, recordedBy, recordedAt, hasReceipt]
@@ -3410,6 +3446,18 @@ components:
         hasReceipt:
           type: boolean
           description: True when at least one Receipt backs this entry.
+        eventBudgetId:
+          type: string
+          description: Present when this entry is linked to an Event budget.
+        eventBudgetName:
+          type: string
+          description: Present when this entry is linked to an Event budget; visible to all school members in the ledger.
+        headingId:
+          type: string
+          description: Present when this entry is linked to an Event budget; the Heading id.
+        headingName:
+          type: string
+          description: Present when this entry is linked to an Event budget; the Heading name.
         reversesId:
           type: string
           description: Present when this entry is a Reversal; the id of the entry it reverses.
