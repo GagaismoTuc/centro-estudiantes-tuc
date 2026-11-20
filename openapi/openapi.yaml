@@ -2554,6 +2554,23 @@ paths:
                 $ref: "#/components/schemas/FinanceBalance"
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "403": { $ref: "#/components/responses/Forbidden" }
+  /finance/calculator-summary:
+    get:
+      operationId: getFinanceCalculatorSummary
+      summary: Officer-only totals for the financial calculators
+      description: |
+        Returns the active school's current roster headcount, Fund balance and total still owed
+        across all Dues (excluding exempt Roster members). Read-only; returns totals only, never
+        names or per-student data. Restricted to Officers with a verified second factor.
+      responses:
+        "200":
+          description: Current calculator totals in integer cents plus roster count.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FinanceCalculatorSummary"
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/DirectoryForbidden" }
   /finance/entries:
     get:
       operationId: getFinanceEntries
@@ -3714,6 +3731,13 @@ components:
       required: [balanceCents]
       properties:
         balanceCents: { type: integer, description: "The exact sum; may exceed int64." }
+    FinanceCalculatorSummary:
+      type: object
+      required: [rosterCount, balance, owedOnDues]
+      properties:
+        rosterCount: { type: integer, description: "Current number of Roster members in the active school." }
+        balance: { type: integer, description: "Current Fund balance in integer cents; exact sum, may exceed int64 and may be negative." }
+        owedOnDues: { type: integer, description: "Total in integer cents still owed across all Dues by non-exempt Roster members; exact sum, may exceed int64." }
     NewFinanceDue:
       type: object
       additionalProperties: false

@@ -108,6 +108,26 @@ func (s *server) GetFinanceBalance(w http.ResponseWriter, r *http.Request) {
 		BalanceCents json.Number `json:"balanceCents"`
 	}{BalanceCents: json.Number(balance)})
 }
+func (s *server) GetFinanceCalculatorSummary(w http.ResponseWriter, r *http.Request) {
+	sess, ok := rosterSession(w, r)
+	if !ok {
+		return
+	}
+	summary, err := s.finance.CalculatorSummary(r.Context(), sess)
+	if err != nil {
+		writeFinanceError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, struct {
+		RosterCount int         `json:"rosterCount"`
+		Balance     json.Number `json:"balance"`
+		OwedOnDues  json.Number `json:"owedOnDues"`
+	}{
+		RosterCount: summary.RosterCount,
+		Balance:     json.Number(summary.Balance),
+		OwedOnDues:  json.Number(summary.OwedOnDues),
+	})
+}
 func (s *server) GetFinanceEntries(w http.ResponseWriter, r *http.Request) {
 	sess, ok := rosterSession(w, r)
 	if !ok {
