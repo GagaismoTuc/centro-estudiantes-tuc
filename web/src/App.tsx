@@ -8,6 +8,7 @@ import { captureFragmentToken } from "./lib/fragment.ts";
 import { destinationFor, readNext, safeNext, withNext } from "./lib/next.ts";
 import { Redirect, usePathname } from "./lib/router.tsx";
 import { Claim } from "./screens/Claim.tsx";
+import { Invitation } from "./screens/Invitation.tsx";
 import { CommissionPanel } from "./screens/CommissionPanel.tsx";
 import { Election } from "./screens/Election.tsx";
 import { Calculator } from "./screens/Calculator.tsx";
@@ -42,6 +43,7 @@ export function App() {
 const publicRoutes: Record<string, () => JSX.Element> = {
   "/ingresar": SignIn,
   "/alta": Claim,
+  "/invitacion": Invitation,
   "/verificar": VerifyEmail,
   "/restablecer": ResetPassword,
 };
@@ -90,6 +92,7 @@ function Routes() {
     if (path !== home) return <Redirect to={destinationFor(home, nextFromHere)} />;
     return home === "/seguridad/activar" ? <MfaEnroll /> : <MfaVerify />;
   }
+  if (path === "/centro-de-estudiantes" && hasRole(me, "veedor")) return <Redirect to="/eleccion" />;
   if ((path === "/padron" || path === "/miembros") && !hasRole(me, "school_admin")) return <Redirect to="/" />;
   if ((path === "/eleccion" || path === "/centro-de-estudiantes" || path === "/cuotas") && me.role === null) return <Redirect to="/" />;
 

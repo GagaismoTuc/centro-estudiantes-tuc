@@ -3,7 +3,8 @@ import { call } from "../api/call.ts";
 import { apiClient } from "../api/client.ts";
 import { errorMessage } from "../api/errors.ts";
 import type { components } from "../api/schema.gen.ts";
-import { useSession } from "../auth/session.tsx";
+import { hasRole, useMe, useSession } from "../auth/session.tsx";
+import { Annulment } from "./CommissionPanel.tsx";
 import { FieldError, FormStatus, type Status } from "../components/Form.tsx";
 import { PageTitle, useDocumentTitle } from "../components/Page.tsx";
 import { ListCard, ListForm } from "./ElectionLists.tsx";
@@ -25,6 +26,7 @@ type CommissionMember = components["schemas"]["CommissionMember"];
 export function Election() {
   useDocumentTitle("Elección");
   const { refresh } = useSession();
+  const isVeedor = hasRole(useMe(), "veedor");
   const [commission, setCommission] = useState<CommissionStatus | null>(null);
   // undefined while loading, null when there is no election in progress.
   const [election, setElection] = useState<ElectionData | null | undefined>(undefined);
@@ -85,7 +87,7 @@ export function Election() {
         </section>
       )}
       {election && <ElectionDetails election={election} />}
-      {election?.state === "open" && listsData && <VotePanel election={election} lists={approvedLists} />}
+      {election?.state === "open" && listsData && <VotePanel election={election} lists={approvedLists} canVote={!isVeedor} />}
       {election?.state === "closed" && <ResultsPanel electionId={election.id} />}
       {election && <SecretBallotGuarantee />}
       {election && election.state !== "draft" && election.state !== "annulled" && listsData && (
@@ -102,7 +104,7 @@ export function Election() {
           )}
         </section>
       )}
-      {election && election.state !== "annulled" && myLists.length > 0 && (
+      {!isVeedor && election && election.state !== "annulled" && myLists.length > 0 && (
         <section className="panel" aria-labelledby="my-lists-title">
           <h2 id="my-lists-title">Mis listas</h2>
           <div className="election-lists">
@@ -117,7 +119,7 @@ export function Election() {
           </div>
         </section>
       )}
-      {election && election.state === "submission" && listsData?.rosterMemberId && (
+      {!isVeedor && election && election.state === "submission" && listsData?.rosterMemberId && (
         <ListForm
           mode={editingList ? "edit" : "submit"}
           election={election}
@@ -135,6 +137,9 @@ export function Election() {
           <h2 id="commission-title">Centro de estudiantes</h2>
           <MemberList members={commission.commission.members} />
         </section>
+      )}
+      {isVeedor && election && ["draft", "submission", "scheduled", "open"].includes(election.state) && (
+        <Annulment isVeedor election={election} onDone={async (next) => { setStatus(next); await load(); }} />
       )}
       {commission?.canDesignate && (
         <Designation current={commission.commission?.members ?? []} onSaved={load} onFailed={failed} />
@@ -165,7 +170,7 @@ function ElectionDetails({ election }: { election: ElectionData }) {
       </h2>
       {election.annulment && (
         <p>
-          <strong>Anulada:</strong> <bdi>{election.annulment.reason}</bdi>
+          <strong>{election.annulment.annulledBy === "veedor" ? "Anulada por el Veedor:" : "Anulada:"}</strong> <bdi>{election.annulment.reason}</bdi>
         </p>
       )}
       <dl className="details">

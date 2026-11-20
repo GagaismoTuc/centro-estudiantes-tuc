@@ -29,7 +29,7 @@ const BLANK = "blank";
  * confirmation step. Retrying after a dropped signal is safe: a vote already stored
  * answers `already_voted`, which reads as "Ya votaste".
  */
-export function VotePanel({ election, lists }: { election: Election; lists: ElectionList[] }) {
+export function VotePanel({ election, lists, canVote = true }: { election: Election; lists: ElectionList[]; canVote?: boolean }) {
   const id = useId();
   const { refresh } = useSession();
   const [turnout, setTurnout] = useState<Turnout | null>(null);
@@ -123,12 +123,12 @@ export function VotePanel({ election, lists }: { election: Election; lists: Elec
           </button>
         </div>
       )}
-      {turnout?.hasVoted && (
+      {canVote && turnout?.hasVoted && (
         <p ref={doneRef} tabIndex={-1}>
           Ya votaste
         </p>
       )}
-      {turnout && !turnout.hasVoted && !confirming && (
+      {canVote && turnout && !turnout.hasVoted && !confirming && (
         <form
           noValidate
           onSubmit={(event) => {
@@ -174,7 +174,7 @@ export function VotePanel({ election, lists }: { election: Election; lists: Elec
           </div>
         </form>
       )}
-      {turnout && !turnout.hasVoted && confirming && (
+      {canVote && turnout && !turnout.hasVoted && confirming && (
         <section>
           <h3 ref={confirmRef} tabIndex={-1}>
             Confirmá tu voto

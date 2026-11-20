@@ -237,3 +237,29 @@ test("officers with positions from an election show them and can lose them (S10)
   fireEvent.click(screen.getByRole("button", { name: "Quitar cargo de Mo Inventado" }));
   await waitFor(() => expect(sentTo(sent, "DELETE /members/m6/officer")).toHaveLength(1));
 });
+
+test("R12: school admin invites a Veedor or school administrator by email", async () => {
+  const sent = mockApi({
+    "GET /auth/me": ok(me({ role: "school_admin", mfa: "satisfied" })),
+    "GET /members": ok([]),
+    "GET /roster": ok([]),
+    "POST /members/invitations": [fail(422, "invalid_email"), ok(undefined, 202), ok(undefined, 202)],
+  });
+  window.history.replaceState(null, "", "/miembros");
+  render(<App />);
+  const email = await screen.findByLabelText("Correo electr\u00f3nico");
+  fireEvent.change(email, { target: { value: "invalid@ejemplo.test" } });
+  fireEvent.click(screen.getByRole("button", { name: "Invitar Veedor" }));
+  await waitFor(() => expect(email.getAttribute("aria-invalid")).toBe("true"));
+  expect(document.activeElement).toBe(email);
+  expect(document.getElementById(email.getAttribute("aria-describedby") ?? "")?.getAttribute("aria-live")).toBe("polite");
+  fireEvent.change(email, { target: { value: "veedora@ejemplo.test" } });
+  fireEvent.click(screen.getByRole("button", { name: "Invitar Veedor" }));
+  await waitFor(() => expect(sentTo(sent, "POST /members/invitations")).toHaveLength(2));
+  expect(sentTo(sent, "POST /members/invitations")[1]!.body).toEqual({ email: "veedora@ejemplo.test", role: "veedor" });
+  fireEvent.change(email, { target: { value: "admin@ejemplo.test" } });
+  fireEvent.click(screen.getByRole("button", { name: "Invitar administrador" }));
+  await waitFor(() => expect(sentTo(sent, "POST /members/invitations")).toHaveLength(3));
+  expect(sentTo(sent, "POST /members/invitations")[2]!.body).toEqual({ email: "admin@ejemplo.test", role: "school_admin" });
+  expect(await screen.findByText("Se gener\u00f3 la invitaci\u00f3n. Si no llega, pod\u00e9s reenviarla.")).toBeTruthy();
+});

@@ -16,9 +16,9 @@ import { OtpField, SignOutLink } from "./MfaVerify.tsx";
 type Enrollment = components["schemas"]["MfaEnrollment"];
 
 /** /seguridad/activar: TOTP enrollment for school admins and officers. */
-export function MfaEnroll() {
+export function MfaEnroll({ onComplete }: { onComplete?: () => Promise<void> } = {}) {
   const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null);
-  return recoveryCodes ? <RecoveryCodes codes={recoveryCodes} /> : <Setup onConfirmed={setRecoveryCodes} />;
+  return recoveryCodes ? <RecoveryCodes codes={recoveryCodes} onComplete={onComplete} /> : <Setup onConfirmed={setRecoveryCodes} />;
 }
 
 function Setup({ onConfirmed }: { onConfirmed: (codes: string[]) => void }) {
@@ -107,7 +107,7 @@ function Setup({ onConfirmed }: { onConfirmed: (codes: string[]) => void }) {
   );
 }
 
-function RecoveryCodes({ codes }: { codes: string[] }) {
+function RecoveryCodes({ codes, onComplete }: { codes: string[]; onComplete: (() => Promise<void>) | undefined }) {
   useDocumentTitle("Códigos de recuperación");
   const { afterSignIn } = useSession();
   const [saved, setSaved] = useState(false);
@@ -119,7 +119,7 @@ function RecoveryCodes({ codes }: { codes: string[] }) {
     event.preventDefault();
     if (!form.validate({ saved: (v) => (v ? null : "Marcá la casilla cuando hayas guardado los códigos.") })) return;
     setPending(true);
-    await afterSignIn();
+    await (onComplete ? onComplete() : afterSignIn());
   }
 
   return (

@@ -32,7 +32,7 @@ export function SignOutLink() {
 }
 
 /** /seguridad/verificar: second step of sign-in for sessions with a confirmed TOTP. */
-export function MfaVerify() {
+export function MfaVerify({ onComplete }: { onComplete?: () => Promise<void> } = {}) {
   useDocumentTitle("Verificación en dos pasos");
   const { afterSignIn } = useSession();
   const [useRecovery, setUseRecovery] = useState(false);
@@ -50,7 +50,7 @@ export function MfaVerify() {
     setPending(true);
     setStatus(null);
     const result = await call(apiClient.POST("/auth/mfa/verify", { body }));
-    if (result.ok) return afterSignIn();
+    if (result.ok) return onComplete ? onComplete() : afterSignIn();
     setStatus({ tone: "error", text: errorMessage(result.code, useRecovery ? "mfa-recovery" : "mfa") });
     setPending(false);
     form.failed(result.code);
