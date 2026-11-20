@@ -248,6 +248,18 @@ describe("R4 (#84) — Cuánto podemos gastar", () => {
     expect(negative.formattedTotalWithOwed).toBe("-$ 10.000");
     expect(negative.summaryMessage).toBe("Hoy tenés -$ 20.000; si cobrás lo que falta, -$ 10.000");
 
+    // Values above Number.MAX_SAFE_INTEGER keep exact BigInt precision.
+    const huge = calculateSpendable({
+      balanceCents: "9007199254740993",
+      owedOnDuesCents: "200",
+      plannedCost: "10",
+    });
+    expect(huge.totalWithOwedCents).toBe("9007199254741193");
+    expect(huge.summaryMessage).toBe(
+      "Hoy tenés $ 90.071.992.547.409,93; si cobrás lo que falta, $ 90.071.992.547.411,93",
+    );
+    expect(huge.comparison?.message).toBe("Te alcanza hoy y te sobran $ 90.071.992.547.399,93");
+
     // Invalid planned cost surfaces an error without breaking the summary.
     const badCost = calculateSpendable({
       balanceCents: "15000000",

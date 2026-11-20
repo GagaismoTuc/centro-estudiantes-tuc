@@ -322,10 +322,32 @@ describe("R2, R3, R4, R7 (#84) — Calculators from real data", () => {
       "GET /auth/me": ok(me({ role: "officer", mfa: "satisfied" })),
       "GET /finance/calculator-summary": ok({ rosterCount: 100, balance: -2_000_000, owedOnDues: 1_000_000 }),
     });
-    renderAt("/calculadora");
+    const second = renderAt("/calculadora");
     const negSection = await screen.findByRole("region", { name: "Cuánto podemos gastar" });
     expect(
       await within(negSection).findByText("Hoy tenés -$ 20.000; si cobrás lo que falta, -$ 10.000"),
+    ).toBeTruthy();
+
+    // Values above Number.MAX_SAFE_INTEGER from the raw JSON response display without precision loss.
+    second.unmount();
+    mockApi({ "GET /auth/me": ok(me({ role: "officer", mfa: "satisfied" })) });
+    const baseFetch = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      const req = input as Request;
+      if (new URL(req.url).pathname === "/api/finance/calculator-summary") {
+        return new Response('{"rosterCount":480,"balance":9007199254740993,"owedOnDues":200}', {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return baseFetch(input, init);
+    });
+    renderAt("/calculadora");
+    const hugeSection = await screen.findByRole("region", { name: "Cuánto podemos gastar" });
+    expect(
+      await within(hugeSection).findByText(
+        "Hoy tenés $ 90.071.992.547.409,93; si cobrás lo que falta, $ 90.071.992.547.411,93",
+      ),
     ).toBeTruthy();
   });
 });
