@@ -521,7 +521,10 @@ paths:
                     type: string
                     enum: [not_found]
         "409":
-          description: already_officer or position_taken.
+          description: >
+            `already_officer`, `position_taken`, or `board_elected`: the latest published election
+            (an annulled one does not count) had a winner, whose list is the Board, so positions are
+            no longer assigned by hand; nothing changes.
           content:
             application/json:
               schema:
@@ -530,7 +533,7 @@ paths:
                 properties:
                   error:
                     type: string
-                    enum: [already_officer, position_taken]
+                    enum: [already_officer, position_taken, board_elected]
         "422":
           description: invalid_position.
           content:
@@ -563,6 +566,19 @@ paths:
                   error:
                     type: string
                     enum: [not_found]
+        "409":
+          description: >
+            `board_elected`: the latest published election (an annulled one does not count) had a
+            winner, whose list is the Board, so positions are no longer removed by hand; nothing changes.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [board_elected]
   /roster:
     get:
       operationId: getRoster

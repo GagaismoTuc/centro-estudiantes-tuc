@@ -20,6 +20,7 @@ const messages: Record<string, string> = {
   not_found: "No encontramos lo que buscabas.",
   already_officer: "Ese alumno ya tiene un cargo.",
   position_taken: "Ese cargo ya est\u00e1 ocupado.",
+  board_elected: "La comisión directiva salió de la última elección; no se puede cambiar a mano",
   invalid_position: "Eleg\u00ed un cargo v\u00e1lido.",
   invalid_range: "Revis\u00e1 el rango de fechas: puede tener hasta 31 d\u00edas.",
   invalid_quantity: "Ingres\u00e1 una cantidad v\u00e1lida.",

@@ -402,10 +402,12 @@ func TestResultsWhoSeesThem(t *testing.T) {
 	_, outsiderTok := v.signIn(t, ctx, "")
 	commissionTok := v.rosterLogin(t, ctx, v.ana)
 
-	want := v.results(studentTok, v.electionID)
+	// The officer reads first: the first read publishes the result, and Lista Azul (with no
+	// candidates) becomes the Board, so the officer would no longer be one (#58 S1).
+	want := v.results(officerTok, v.electionID)
 	decodeResult(t, want)
 	for _, tc := range []struct{ name, token string }{
-		{"officer", officerTok}, {"commission member", commissionTok}, {"school admin", adminTok},
+		{"student", studentTok}, {"commission member", commissionTok}, {"school admin", adminTok},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			rec := v.results(tc.token, v.electionID)
@@ -471,9 +473,11 @@ func TestResultsOfAnAnnulledElection(t *testing.T) {
 }
 
 // S1 (#57 follow-up): the result is published at the close with no background process, so from the
-// end on, and without anyone reading the result, the commission creates the school's next election;
-// an instant before the end the election is still in progress. The closed election keeps its result
-// and is stored as published at its end.
+// end on, and without anyone reading the result, the school's next election can be created; an
+// instant before the end the election is still in progress. The closed election keeps its result
+// and is stored as published at its end. #58 S6: that publication ends the commission's mandate, so
+// its member gets 403 forbidden (and nothing is written); a new commission is designated and creates
+// the next election.
 func TestNextElectionAfterTheClose(t *testing.T) {
 	ctx := integration(t)
 	v := newVoteSchool(t, ctx)
@@ -486,7 +490,17 @@ func TestNextElectionAfterTheClose(t *testing.T) {
 	wantResponse(t, v.create(v.member, encode(draft())), http.StatusConflict, `{"error":"election_in_progress"}`)
 
 	v.clk.t = vEnd
-	next := decodeElection(t, v.create(v.member, encode(draft())), http.StatusCreated)
+	wantResponse(t, v.create(v.member, encode(draft())), http.StatusForbidden, forbiddenBody)
+	var unpublished bool
+	if err := tdb.Super.QueryRow(ctx, `SELECT published_at IS NULL FROM elections WHERE id = $1`, v.electionID).Scan(&unpublished); err != nil || !unpublished {
+		t.Fatalf("published_at IS NULL: %t (%v), want the refused create to write nothing", unpublished, err)
+	}
+	electorate := rosterSize(t, ctx, v.tenant)
+	_, newMember, dora := v.student(t, ctx, "Dora Ficticia", "30333150")
+	// Lista Azul won with no candidates, so the Board is empty and the school admin designates (ADR 0003).
+	decodeCommission(t, v.designate(v.admin, dora))
+	newMember, _ = v.confirm(t, newMember, v.enroll(t, newMember))
+	next := decodeElection(t, v.create(newMember, encode(draft())), http.StatusCreated)
 	for _, path := range []string{currentPath, latestPath} {
 		if got := decodeElection(t, v.get(carlaTok, path), http.StatusOK); got.ID != next.ID {
 			t.Fatalf("%s = %s, want the next election %s", path, got.ID, next.ID)
@@ -500,5 +514,5 @@ func TestNextElectionAfterTheClose(t *testing.T) {
 		t.Fatalf("published_at = ends_at: %t (%v), want true", published, err)
 	}
 	wantPublished(t, v.results(carlaTok, v.electionID),
-		[]resultList{{v.blue, "Lista Azul", 1}, {v.green, "Lista Verde", 0}}, 0, 1, rosterSize(t, ctx, v.tenant), "winner", v.blue)
+		[]resultList{{v.blue, "Lista Azul", 1}, {v.green, "Lista Verde", 0}}, 0, 1, electorate, "winner", v.blue)
 }

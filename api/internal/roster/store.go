@@ -45,6 +45,24 @@ type Store struct {
 	pool *pgxpool.Pool
 	key  []byte
 	now  func() time.Time
+	// publish publishes, in tx, the tenant's closed election not yet published (see SetPublisher).
+	publish func(ctx context.Context, tx pgx.Tx, tenant string) error
+}
+
+// SetPublisher sets the function that publishes, in the caller's transaction, the tenant's election
+// whose end has passed but whose result nobody read yet (elections.Store.PublishClosed). The Board
+// operations run it first, so they see the Board that publication hands over (#58 S7, S10); with
+// none set they skip it.
+func (s *Store) SetPublisher(publish func(ctx context.Context, tx pgx.Tx, tenant string) error) {
+	s.publish = publish
+}
+
+// publishClosed runs the publisher, if any, in tx.
+func (s *Store) publishClosed(ctx context.Context, tx pgx.Tx, tenant string) error {
+	if s.publish == nil {
+		return nil
+	}
+	return s.publish(ctx, tx, tenant)
 }
 
 // NewStore returns a Store; key is the access-code HMAC key and now the clock. It panics when now

@@ -3033,7 +3033,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description already_officer or position_taken. */
+            /** @description `already_officer`, `position_taken`, or `board_elected`: the latest published election (an annulled one does not count) had a winner, whose list is the Board, so positions are no longer assigned by hand; nothing changes. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3041,7 +3041,7 @@ export interface operations {
                 content: {
                     "application/json": {
                         /** @enum {string} */
-                        error: "already_officer" | "position_taken";
+                        error: "already_officer" | "position_taken" | "board_elected";
                     };
                 };
             };
@@ -3088,6 +3088,18 @@ export interface operations {
                     "application/json": {
                         /** @enum {string} */
                         error: "not_found";
+                    };
+                };
+            };
+            /** @description `board_elected`: the latest published election (an annulled one does not count) had a winner, whose list is the Board, so positions are no longer removed by hand; nothing changes. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "board_elected";
                     };
                 };
             };

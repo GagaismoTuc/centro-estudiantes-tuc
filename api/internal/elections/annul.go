@@ -13,8 +13,9 @@ import (
 
 // asElectionCommission runs fn with election id of the session's tenant, locked, after checking in
 // the same transaction, in order: a membership in the tenant (ErrForbidden), the election
-// (ErrNotFound), the user's roster entry on the election's commission, ended or not (ErrForbidden),
-// and the second factor (auth.ErrMFARequired). It holds the commission lock, like asCommissionMember,
+// (ErrNotFound), the user's roster entry on the election's commission, ended or not, unless its
+// mandate ended with the publication of this election's result (ErrForbidden, #58 S6), and the
+// second factor (auth.ErrMFARequired). It holds the commission lock, like asCommissionMember,
 // so a concurrent Designate commits either before the check or after fn's write.
 func (s *Store) asElectionCommission(ctx context.Context, sess auth.Session, id string, fn func(pgx.Tx, Election) error) error {
 	if sess.TenantID == "" {
@@ -38,15 +39,18 @@ func (s *Store) asElectionCommission(ctx context.Context, sess auth.Session, id 
 		if err != nil {
 			return err
 		}
-		var onCommission bool
+		var onCommission, ended bool
 		if err := tx.QueryRow(ctx, `
 			SELECT EXISTS (SELECT FROM electoral_commission_members cm
 			               JOIN memberships ms ON ms.tenant_id = cm.tenant_id AND ms.roster_member_id = cm.roster_member_id
-			               WHERE cm.tenant_id = $1 AND cm.commission_id = $2 AND ms.user_id = $3)`,
-			sess.TenantID, e.CommissionID, sess.UserID).Scan(&onCommission); err != nil {
+			               WHERE cm.tenant_id = $1 AND cm.commission_id = $2 AND ms.user_id = $3),
+			       EXISTS (SELECT FROM electoral_commissions WHERE tenant_id = $1 AND id = $2 AND ended_at IS NOT NULL)`,
+			sess.TenantID, e.CommissionID, sess.UserID).Scan(&onCommission, &ended); err != nil {
 			return err
 		}
-		if !onCommission {
+		// An ended mandate still answers for the election it annulled (ErrElectionAnnulled below);
+		// one ended by this election's publication answers for nothing.
+		if !onCommission || (ended && e.AnnulledAt == nil && e.PublishedAt != nil) {
 			return ErrForbidden
 		}
 		if err := auth.RequireMFA(sess); err != nil {
