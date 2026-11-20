@@ -70,6 +70,15 @@ func (s *Store) asDesignator(ctx context.Context, sess auth.Session, fn func(pgx
 		if err := requireVeedorMFA(ctx, tx, sess); err != nil {
 			return err
 		}
+		// A closed election is published first, so its Board handover decides who designates the
+		// next commission and its ended commission is replaced by a new one (#58 S6). The
+		// commission lock comes first, in the same order as asCommissionMember.
+		if err := lockCommission(ctx, tx, sess.TenantID); err != nil {
+			return err
+		}
+		if err := s.publishClosed(ctx, tx, sess.TenantID); err != nil {
+			return err
+		}
 		a, err := readAccess(ctx, tx, sess.TenantID, sess.UserID)
 		if err != nil {
 			return err
@@ -201,11 +210,16 @@ func (s *Store) AuthorizeDraft(ctx context.Context, sess auth.Session) error {
 }
 
 // Create is CreateElection for a member of the current commission, checked in the same transaction.
+// When CreateElection publishes the commission's own closed election, the commission's mandate ends
+// with it: ErrForbidden, and nothing is written (#58 S6).
 func (s *Store) Create(ctx context.Context, sess auth.Session, d Draft) (Election, error) {
 	var out Election
 	err := s.asCommissionMember(ctx, sess, func(tx pgx.Tx) error {
 		var err error
 		out, err = s.createElection(ctx, tx, sess.TenantID, d)
+		if errors.Is(err, ErrNoCommission) {
+			return ErrForbidden // the caller was on the current commission until the publication ended it
+		}
 		return err
 	})
 	return out, err

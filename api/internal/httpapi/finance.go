@@ -45,6 +45,10 @@ func writeFinanceError(w http.ResponseWriter, err error) {
 		writeError(w, 409, "already_reversed")
 	case errors.Is(err, finance.ErrReverseReversal):
 		writeError(w, 409, "cannot_reverse_reversal")
+	case errors.Is(err, finance.ErrInvalidEventLink):
+		writeError(w, 422, "invalid_event_link")
+	case errors.Is(err, finance.ErrHeadingNotInBudget):
+		writeError(w, 422, "heading_not_in_budget")
 	case errors.Is(err, finance.ErrEmptyFile):
 		writeError(w, 422, "empty_file")
 	case errors.Is(err, finance.ErrFileTooLarge):
@@ -64,8 +68,11 @@ func financeEntry(e finance.Entry) oapi.FinanceEntry {
 		}
 		return &v
 	}
-	out := oapi.FinanceEntry{Id: e.ID, CategoryId: e.CategoryID, Direction: e.Direction, Date: e.Date, Description: e.Description, AmountCents: e.AmountCents, RecordedBy: e.RecordedBy, RecordedAt: e.RecordedAt,
-		HasReceipt: e.HasReceipt, ReversesId: optional(e.ReversesID), ReversalId: optional(e.ReversalID), ReversedBy: optional(e.ReversedBy), ReversedOn: optional(e.ReversedOn)}
+	out := oapi.FinanceEntry{
+		Id: e.ID, CategoryId: e.CategoryID, Direction: e.Direction, Date: e.Date, Description: e.Description, AmountCents: e.AmountCents, RecordedBy: e.RecordedBy, RecordedAt: e.RecordedAt,
+		HasReceipt: e.HasReceipt, ReversesId: optional(e.ReversesID), ReversalId: optional(e.ReversalID), ReversedBy: optional(e.ReversedBy), ReversedOn: optional(e.ReversedOn),
+		EventBudgetId: optional(e.EventBudgetID), EventBudgetName: optional(e.EventBudgetName), HeadingId: optional(e.HeadingID), HeadingName: optional(e.HeadingName),
+	}
 	if e.RosterMemberID != "" {
 		out.RosterMember = &oapi.FinanceEntryRosterMember{Id: e.RosterMemberID, FullName: e.RosterMemberName}
 	}
@@ -100,6 +107,26 @@ func (s *server) GetFinanceBalance(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, struct {
 		BalanceCents json.Number `json:"balanceCents"`
 	}{BalanceCents: json.Number(balance)})
+}
+func (s *server) GetFinanceCalculatorSummary(w http.ResponseWriter, r *http.Request) {
+	sess, ok := rosterSession(w, r)
+	if !ok {
+		return
+	}
+	summary, err := s.finance.CalculatorSummary(r.Context(), sess)
+	if err != nil {
+		writeFinanceError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, struct {
+		RosterCount int         `json:"rosterCount"`
+		Balance     json.Number `json:"balance"`
+		OwedOnDues  json.Number `json:"owedOnDues"`
+	}{
+		RosterCount: summary.RosterCount,
+		Balance:     json.Number(summary.Balance),
+		OwedOnDues:  json.Number(summary.OwedOnDues),
+	})
 }
 func (s *server) GetFinanceEntries(w http.ResponseWriter, r *http.Request) {
 	sess, ok := rosterSession(w, r)
@@ -139,11 +166,13 @@ func (s *server) PostFinanceEntries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		CategoryID  string          `json:"categoryId"`
-		Direction   string          `json:"direction"`
-		Date        string          `json:"date"`
-		Amount      json.RawMessage `json:"amountCents"`
-		Description string          `json:"description"`
+		CategoryID    string          `json:"categoryId"`
+		Direction     string          `json:"direction"`
+		Date          string          `json:"date"`
+		Amount        json.RawMessage `json:"amountCents"`
+		Description   string          `json:"description"`
+		EventBudgetID string          `json:"eventBudgetId"`
+		HeadingID     string          `json:"headingId"`
 	}
 	if !decodeStrict(w, r, &req) {
 		return
@@ -153,7 +182,15 @@ func (s *server) PostFinanceEntries(w http.ResponseWriter, r *http.Request) {
 		writeFinanceError(w, finance.ErrAmount)
 		return
 	}
-	entry, err := s.finance.Create(r.Context(), sess, finance.NewEntry{CategoryID: req.CategoryID, Direction: req.Direction, Date: req.Date, AmountCents: amount, Description: req.Description})
+	entry, err := s.finance.Create(r.Context(), sess, finance.NewEntry{
+		CategoryID:    req.CategoryID,
+		Direction:     req.Direction,
+		Date:          req.Date,
+		AmountCents:   amount,
+		Description:   req.Description,
+		EventBudgetID: req.EventBudgetID,
+		HeadingID:     req.HeadingID,
+	})
 	if err != nil {
 		writeFinanceError(w, err)
 		return

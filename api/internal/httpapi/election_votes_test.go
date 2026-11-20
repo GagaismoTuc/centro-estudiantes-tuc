@@ -428,13 +428,28 @@ func TestElectionConfigurationFrozenFromTheStart(t *testing.T) {
 		t.Run(at.name, func(t *testing.T) {
 			ls.clk.t = at.t
 			check(t, "election_frozen", "election_frozen")
+			if at.name == "after the end" {
+				return // designating after the end publishes the result and starts a new commission (#58 S6)
+			}
 			wantResponse(t, ls.designate(ls.officer, ls.ana, ls.betoID), http.StatusConflict, `{"error":"election_frozen"}`)
 			if got := storedMembers(t, ctx, ls.tenant); !slices.Equal(got, commissionBefore) {
 				t.Fatalf("commission = %v, want unchanged %v", got, commissionBefore)
 			}
 		})
 	}
+	// #58 S6: after the end, the designation publishes the result (no winner here: no Ballots), which
+	// ends the frozen commission's mandate, and designates a new one; the closed election stays as it was.
+	decodeCommission(t, ls.designate(ls.officer, ls.ana, ls.betoID))
+	if got, want := storedMembers(t, ctx, ls.tenant), sortedIDs(ls.ana, ls.betoID); !slices.Equal(got, want) {
+		t.Fatalf("new commission = %v, want %v", got, want)
+	}
+	ls.assertSnapshotEqual(t, ctx, listsBefore, "after the new designation")
+	if got := electionRow(t, ctx, ls.electionID); got != electionBefore {
+		t.Fatalf("election = %s, want unchanged %s", got, electionBefore)
+	}
 }
+
+func sortedIDs(ids ...string) []string { slices.Sort(ids); return ids }
 
 // S5: the choice is an approved list of the election or "blank"; a rejected or pending list, a
 // list of another election, empty, null or missing get 422 invalid_choice; a list or election of

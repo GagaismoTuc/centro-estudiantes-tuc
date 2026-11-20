@@ -14,7 +14,35 @@ var (
 	ErrAlreadyOfficer  = errors.New("roster: already officer")
 	ErrPositionTaken   = errors.New("roster: position taken")
 	ErrInvalidPosition = errors.New("roster: invalid position")
+	// ErrBoardElected means the tenant's latest published election had a winner, whose list is the
+	// Board: positions are no longer assigned or removed by hand (#58 S7).
+	ErrBoardElected = errors.New("roster: board elected")
 )
+
+// boardElected returns ErrBoardElected when the latest published, non-annulled election of tenant
+// had a winner. A closed election nobody read yet is published first (#57: published at its close),
+// taking its row lock as a read of its result does. It then takes a share lock on the tenant's elections, so it waits for a publication
+// in progress (which holds its election's row lock while it hands the Board over) and then reads
+// what it committed: a manual change never lands on top of a handover.
+func (s *Store) boardElected(ctx context.Context, tx pgx.Tx, tenant string) error {
+	if err := s.publishClosed(ctx, tx, tenant); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `SELECT FROM elections WHERE tenant_id = $1 FOR SHARE`, tenant); err != nil {
+		return err
+	}
+	var elected bool
+	if err := tx.QueryRow(ctx, `
+		SELECT coalesce((SELECT winner_list_id IS NOT NULL FROM elections
+		                 WHERE tenant_id = $1 AND published_at IS NOT NULL AND annulled_at IS NULL
+		                 ORDER BY published_at DESC, ends_at DESC LIMIT 1), false)`, tenant).Scan(&elected); err != nil {
+		return err
+	}
+	if elected {
+		return ErrBoardElected
+	}
+	return nil
+}
 
 type SchoolMember struct {
 	Email, FullName, RosterMemberID, Position *string
@@ -24,6 +52,10 @@ type SchoolMember struct {
 func (s *Store) ListMembers(ctx context.Context, sess auth.Session) ([]SchoolMember, error) {
 	out := []SchoolMember{}
 	err := s.asAdmin(ctx, sess, func(tx pgx.Tx) error {
+		// The Board shown is the one a closed election hands over, even before anyone reads its result.
+		if err := s.publishClosed(ctx, tx, sess.TenantID); err != nil {
+			return err
+		}
 		rows, err := tx.Query(ctx, `
 			SELECT u.email, rm.full_name, rm.id::text, p.position,
 			       ARRAY(SELECT role FROM memberships x WHERE x.tenant_id=$1 AND x.user_id=u.id
@@ -54,6 +86,9 @@ func (s *Store) AssignOfficer(ctx context.Context, sess auth.Session, member, po
 		case "Presidente", "Vicepresidente", "Secretario", "Tesorero":
 		default:
 			return ErrInvalidPosition
+		}
+		if err := s.boardElected(ctx, tx, sess.TenantID); err != nil {
+			return err
 		}
 		var locked string
 		if err := tx.QueryRow(ctx, `SELECT id::text FROM roster_members WHERE tenant_id=$1 AND id=$2 FOR UPDATE`, sess.TenantID, member).Scan(&locked); errors.Is(err, pgx.ErrNoRows) {
@@ -88,6 +123,9 @@ func (s *Store) RemoveOfficer(ctx context.Context, sess auth.Session, member str
 	return s.asAdmin(ctx, sess, func(tx pgx.Tx) error {
 		if !uuidPattern.MatchString(member) {
 			return ErrNotFound
+		}
+		if err := s.boardElected(ctx, tx, sess.TenantID); err != nil {
+			return err
 		}
 		tag, err := tx.Exec(ctx, `DELETE FROM officer_positions WHERE tenant_id=$1 AND roster_member_id=$2`, sess.TenantID, member)
 		if err != nil {

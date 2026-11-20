@@ -1222,6 +1222,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/finance/calculator-summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Officer-only totals for the financial calculators
+         * @description Returns the active school's current roster headcount, Fund balance and total still owed
+         *     across all Dues (excluding exempt Roster members). Read-only; returns totals only, never
+         *     names or per-student data. Restricted to Officers with a verified second factor.
+         */
+        get: operations["getFinanceCalculatorSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/finance/entries": {
         parameters: {
             query?: never;
@@ -1401,7 +1423,7 @@ export interface paths {
         put?: never;
         /**
          * Reverse an entry as any officer with MFA
-         * @description Records, in one transaction, a Reversal: an entry with the same amount and category, the opposite direction, today's date in Argentina and the description "Reversión: " followed by the original's. Old entries may be reversed; the Reversal falls in the current period.
+         * @description Records, in one transaction, a Reversal: an entry with the same amount and category (and optional event budget and heading link), the opposite direction, today's date in Argentina and the description "Reversión: " followed by the original's. Old entries may be reversed; the Reversal falls in the current period.
          */
         post: operations["postFinanceEntryReversal"];
         delete?: never;
@@ -1680,6 +1702,10 @@ export interface components {
             /** Format: int64 */
             amountCents: number;
             description: string;
+            /** @description Optional active Event budget id; must be paired with headingId. */
+            eventBudgetId?: string;
+            /** @description Optional Heading id with at least one line in eventBudgetId; must be paired with eventBudgetId. */
+            headingId?: string;
         };
         FinanceEntry: {
             id: string;
@@ -1694,6 +1720,14 @@ export interface components {
             recordedAt: string;
             /** @description True when at least one Receipt backs this entry. */
             hasReceipt: boolean;
+            /** @description Present when this entry is linked to an Event budget. */
+            eventBudgetId?: string;
+            /** @description Present when this entry is linked to an Event budget; visible to all school members in the ledger. */
+            eventBudgetName?: string;
+            /** @description Present when this entry is linked to an Event budget; the Heading id. */
+            headingId?: string;
+            /** @description Present when this entry is linked to an Event budget; the Heading name. */
+            headingName?: string;
             /** @description Present when this entry is a Reversal; the id of the entry it reverses. */
             reversesId?: string;
             /** @description Present when this entry was reversed; the id of its Reversal. */
@@ -1819,6 +1853,14 @@ export interface components {
         FinanceBalance: {
             /** @description The exact sum; may exceed int64. */
             balanceCents: number;
+        };
+        FinanceCalculatorSummary: {
+            /** @description Current number of Roster members in the active school. */
+            rosterCount: number;
+            /** @description Current Fund balance in integer cents; exact sum, may exceed int64 and may be negative. */
+            balance: number;
+            /** @description Total in integer cents still owed across all Dues by non-exempt Roster members; exact sum, may exceed int64. */
+            owedOnDues: number;
         };
         NewFinanceDue: {
             name: string;
@@ -3181,7 +3223,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description already_officer or position_taken. */
+            /** @description `already_officer`, `position_taken`, or `board_elected`: the latest published election (an annulled one does not count) had a winner, whose list is the Board, so positions are no longer assigned by hand; nothing changes. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3189,7 +3231,7 @@ export interface operations {
                 content: {
                     "application/json": {
                         /** @enum {string} */
-                        error: "already_officer" | "position_taken";
+                        error: "already_officer" | "position_taken" | "board_elected";
                     };
                 };
             };
@@ -3236,6 +3278,18 @@ export interface operations {
                     "application/json": {
                         /** @enum {string} */
                         error: "not_found";
+                    };
+                };
+            };
+            /** @description `board_elected`: the latest published election (an annulled one does not count) had a winner, whose list is the Board, so positions are no longer removed by hand; nothing changes. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "board_elected";
                     };
                 };
             };
@@ -3533,6 +3587,18 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Budget has linked finance entries (`budget_has_entries`); archive it instead. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "budget_has_entries";
+                    };
                 };
             };
         };
@@ -5549,6 +5615,28 @@ export interface operations {
             403: components["responses"]["Forbidden"];
         };
     };
+    getFinanceCalculatorSummary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current calculator totals in integer cents plus roster count. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinanceCalculatorSummary"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["DirectoryForbidden"];
+        };
+    };
     getFinanceEntries: {
         parameters: {
             query?: never;
@@ -5596,7 +5684,7 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
-            /** @description Category not found in the active school (`not_found`). */
+            /** @description Category, event budget or heading not found in the active school (`not_found`). */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -5605,13 +5693,16 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Invalid input: invalid_amount, invalid_date, future_date, description_required, description_too_long, invalid_category, reserved_category. */
+            /** @description Invalid input: `invalid_amount`, `invalid_date`, `future_date`, `description_required`, `description_too_long`, `invalid_category`, `reserved_category`, `invalid_event_link`, `heading_not_in_budget`. */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Error"];
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "invalid_amount" | "invalid_date" | "future_date" | "description_required" | "description_too_long" | "invalid_category" | "reserved_category" | "invalid_event_link" | "heading_not_in_budget";
+                    };
                 };
             };
         };
