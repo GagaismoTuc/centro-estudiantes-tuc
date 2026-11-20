@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { call } from "../api/call.ts";
 import { apiClient } from "../api/client.ts";
 import { errorMessage } from "../api/errors.ts";
@@ -16,6 +16,20 @@ type LineInput = components["schemas"]["EventBudgetLineInput"];
 type Heading = components["schemas"]["ContactHeading"];
 type Contact = components["schemas"]["Contact"];
 const pesos = (cents: number) => `$ ${new Intl.NumberFormat("es-AR", { maximumFractionDigits: 2 }).format(cents / 100)}`;
+function formatExpenseDiff(cents: number): string {
+  if (cents < 0) {
+    const over = pesos(Math.abs(cents));
+    return `\u2212${over} (te pasaste ${over})`;
+  }
+  return pesos(cents);
+}
+function formatIncomeDiff(cents: number): string {
+  if (cents < 0) {
+    const short = pesos(Math.abs(cents));
+    return `\u2212${short} (faltan ${short})`;
+  }
+  return pesos(cents);
+}
 function parseCents(raw: string): number | null {
   const value = raw.trim().replace(",", ".");
   if (!/^\d+(\.\d{1,2})?$/.test(value)) return null;
@@ -83,6 +97,13 @@ export function EventBudgets() {
   const [budgets, setBudgets] = useState<Budget[]>([]); const [detail, setDetail] = useState<Detail | null>(null);
   const [headings, setHeadings] = useState<Heading[]>([]); const [contacts, setContacts] = useState<Contact[]>([]);
   const [status, setStatus] = useState<Status>(null); const [editing, setEditing] = useState(false); const [lineEdit, setLineEdit] = useState<Line | null>(null); const [confirm, setConfirm] = useState<"delete" | "archive" | string | null>(null);
+  const statusRef = useRef<HTMLDivElement>(null);
+  const focusStatus = useRef(false);
+  useEffect(() => {
+    if (!focusStatus.current || !status) return;
+    focusStatus.current = false;
+    statusRef.current?.focus();
+  }, [status]);
   const loadList = useCallback(async () => { const result = await call(apiClient.GET("/event-budgets")); if (result.ok) setBudgets(result.data); else setStatus({ tone: "error", text: errorMessage(result.code) }); }, []);
   const loadDetail = useCallback(async (id: string) => { const result = await call(apiClient.GET("/event-budgets/{id}", { params: { path: { id } } })); if (result.ok) setDetail(result.data); else setStatus({ tone: "error", text: errorMessage(result.code) }); }, []);
   useEffect(() => { if (!canRead) return; void loadList(); if (canWrite) { void call(apiClient.GET("/contacts/headings")).then((r) => { if (r.ok) setHeadings(r.data); else setStatus({ tone: "error", text: errorMessage(r.code) }); }); void call(apiClient.GET("/contacts")).then((r) => { if (r.ok) setContacts(r.data); else setStatus({ tone: "error", text: errorMessage(r.code) }); }); } }, [canRead, canWrite, loadList]);
@@ -101,16 +122,71 @@ export function EventBudgets() {
     if (confirm === "delete") result = await call(apiClient.DELETE("/event-budgets/{id}", { params: { path: { id: detail.id } } }));
     else if (confirm === "archive") result = await call(apiClient.POST("/event-budgets/{id}/archive", { params: { path: { id: detail.id } } }));
     else result = await call(apiClient.DELETE("/event-budgets/{id}/lines/{lineId}", { params: { path: { id: detail.id, lineId: confirm } } }));
-    setConfirm(null); if (!result.ok) { setStatus({ tone: "error", text: errorMessage(result.code) }); return; }
+    setConfirm(null); if (!result.ok) { focusStatus.current = true; setStatus({ tone: "error", text: errorMessage(result.code) }); return; }
     if (confirm === "delete") setDetail(null); else await loadDetail(detail.id); await loadList();
   }
+  const byHeading = detail?.byHeading ?? [];
+  const expenseRows = byHeading.filter((r) => r.budgetedExpenseCents !== 0 || r.actualExpenseCents !== 0);
+  const incomeRows = byHeading.filter((r) => r.budgetedIncomeCents !== 0 || r.actualIncomeCents !== 0);
   return <><header className="page-header"><div><PageTitle>Presupuestos de evento</PageTitle><p>{"Organiz\u00e1 los costos e ingresos previstos de cada evento."}</p></div></header>
-    <Link to="/calculadora">Calculadora</Link><FormStatus status={status} />
+    <Link to="/calculadora">Calculadora</Link><FormStatus ref={statusRef} status={status} />
     <section aria-label="Presupuestos"><h2>Presupuestos</h2>{canWrite && detail && <button type="button" className="button button--secondary" onClick={() => { setDetail(null); setEditing(false); setLineEdit(null); }}>Nuevo presupuesto</button>}{budgets.length === 0 && <p>{"Todav\u00eda no hay presupuestos."}</p>}<ul>{budgets.map((b) => <li key={b.id}><button type="button" className="text-button" onClick={() => { setEditing(false); setLineEdit(null); void loadDetail(b.id); }}>{b.name}</button>{b.archived && " (archivado)"}</li>)}</ul></section>
     {canWrite && !detail && <section><h2>Crear presupuesto</h2><BudgetForm save={saveBudget} /></section>}
     {detail && <section aria-label="Detalle del presupuesto"><h2>{detail.name}</h2><p>{detail.startsOn} - {detail.endsOn}{detail.archived && " (archivado)"}</p>
       {canWrite && !detail.archived && <><button className="button button--secondary" type="button" onClick={() => setEditing(!editing)}>Editar presupuesto</button><button className="button button--secondary" type="button" onClick={() => setConfirm("archive")}>Archivar</button><button className="button button--secondary" type="button" onClick={() => setConfirm("delete")}>Borrar</button>{editing && <BudgetForm key={detail.id} initial={detail} save={saveBudget} />}</>}
       <h3>Resultado total</h3><p>Costo: {pesos(detail.totals.costCents)}; ingresos: {pesos(detail.totals.incomeCents)}; resultado: {pesos(detail.totals.resultCents)}. Entrada para no perder: {detail.totals.breakEvenCents === null ? "sin calcular" : pesos(detail.totals.breakEvenCents)}.</p>
+      <h3>Presupuestado vs real por rubro</h3>
+      {expenseRows.length === 0 && incomeRows.length === 0 && <p>{"Todav\u00eda no hay rubros presupuestados ni movimientos ligados."}</p>}
+      {expenseRows.length > 0 && <>
+        <h4 id="budget-actual-expenses">Gastos</h4>
+        <div className="table-wrap" tabIndex={0} role="region" aria-labelledby="budget-actual-expenses">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th scope="col">Rubro</th>
+                <th scope="col">Presupuestado</th>
+                <th scope="col">Real</th>
+                <th scope="col">Diferencia</th>
+              </tr>
+            </thead>
+            <tbody>
+              {expenseRows.map((row) => (
+                <tr key={row.headingId}>
+                  <th scope="row">{row.headingName}</th>
+                  <td data-label="Presupuestado">{pesos(row.budgetedExpenseCents)}</td>
+                  <td data-label="Real">{pesos(row.actualExpenseCents)}</td>
+                  <td data-label="Diferencia">{formatExpenseDiff(row.expenseDifferenceCents)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </>}
+      {incomeRows.length > 0 && <>
+        <h4 id="budget-actual-income">Ingresos</h4>
+        <div className="table-wrap" tabIndex={0} role="region" aria-labelledby="budget-actual-income">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th scope="col">Rubro</th>
+                <th scope="col">Presupuestado</th>
+                <th scope="col">Real</th>
+                <th scope="col">Diferencia</th>
+              </tr>
+            </thead>
+            <tbody>
+              {incomeRows.map((row) => (
+                <tr key={row.headingId}>
+                  <th scope="row">{row.headingName}</th>
+                  <td data-label="Presupuestado">{pesos(row.budgetedIncomeCents)}</td>
+                  <td data-label="Real">{pesos(row.actualIncomeCents)}</td>
+                  <td data-label="Diferencia">{formatIncomeDiff(row.incomeDifferenceCents)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </>}
       <h3>{"Por d\u00eda"}</h3><ul>{detail.days.map((day) => <li key={day.day}>{day.day}: costo {pesos(day.totals.costCents)}, ingresos {pesos(day.totals.incomeCents)}, resultado {pesos(day.totals.resultCents)}, entrada {day.totals.breakEvenCents === null ? "sin calcular" : pesos(day.totals.breakEvenCents)}</li>)}</ul>
       <h3>{"L\u00edneas"}</h3><ul>{detail.lines.map((line) => <li key={line.id}>{line.description} - {line.quantity ?? "-"} x {line.unitAmountCents == null ? "sin precio" : pesos(line.unitAmountCents)} {canWrite && !detail.archived && <><button type="button" className="text-button" onClick={() => setLineEdit(line)}>Editar</button><button type="button" className="text-button" onClick={() => setConfirm(line.id)}>Borrar</button></>}</li>)}</ul>
       {canWrite && !detail.archived && <><h3>{lineEdit ? "Editar l\u00ednea" : "Agregar l\u00ednea"}</h3><LineForm key={lineEdit?.id ?? "new"} headings={headings} contacts={contacts} initial={lineEdit ?? undefined} save={saveLine} cancel={lineEdit ? () => setLineEdit(null) : undefined} /></>}

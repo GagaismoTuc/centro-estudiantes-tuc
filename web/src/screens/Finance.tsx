@@ -20,8 +20,10 @@ import { centsOf, dayMonthYear, pesos, todayArgentina } from "../lib/money.ts";
 import { FinanceCategories } from "./FinanceCategories.tsx";
 
 type Category = components["schemas"]["FinanceCategory"];
+type EventBudget = components["schemas"]["EventBudget"];
 type Entry = Omit<components["schemas"]["FinanceEntry"], "amountCents"> & { amountCents: string };
 type EntryDetail = { entry: Entry; receipts: FinanceReceipt[] };
+type EventHeadingOption = { id: string; name: string };
 const today = todayArgentina;
 const MAX_RECEIPT_BYTES = 10 * 1024 * 1024;
 const ACCEPTED_RECEIPTS = ".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf";
@@ -59,6 +61,11 @@ export function Finance() {
   const [date, setDate] = useState(today);
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
+  const [eventBudgets, setEventBudgets] = useState<EventBudget[]>([]);
+  const [eventBudgetId, setEventBudgetId] = useState("");
+  const [eventHeadings, setEventHeadings] = useState<EventHeadingOption[]>([]);
+  const [eventHeadingsLoading, setEventHeadingsLoading] = useState(false);
+  const [headingId, setHeadingId] = useState("");
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [detail, setDetail] = useState<EntryDetail | null>(null);
   const [detailReceiptError, setDetailReceiptError] = useState("");
@@ -66,11 +73,50 @@ export function Finance() {
   const [busy, setBusy] = useState(false);
   const pending = useRef(false);
   const categoryRef = useRef<HTMLSelectElement>(null);
+  const eventBudgetRef = useRef<HTMLSelectElement>(null);
+  const headingRef = useRef<HTMLSelectElement>(null);
   const detailFileRef = useRef<HTMLInputElement>(null);
   const focusDetailFile = useRef(false);
   const [categoryError, setCategoryError] = useState("");
+  const [eventError, setEventError] = useState("");
+  const [headingError, setHeadingError] = useState("");
   const [confirmReverse, setConfirmReverse] = useState<Entry | null>(null);
   const form = useFormErrors();
+
+  useEffect(() => {
+    if (!isOfficer || !open) return;
+    let cancelled = false;
+    void call(apiClient.GET("/event-budgets")).then((res) => {
+      if (cancelled) return;
+      if (res.ok) setEventBudgets(res.data.filter((b) => !b.archived));
+    });
+    return () => { cancelled = true; };
+  }, [isOfficer, open]);
+
+  useEffect(() => {
+    if (!eventBudgetId) {
+      setEventHeadings([]);
+      setEventHeadingsLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setEventHeadingsLoading(true);
+    void call(apiClient.GET("/event-budgets/{id}", { params: { path: { id: eventBudgetId } } })).then((res) => {
+      if (cancelled) return;
+      setEventHeadingsLoading(false);
+      if (res.ok) {
+        const usedIds = new Set(res.data.lines.map((l) => l.headingId).filter((id): id is string => Boolean(id)));
+        const options = (res.data.byHeading ?? [])
+          .filter((h) => usedIds.has(h.headingId))
+          .map((h) => ({ id: h.headingId, name: h.headingName }));
+        setEventHeadings(options);
+      } else {
+        setEventHeadings([]);
+        setEventError(errorMessage(res.code, "finance"));
+      }
+    });
+    return () => { cancelled = true; };
+  }, [eventBudgetId]);
 
   useEffect(() => {
     if (!focusDetailFile.current || busy || !detailReceiptError) return;
@@ -124,6 +170,11 @@ export function Finance() {
             ? "La descripci\u00f3n puede tener hasta 500 caracteres."
             : null,
     })) return;
+    if (eventBudgetId && !headingId) {
+      setHeadingError("Eleg\u00ed un rubro del evento.");
+      headingRef.current?.focus();
+      return;
+    }
     pending.current = true;
     setBusy(true);
     setStatus(null);
@@ -134,12 +185,18 @@ export function Finance() {
       date,
       amountCents: centsOf(amount)!,
       description,
+      ...(eventBudgetId ? { eventBudgetId, headingId } : {}),
     });
     if (result.ok) {
       setOpen(false);
       setAmount("");
       setDescription("");
       setCategory("");
+      setEventBudgetId("");
+      setHeadingId("");
+      setEventHeadings([]);
+      setEventError("");
+      setHeadingError("");
       setReceiptFile(null);
       if (pendingFile) {
         const uploaded = await uploadEntryReceipt(result.data.id, pendingFile);
@@ -157,7 +214,13 @@ export function Finance() {
       await load();
     } else {
       failed(result.code);
-      if (result.code === "invalid_category" || result.code === "reserved_category" || result.code === "not_found") {
+      if (result.code === "heading_not_in_budget") {
+        setHeadingError(errorMessage(result.code, "finance"));
+        headingRef.current?.focus();
+      } else if (result.code === "invalid_event_link") {
+        setEventError(errorMessage(result.code, "finance"));
+        eventBudgetRef.current?.focus();
+      } else if (result.code === "invalid_category" || result.code === "reserved_category" || (result.code === "not_found" && !eventBudgetId)) {
         setCategoryError(errorMessage(result.code, "finance"));
         categoryRef.current?.focus();
       } else form.failed(result.code);
@@ -260,6 +323,51 @@ export function Finance() {
           <Field label="Monto en pesos" inputMode="decimal" {...form.field("amount")} value={amount} onChange={(event) => setAmount(event.target.value)} />
           <Field label={"Descripci\u00f3n"} {...form.field("description")} value={description} onChange={(event) => setDescription(event.target.value)} />
           <div className="field">
+            <label htmlFor="finance-event-budget">Evento (opcional)</label>
+            <select
+              id="finance-event-budget"
+              ref={eventBudgetRef}
+              value={eventBudgetId}
+              disabled={busy}
+              aria-invalid={!!eventError || undefined}
+              aria-describedby={eventError ? "finance-event-budget-error" : undefined}
+              onChange={(event) => {
+                setEventBudgetId(event.target.value);
+                setHeadingId("");
+                setEventError("");
+                setHeadingError("");
+              }}
+            >
+              <option value="">Sin evento</option>
+              {eventBudgets.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </select>
+            {eventError && <p id="finance-event-budget-error" role="alert">{eventError}</p>}
+          </div>
+          {eventBudgetId && (
+            <div className="field">
+              <label htmlFor="finance-heading">Rubro del evento</label>
+              <select
+                id="finance-heading"
+                ref={headingRef}
+                value={headingId}
+                disabled={busy || eventHeadingsLoading}
+                aria-invalid={!!headingError || undefined}
+                aria-describedby={headingError ? "finance-heading-error" : undefined}
+                onChange={(event) => {
+                  setHeadingId(event.target.value);
+                  setHeadingError("");
+                }}
+              >
+                <option value="">{eventHeadingsLoading ? "Cargando rubros..." : "Eleg\u00ed un rubro"}</option>
+                {eventHeadings.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+              </select>
+              {headingError && <p id="finance-heading-error" role="alert">{headingError}</p>}
+              {!eventHeadingsLoading && eventHeadings.length === 0 && (
+                <p className="field__hint">{"Este presupuesto todav\u00eda no tiene rubros con l\u00edneas."}</p>
+              )}
+            </div>
+          )}
+          <div className="field">
             <input
               id={createFileId}
               className="file-input"
@@ -279,7 +387,7 @@ export function Finance() {
               JPG, PNG o PDF de hasta 10 MB.
             </p>
           </div>
-          <button className="button button--primary" disabled={busy}>Guardar</button>{" "}<button type="button" className="button button--secondary" disabled={busy} onClick={() => { setOpen(false); setReceiptFile(null); }}>Cancelar</button>
+          <button className="button button--primary" disabled={busy}>Guardar</button>{" "}<button type="button" className="button button--secondary" disabled={busy} onClick={() => { setOpen(false); setEventBudgetId(""); setHeadingId(""); setEventHeadings([]); setEventError(""); setHeadingError(""); setReceiptFile(null); }}>Cancelar</button>
         </form>
       </>}
     </section>}
@@ -288,6 +396,7 @@ export function Finance() {
         <strong>{entry.description}</strong> {"\u2014"} {pesos(entry.amountCents)} ({entry.direction === "income" ? "Ingreso" : "Gasto"})<br />
         {categories.find((c) => c.id === entry.categoryId)?.name} {"\u2014"} {entry.date}<br />
         Registrado por {entry.recordedBy} {"\u2014"} {new Date(entry.recordedAt).toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" })}
+        {entry.eventBudgetName && <><br /><span>Evento: {entry.eventBudgetName}{entry.headingName ? ` \u2014 ${entry.headingName}` : ""}</span></>}
         {entry.hasReceipt && <><br /><span>Con comprobante</span></>}
         {entry.reversalId && <><br /><span>Revertido por {entry.reversedBy} el {dayMonthYear(entry.reversedOn ?? "")}</span></>}
         {(canViewReceipts || (isOfficer && !entry.reversalId && !entry.reversesId)) && (
