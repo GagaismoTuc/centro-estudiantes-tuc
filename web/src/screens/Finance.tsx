@@ -77,11 +77,21 @@ export function Finance() {
   const headingRef = useRef<HTMLSelectElement>(null);
   const detailFileRef = useRef<HTMLInputElement>(null);
   const focusDetailFile = useRef(false);
+  const focusEventField = useRef<"event" | "heading" | null>(null);
   const [categoryError, setCategoryError] = useState("");
   const [eventError, setEventError] = useState("");
   const [headingError, setHeadingError] = useState("");
   const [confirmReverse, setConfirmReverse] = useState<Entry | null>(null);
   const form = useFormErrors();
+
+  useEffect(() => {
+    if (!focusEventField.current || busy) return;
+    if (focusEventField.current === "heading" && eventHeadingsLoading) return;
+    const target = focusEventField.current;
+    focusEventField.current = null;
+    if (target === "heading") headingRef.current?.focus();
+    else eventBudgetRef.current?.focus();
+  }, [busy, eventHeadingsLoading, eventError, headingError]);
 
   useEffect(() => {
     if (!isOfficer || !open) return;
@@ -100,6 +110,7 @@ export function Finance() {
       return;
     }
     let cancelled = false;
+    setEventHeadings([]);
     setEventHeadingsLoading(true);
     void call(apiClient.GET("/event-budgets/{id}", { params: { path: { id: eventBudgetId } } })).then((res) => {
       if (cancelled) return;
@@ -171,8 +182,9 @@ export function Finance() {
             : null,
     })) return;
     if (eventBudgetId && !headingId) {
+      focusEventField.current = "heading";
       setHeadingError("Eleg\u00ed un rubro del evento.");
-      headingRef.current?.focus();
+      if (!eventHeadingsLoading) headingRef.current?.focus();
       return;
     }
     pending.current = true;
@@ -215,11 +227,11 @@ export function Finance() {
     } else {
       failed(result.code);
       if (result.code === "heading_not_in_budget") {
+        focusEventField.current = "heading";
         setHeadingError(errorMessage(result.code, "finance"));
-        headingRef.current?.focus();
       } else if (result.code === "invalid_event_link") {
+        focusEventField.current = "event";
         setEventError(errorMessage(result.code, "finance"));
-        eventBudgetRef.current?.focus();
       } else if (result.code === "invalid_category" || result.code === "reserved_category" || (result.code === "not_found" && !eventBudgetId)) {
         setCategoryError(errorMessage(result.code, "finance"));
         categoryRef.current?.focus();
@@ -436,6 +448,7 @@ export function Finance() {
             <p className="muted small">
               {pesos(detail.entry.amountCents)} ({detail.entry.direction === "income" ? "Ingreso" : "Gasto"}) —{" "}
               {categories.find((c) => c.id === detail.entry.categoryId)?.name} — {detail.entry.date}
+              {detail.entry.eventBudgetName && <> — Evento: {detail.entry.eventBudgetName}{detail.entry.headingName ? ` (${detail.entry.headingName})` : ""}</>}
             </p>
           </div>
           <button type="button" className="button button--ghost button--small" onClick={() => { setDetail(null); setDetailReceiptError(""); }}>

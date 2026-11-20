@@ -165,12 +165,15 @@ test("R2 selecting an event without a heading blocks submit, marks aria-invalid,
   const errId = headingSelect.getAttribute("aria-describedby") ?? "";
   expect(document.getElementById(errId)?.textContent).toContain("Eleg\u00ed un rubro");
 
-  // Server rejection 422 heading_not_in_budget marks heading select invalid and focuses it.
+  // Server rejection 422 heading_not_in_budget marks heading select invalid and focuses it once enabled.
   fireEvent.change(headingSelect, { target: { value: "h-chairs" } });
   fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
   await waitFor(() => expect(sentTo(sent, "POST /finance/entries")).toHaveLength(1));
-  await waitFor(() => expect(headingSelect.getAttribute("aria-invalid")).toBe("true"));
-  expect(document.activeElement).toBe(headingSelect);
+  await waitFor(() => {
+    expect(headingSelect.getAttribute("aria-invalid")).toBe("true");
+    expect((headingSelect as HTMLSelectElement).disabled).toBe(false);
+    expect(document.activeElement).toBe(headingSelect);
+  });
   expect(document.getElementById(headingSelect.getAttribute("aria-describedby") ?? "")?.textContent).toContain("no tiene l\u00edneas");
 });
 
@@ -281,6 +284,14 @@ test("R6 roles: students see event name in ledger and are blocked on budgets; sc
   expect(await screen.findByText("Evento: Semana del Estudiante 2026 \u2014 mesas y sillas")).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Nuevo movimiento" })).toBeNull();
   studentCaja.unmount();
+
+  mockApi({
+    "GET /auth/me": ok(me({ role: "student", mfa: "not_required" })),
+  });
+  window.history.replaceState(null, "", "/presupuestos");
+  const studentBudgets = render(<App />);
+  expect((await screen.findByRole("alert")).textContent).toContain("No ten\u00e9s acceso");
+  studentBudgets.unmount();
 
   for (const role of ["school_admin", "veedor"] as const) {
     mockApi({

@@ -501,14 +501,26 @@ func TestEventBudgetActualByHeading(t *testing.T) {
 	f, officer, student, admin, officerNoMFA, alquileres, ventas, headings := setupBudgetActualFixture(t, ctx)
 	const ip = "198.51.100.84"
 
-	// Create another tenant with its own budget and linked entry to prove R7 isolation in byHeading.
+	// Create another tenant with its own budget, line, and linked finance entry to prove R7 isolation in byHeading.
 	other := newTenant(t, ctx)
 	otherHeadings := seedHeadingsForTenant(t, ctx, other)
-	var foreignBudget string
+	if _, err := tdb.Super.Exec(ctx, `SELECT seed_finance_categories($1)`, other); err != nil {
+		t.Fatal(err)
+	}
+	var foreignBudget, foreignCat, foreignUser string
 	if err := tdb.Super.QueryRow(ctx, `INSERT INTO event_budgets(tenant_id,name,starts_on,ends_on) VALUES ($1,'Otra escuela','2026-09-21','2026-09-25') RETURNING id::text`, other).Scan(&foreignBudget); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := tdb.Super.Exec(ctx, `INSERT INTO event_budget_lines(tenant_id,budget_id,heading_id,kind,description,quantity,unit_amount_cents) VALUES ($1,$2,$3,'cost','Sillas ajenas',1,99900)`, other, foreignBudget, otherHeadings["mesas y sillas"]); err != nil {
+		t.Fatal(err)
+	}
+	if err := tdb.Super.QueryRow(ctx, `SELECT id::text FROM finance_categories WHERE tenant_id=$1 AND name='Alquileres' AND direction='expense'`, other).Scan(&foreignCat); err != nil {
+		t.Fatal(err)
+	}
+	if err := tdb.Super.QueryRow(ctx, `INSERT INTO users(email,password_hash) VALUES ('other-officer@example.test','hash') RETURNING id::text`).Scan(&foreignUser); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tdb.Super.Exec(ctx, `INSERT INTO finance_entries(tenant_id,category_id,direction,entry_date,amount_cents,description,recorded_by,recorded_by_name,event_budget_id,heading_id) VALUES ($1,$2,'expense','2026-11-14',77700,'Gasto ajeno',$3,'Otro Officer',$4,$5)`, other, foreignCat, foreignUser, foreignBudget, otherHeadings["mesas y sillas"]); err != nil {
 		t.Fatal(err)
 	}
 

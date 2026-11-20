@@ -99,13 +99,14 @@ export function EventBudgets() {
   const [status, setStatus] = useState<Status>(null); const [editing, setEditing] = useState(false); const [lineEdit, setLineEdit] = useState<Line | null>(null); const [confirm, setConfirm] = useState<"delete" | "archive" | string | null>(null);
   const statusRef = useRef<HTMLDivElement>(null);
   const focusStatus = useRef(false);
+  const detailReq = useRef(0);
   useEffect(() => {
     if (!focusStatus.current || !status) return;
     focusStatus.current = false;
     statusRef.current?.focus();
   }, [status]);
   const loadList = useCallback(async () => { const result = await call(apiClient.GET("/event-budgets")); if (result.ok) setBudgets(result.data); else setStatus({ tone: "error", text: errorMessage(result.code) }); }, []);
-  const loadDetail = useCallback(async (id: string) => { const result = await call(apiClient.GET("/event-budgets/{id}", { params: { path: { id } } })); if (result.ok) setDetail(result.data); else setStatus({ tone: "error", text: errorMessage(result.code) }); }, []);
+  const loadDetail = useCallback(async (id: string) => { const seq = ++detailReq.current; const result = await call(apiClient.GET("/event-budgets/{id}", { params: { path: { id } } })); if (seq !== detailReq.current) return; if (result.ok) setDetail(result.data); else setStatus({ tone: "error", text: errorMessage(result.code) }); }, []);
   useEffect(() => { if (!canRead) return; void loadList(); if (canWrite) { void call(apiClient.GET("/contacts/headings")).then((r) => { if (r.ok) setHeadings(r.data); else setStatus({ tone: "error", text: errorMessage(r.code) }); }); void call(apiClient.GET("/contacts")).then((r) => { if (r.ok) setContacts(r.data); else setStatus({ tone: "error", text: errorMessage(r.code) }); }); } }, [canRead, canWrite, loadList]);
   if (!canRead) return <><PageTitle>Presupuestos de evento</PageTitle><p role="alert">{"No ten\u00e9s acceso a esta secci\u00f3n."}</p></>;
   async function saveBudget(name: string, startsOn: string, endsOn: string): Promise<string | null> {
