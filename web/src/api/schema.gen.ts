@@ -4,6 +4,46 @@
  */
 
 export interface paths {
+    "/members/invitations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Invite a school admin or Veedor by email
+         * @description Only a school admin with a verified second factor may invite; a new invitation for the same school and email invalidates the previous one. Mail is sent after commit, off the request path.
+         */
+        post: operations["postMemberInvitation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/invitations/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept a school invitation
+         * @description New invitees create a verified account with a password. Existing account holders must sign in and prove their second factor first; their password is never changed. Tokens are single-use, expire after 48 hours and invalid tokens are rate-limited per IP.
+         */
+        post: operations["postAuthInvitationAccept"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -756,12 +796,12 @@ export interface paths {
         };
         /**
          * Read the active school's current Electoral commission
-         * @description Any member of the active school (student, officer or school admin); no second factor needed. `commission` is null until one is designated. `isMember` says whether the caller's roster entry sits on it; `canDesignate` whether the caller may designate or replace it now by role (any officer when the school has officers, otherwise the school admin), regardless of the second factor and of `election_frozen`. Responses carry `Cache-Control: no-store`.
+         * @description Any member of the active school (student, officer or school admin); a Veedor must prove a second factor. `commission` is null until one is designated. `isMember` says whether the caller's roster entry sits on it; `canDesignate` whether the caller may designate or replace it now by role (any officer when the school has officers, otherwise the school admin, or a Veedor when there are no officers or an existing commission can be replaced before the election opens). Responses carry `Cache-Control: no-store`.
          */
         get: operations["getElectoralCommission"];
         /**
          * Designate or replace the members of the current Electoral commission
-         * @description Any officer when the school has officers (an officer position or the officer role); otherwise the school admin. Checked on every request, so it applies to replacing too. The role is checked first (`forbidden`), then the second factor (`mfa_required`); both before the body is read. Each id is a roster member of the active school with an account; a repeated id is stored once. The whole list replaces the current members; the commission is created when the school has none. Every error writes nothing. Responses carry `Cache-Control: no-store`.
+         * @description Any officer when the school has officers (an officer position or the officer role); otherwise the school admin. A Veedor may designate when the school has no officers or replace the current commission before the election opens. Checked on every request, so it applies to replacing too. The role is checked first (`forbidden`), then the second factor (`mfa_required`); both before the body is read. Each id is a roster member of the active school with an account; a repeated id is stored once. The whole list replaces the current members; the commission is created when the school has none. Every error writes nothing. Responses carry `Cache-Control: no-store`.
          */
         put: operations["putElectoralCommission"];
         post?: never;
@@ -802,7 +842,7 @@ export interface paths {
         put?: never;
         /**
          * Create the draft of an election
-         * @description Members of the current Electoral commission only, with a verified second factor (`forbidden` first, then `mfa_required`, both before the body is read): students, officers (the Presidente included) and school admins who are not on it get `forbidden`. The election belongs to the current commission. Every error writes nothing; the validation codes are listed in the 422 response. Responses carry `Cache-Control: no-store`.
+         * @description Members of the current Electoral commission other than Veedors, with a verified second factor (`forbidden` first, then `mfa_required`, both before the body is read): students, officers (the Presidente included) and school admins who are not on it get `forbidden`. The election belongs to the current commission. Every error writes nothing; the validation codes are listed in the 422 response. Responses carry `Cache-Control: no-store`.
          */
         post: operations["postElection"];
         delete?: never;
@@ -820,7 +860,7 @@ export interface paths {
         };
         /**
          * Read the active school's election in progress (neither published nor annulled)
-         * @description Any member of the active school. Responses carry `Cache-Control: no-store`.
+         * @description Any member of the active school; a Veedor must prove MFA before election data is read. Responses carry `Cache-Control: no-store`.
          */
         get: operations["getCurrentElection"];
         put?: never;
@@ -840,7 +880,7 @@ export interface paths {
         };
         /**
          * Read the active school's election in progress, or else its most recently created one
-         * @description Any member of the active school. The election in progress when there is one (the same as `GET /elections/current`); otherwise the most recently created election, so everyone still sees an annulled election and its reason. Responses carry `Cache-Control: no-store`.
+         * @description Any member of the active school; a Veedor must prove MFA before election data is read. The election in progress when there is one (the same as `GET /elections/current`); otherwise the most recently created election, so everyone still sees an annulled election and its reason. Responses carry `Cache-Control: no-store`.
          */
         get: operations["getLatestElection"];
         put?: never;
@@ -862,7 +902,7 @@ export interface paths {
         };
         /**
          * Read an election of the active school
-         * @description Any member of the active school. Responses carry `Cache-Control: no-store`.
+         * @description Any member of the active school; a Veedor must prove MFA before election data is read. Responses carry `Cache-Control: no-store`.
          */
         get: operations["getElection"];
         /**
@@ -890,7 +930,7 @@ export interface paths {
         put?: never;
         /**
          * Annul an election before its result is published
-         * @description Members of the election's Electoral commission only, with a verified second factor. Checks, in order and before the body is read: `forbidden` (no membership in the active school), `not_found` (no such election in it, whether or not it exists in another), `forbidden` (not on the election's commission: students, officers and school admins who are not on it), `mfa_required`. Then the reason (422) and the election's state (409). Annulling is irreversible: the election publishes no result, accepts no change and never reopens; the commission's mandate ends, so the school can organize another election once the officers designate a new commission. Of two simultaneous requests exactly one annuls. Every error writes nothing. Responses carry `Cache-Control: no-store`.
+         * @description Members of the election's Electoral commission, or a Veedor, with a verified second factor. Before the body is read, a Veedor's role is checked and then MFA is required (`mfa_required`) before election data is read. For other members, checks are `forbidden` (no membership in the active school), `not_found` (no such election in it, whether or not it exists in another), `forbidden` (not on the election's commission: students, officers and school admins who are not on it), then `mfa_required`. Then the reason (422) and the election's state (409). Annulling is irreversible: the election publishes no result, accepts no change and never reopens; the commission's mandate ends, so the school can organize another election once the officers designate a new commission. Of two simultaneous requests exactly one annuls. Every error writes nothing. Responses carry `Cache-Control: no-store`.
          */
         post: operations["postElectionAnnulment"];
         delete?: never;
@@ -910,7 +950,7 @@ export interface paths {
         };
         /**
          * Search roster members by name for an election list
-         * @description List builders only (a student with a roster link, or an Electoral commission member with a verified two-factor session). Searches roster members of the active school by name with at least 3 letters and returns at most 20 results (names and ids only, never document numbers). Responses carry `Cache-Control: no-store`.
+         * @description List builders only (a student with a roster link, or an Electoral commission member with a verified two-factor session). Veedores cannot search, even if they also hold either role. Searches roster members of the active school by name with at least 3 letters and returns at most 20 results (names and ids only, never document numbers). Responses carry `Cache-Control: no-store`.
          */
         get: operations["getElectionCandidates"];
         put?: never;
@@ -932,13 +972,13 @@ export interface paths {
         };
         /**
          * List election lists visible to the caller
-         * @description Any member of the active school. Returns approved lists to all members; pending and rejected lists (with `rejectionReason`) are included only for the election's Electoral commission and each list's representative ("Apoderado"). Also returns `rosterMemberId` of the caller, if linked to the roster. Responses carry `Cache-Control: no-store`.
+         * @description Any member of the active school; a Veedor must prove a second factor before list data is read. Returns approved lists to all members; pending and rejected lists (with `rejectionReason`) are included only for the election's Electoral commission and each list's representative ("Apoderado"). Also returns `rosterMemberId` of the caller, if linked to the roster. Responses carry `Cache-Control: no-store`.
          */
         get: operations["getElectionLists"];
         put?: never;
         /**
          * Present a list as a student representative
-         * @description Any member of the active school linked to a roster entry presents a list during the submission period and becomes its representative ("Apoderado"). School admins without a roster entry and accounts without membership receive `forbidden` before the body is read. Does not require a second factor beyond the session. Responses carry `Cache-Control: no-store`.
+         * @description Any member of the active school linked to a roster entry, except a Veedor, presents a list during the submission period and becomes its representative ("Apoderado"). School admins without a roster entry and accounts without membership receive `forbidden` before the body is read. Does not require a second factor beyond the session. Responses carry `Cache-Control: no-store`.
          */
         post: operations["postElectionList"];
         delete?: never;
@@ -960,7 +1000,7 @@ export interface paths {
         put?: never;
         /**
          * Load a list as the Electoral commission on behalf of a representative
-         * @description Members of the current Electoral commission with a verified second factor (`forbidden` first, then `mfa_required`, both before the body is read). Names a roster member of the active school as the representative ("Apoderado"). Responses carry `Cache-Control: no-store`.
+         * @description Members of the current Electoral commission other than Veedors, with a verified second factor (`forbidden` first, then `mfa_required`, both before the body is read). Names a roster member of the active school as the representative ("Apoderado"). Responses carry `Cache-Control: no-store`.
          */
         post: operations["postCommissionElectionList"];
         delete?: never;
@@ -981,12 +1021,12 @@ export interface paths {
         };
         /**
          * Read one election list
-         * @description Approved lists are visible to any member of the active school. Pending and rejected lists are visible only to the election's Electoral commission and the list's representative; another student requesting a pending or rejected list receives `not_found`. Responses carry `Cache-Control: no-store`.
+         * @description Approved lists are visible to any member of the active school; a Veedor must prove MFA before list data is read. Pending and rejected lists are visible only to the election's Electoral commission and the list's representative; another student requesting a pending or rejected list receives `not_found`. Responses carry `Cache-Control: no-store`.
          */
         get: operations["getElectionList"];
         /**
          * Edit a pending election list
-         * @description The list's representative (no second factor beyond the session) or a member of the current Electoral commission (verified second factor required) during the submission period. Approved lists return `list_frozen`, rejected lists return `list_rejected`. Responses carry `Cache-Control: no-store`.
+         * @description The list's representative (no second factor beyond the session) or a member of the current Electoral commission (verified second factor required) during the submission period. Veedors cannot edit lists. Approved lists return `list_frozen`, rejected lists return `list_rejected`. Responses carry `Cache-Control: no-store`.
          */
         put: operations["putElectionList"];
         post?: never;
@@ -1010,7 +1050,7 @@ export interface paths {
         put?: never;
         /**
          * Approve a pending election list
-         * @description Members of the current Electoral commission with a verified second factor (`forbidden` first, then `mfa_required`), during the submission period. Responses carry `Cache-Control: no-store`.
+         * @description Members of the current Electoral commission other than Veedors, with a verified second factor (`forbidden` first, then `mfa_required`), during the submission period. Responses carry `Cache-Control: no-store`.
          */
         post: operations["postApproveElectionList"];
         delete?: never;
@@ -1033,7 +1073,7 @@ export interface paths {
         put?: never;
         /**
          * Reject a pending election list with a reason
-         * @description Members of the current Electoral commission with a verified second factor (`forbidden` first, then `mfa_required`, both before the body is read), during the submission period. Requires a non-empty reason of up to 500 characters. Rejecting frees the list's candidates and name. Responses carry `Cache-Control: no-store`.
+         * @description Members of the current Electoral commission other than Veedors, with a verified second factor (`forbidden` first, then `mfa_required`, both before the body is read), during the submission period. Requires a non-empty reason of up to 500 characters. Rejecting frees the list's candidates and name. Responses carry `Cache-Control: no-store`.
          */
         post: operations["postRejectElectionList"];
         delete?: never;
@@ -1469,7 +1509,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List dues owed by the signed-in roster member */
+        /**
+         * List dues owed by the signed-in roster member
+         * @description A Veedor must prove a second factor before this request reads membership or due data.
+         */
         get: operations["getMyFinanceDues"];
         put?: never;
         post?: never;
@@ -1997,6 +2040,11 @@ export interface components {
             reason: string;
         };
         Annulment: {
+            /**
+             * @description Present when a Veedor annulled the election.
+             * @enum {string}
+             */
+            annulledBy?: "veedor";
             reason: string;
             /** Format: date-time */
             annulledAt: string;
@@ -2128,7 +2176,7 @@ export interface components {
             code: string;
         };
         /** @enum {string} */
-        Role: "school_admin" | "officer" | "student";
+        Role: "school_admin" | "officer" | "student" | "veedor";
         /**
          * @description Two-factor state of the session, computed from the role in the active tenant. School admins, officers and members of the current Electoral commission are privileged. `not_required`: not privileged or no membership. `enrollment_required`: privileged without a confirmed TOTP. `pending`: confirmed TOTP but this session has not verified it. `satisfied`: this session verified a code. Endpoints for privileged users answer 403 `mfa_required` unless `satisfied`.
          * @enum {string}
@@ -2480,6 +2528,148 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    postMemberInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    email: string;
+                    role: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Invitation committed. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            /** @description Forbidden or MFA required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForbiddenError"];
+                };
+            };
+            /** @description Invalid email or role. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "invalid_email" | "invalid_role";
+                    };
+                };
+            };
+            /** @description Too many requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    postAuthInvitationAccept: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    token: string;
+                    password?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Existing account joined the school; a rotated session cookie is set. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Me"];
+                };
+            };
+            /** @description Verified account created; a session cookie is set. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Me"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            /** @description Sign in with the invited account first, or the session expired. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "login_required" | "unauthenticated";
+                    };
+                };
+            };
+            /** @description Prove the second factor first. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "mfa_required";
+                    };
+                };
+            };
+            /** @description Invalid token or weak password. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "invalid_token" | "weak_password";
+                    };
+                };
+            };
+            /** @description Too many invalid token attempts. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "too_many_attempts";
+                    };
+                };
+            };
+        };
+    };
     getHealth: {
         parameters: {
             query?: never;
@@ -4213,7 +4403,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
-            /** @description The account has no membership in the active school (`forbidden`). */
+            /** @description The account has no membership (`forbidden`), or a Veedor has not proved MFA (`mfa_required`). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -4469,7 +4659,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
-            /** @description The account has no membership in the active school (`forbidden`). */
+            /** @description The account has no membership (`forbidden`), or a Veedor has not proved MFA (`mfa_required`). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -4574,7 +4764,7 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
-            /** @description `forbidden` (not on the election's Electoral commission) or `mfa_required`. */
+            /** @description `forbidden` (not on the election's Electoral commission and not a Veedor) or `mfa_required`. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -4642,7 +4832,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
-            /** @description Caller may not build a list (`forbidden` for school admins, officers without a roster link, or accounts without membership) or is on the Electoral commission without a verified second factor (`mfa_required`). */
+            /** @description Caller may not build a list (`forbidden` for Veedores, school admins, officers without a roster link, or accounts without membership) or is on the Electoral commission without a verified second factor (`mfa_required`). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -4695,7 +4885,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
-            /** @description The account has no membership in the active school (`forbidden`). */
+            /** @description The account has no membership (`forbidden`), or a Veedor has not proved MFA (`mfa_required`). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -4741,7 +4931,7 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
-            /** @description Not a roster member of the active school (`forbidden`). */
+            /** @description Not a roster member or a Veedor (`forbidden`). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -4833,7 +5023,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
-            /** @description The account has no membership in the active school (`forbidden`). */
+            /** @description The account has no membership (`forbidden`), or a Veedor has not proved MFA (`mfa_required`). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -5097,7 +5287,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
-            /** @description The account has no membership in the active school (`forbidden`). */
+            /** @description The account has no membership (`forbidden`), or a Veedor has not proved MFA (`mfa_required`). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -5150,7 +5340,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
-            /** @description The account has no membership in the active school (`forbidden`). */
+            /** @description The account has no membership (`forbidden`), or a Veedor has not proved MFA (`mfa_required`). */
             403: {
                 headers: {
                     [name: string]: unknown;

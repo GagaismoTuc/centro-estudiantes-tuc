@@ -84,6 +84,7 @@ type Election struct {
 	PublishedAt, AnnulledAt                                *time.Time
 	// AnnulmentReason is the public reason of an annulled election; nil exactly when AnnulledAt is.
 	AnnulmentReason      *string
+	AnnulledByVeedor     bool
 	CreatedAt, UpdatedAt time.Time
 	Positions            []string
 	// Commission lists the members of the election's commission, ordered by name.
@@ -403,11 +404,11 @@ func getElection(ctx context.Context, tx pgx.Tx, where string, args ...any) (Ele
 	var e Election
 	err := tx.QueryRow(ctx, `
 		SELECT e.id::text, e.commission_id::text, e.name, e.mode, e.submission_starts_at, e.submission_ends_at,
-		       e.starts_at, e.ends_at, e.published_at, e.annulled_at, e.annulment_reason, e.created_at, e.updated_at,
+		       e.starts_at, e.ends_at, e.published_at, e.annulled_at, e.annulment_reason, e.annulled_by_veedor, e.created_at, e.updated_at,
 		       ARRAY(SELECT p.name FROM election_positions p WHERE p.tenant_id = e.tenant_id AND p.election_id = e.id ORDER BY p.position_order)
 		FROM elections e WHERE e.tenant_id = $1 AND `+where, args...).
 		Scan(&e.ID, &e.CommissionID, &e.Name, &e.Mode, &e.SubmissionStartsAt, &e.SubmissionEndsAt,
-			&e.StartsAt, &e.EndsAt, &e.PublishedAt, &e.AnnulledAt, &e.AnnulmentReason, &e.CreatedAt, &e.UpdatedAt, &e.Positions)
+			&e.StartsAt, &e.EndsAt, &e.PublishedAt, &e.AnnulledAt, &e.AnnulmentReason, &e.AnnulledByVeedor, &e.CreatedAt, &e.UpdatedAt, &e.Positions)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return e, ErrNotFound
 	}

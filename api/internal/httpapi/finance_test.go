@@ -27,6 +27,8 @@ func TestFinanceRules(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, student := f.signIn(t, ctx, "student")
+	_, veedor, _, _ := f.signInMFA(t, ctx, "veedor")
+	_, veedorNoMFA := f.signIn(t, ctx, "veedor")
 	_, admin := f.signIn(t, ctx, "school_admin")
 	_, unverified := f.signIn(t, ctx, "officer")
 	cat := func(name, dir string) string {
@@ -209,7 +211,7 @@ func TestFinanceRules(t *testing.T) {
 			token  string
 			status int
 			code   string
-		}{{"", 401, "unauthenticated"}, {student, 403, "forbidden"}, {admin, 403, "forbidden"}, {unverified, 403, "mfa_required"}, {unlinked, 403, "forbidden"}} {
+		}{{"", 401, "unauthenticated"}, {student, 403, "forbidden"}, {admin, 403, "forbidden"}, {veedor, 403, "forbidden"}, {unverified, 403, "mfa_required"}, {unlinked, 403, "forbidden"}} {
 			before := snapshot()
 			r := f.do("POST", "/api/finance/entries", body, "198.51.100.12", c.token, nil)
 			wantResponse(t, r, c.status, fmt.Sprintf(`{"error":%q}`, c.code))
@@ -228,8 +230,11 @@ func TestFinanceRules(t *testing.T) {
 		}
 	})
 	t.Run("R10 authorized members read ledger and balance", func(t *testing.T) {
-		for _, token := range []string{officer, student, admin} {
-			for _, path := range []string{"/api/finance/entries", "/api/finance/balance"} {
+		for _, path := range []string{"/api/finance/entries", "/api/finance/entries/" + created, "/api/finance/balance", "/api/finance/categories"} {
+			wantResponse(t, f.do(http.MethodGet, path, "", "198.51.100.12", veedorNoMFA, nil), http.StatusForbidden, mfaBody)
+		}
+		for _, token := range []string{officer, student, admin, veedor} {
+			for _, path := range []string{"/api/finance/entries", "/api/finance/entries/" + created, "/api/finance/balance", "/api/finance/categories"} {
 				r := f.do("GET", path, "", "198.51.100.12", token, nil)
 				if r.Code != 200 {
 					t.Fatalf("%s status=%d", path, r.Code)

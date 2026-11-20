@@ -109,6 +109,13 @@ func (s *Store) asRosterMember(ctx context.Context, sess auth.Session, fn func(p
 		return ErrForbidden
 	}
 	return db.WithTenant(ctx, s.pool, sess.TenantID, func(tx pgx.Tx) error {
+		var veedor bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT FROM memberships WHERE tenant_id=$1 AND user_id=$2 AND role='veedor')`, sess.TenantID, sess.UserID).Scan(&veedor); err != nil {
+			return err
+		}
+		if veedor {
+			return ErrForbidden
+		}
 		a, err := readAccess(ctx, tx, sess.TenantID, sess.UserID)
 		if err != nil {
 			return err
@@ -190,6 +197,13 @@ func checkEditorAccess(a access, isRep bool, status ListStatus) error {
 }
 
 func (s *Store) authorizeListEditor(ctx context.Context, tx pgx.Tx, sess auth.Session, electionID, listID string, lock bool) (access, error) {
+	var veedor bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT FROM memberships WHERE tenant_id=$1 AND user_id=$2 AND role='veedor')`, sess.TenantID, sess.UserID).Scan(&veedor); err != nil {
+		return access{}, err
+	}
+	if veedor {
+		return access{}, ErrForbidden
+	}
 	if lock {
 		if err := lockCommission(ctx, tx, sess.TenantID); err != nil {
 			return access{}, err
@@ -348,6 +362,9 @@ func (s *Store) ListLists(ctx context.Context, sess auth.Session, electionID str
 		return out, ErrForbidden
 	}
 	err := db.WithTenant(ctx, s.pool, sess.TenantID, func(tx pgx.Tx) error {
+		if err := requireVeedorMFA(ctx, tx, sess); err != nil {
+			return err
+		}
 		a, err := readAccess(ctx, tx, sess.TenantID, sess.UserID)
 		if err != nil {
 			return err
@@ -383,6 +400,9 @@ func (s *Store) GetList(ctx context.Context, sess auth.Session, electionID, list
 		return out, ErrForbidden
 	}
 	err := db.WithTenant(ctx, s.pool, sess.TenantID, func(tx pgx.Tx) error {
+		if err := requireVeedorMFA(ctx, tx, sess); err != nil {
+			return err
+		}
 		a, err := readAccess(ctx, tx, sess.TenantID, sess.UserID)
 		if err != nil {
 			return err
@@ -427,6 +447,13 @@ func (s *Store) SearchRosterCandidates(ctx context.Context, sess auth.Session, e
 		return out, ErrForbidden
 	}
 	err := db.WithTenant(ctx, s.pool, sess.TenantID, func(tx pgx.Tx) error {
+		var veedor bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT FROM memberships WHERE tenant_id=$1 AND user_id=$2 AND role='veedor')`, sess.TenantID, sess.UserID).Scan(&veedor); err != nil {
+			return err
+		}
+		if veedor {
+			return ErrForbidden
+		}
 		a, err := readAccess(ctx, tx, sess.TenantID, sess.UserID)
 		if err != nil {
 			return err

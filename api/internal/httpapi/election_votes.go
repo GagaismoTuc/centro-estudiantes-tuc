@@ -7,6 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/auth"
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/elections"
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/oapi"
 )
@@ -15,6 +16,8 @@ import (
 // its SQLSTATE only: never the error text, the choice or anything about the voter (S11, CS-8).
 func writeVoteError(w http.ResponseWriter, op string, err error) {
 	switch {
+	case errors.Is(err, auth.ErrMFARequired):
+		writeError(w, http.StatusForbidden, "mfa_required")
 	case errors.Is(err, elections.ErrForbidden):
 		writeError(w, http.StatusForbidden, "forbidden")
 	case errors.Is(err, elections.ErrNotFound):

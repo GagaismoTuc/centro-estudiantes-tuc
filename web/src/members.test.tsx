@@ -178,6 +178,7 @@ test("role labels match PR #65 strings in session.tsx", () => {
     school_admin: "Administrador de la escuela",
     officer: "Integrante de la comisi\u00f3n directiva",
     student: "Alumno",
+    veedor: "Veedor",
   });
   expect(roleLabels(me({ role: "officer", roles: ["officer", "school_admin", "student"] }))).toBe(
     "Alumno, Integrante de la comisi\u00f3n directiva, Administrador de la escuela",

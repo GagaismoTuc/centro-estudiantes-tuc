@@ -32,6 +32,21 @@ func (e AccountabilityEntryDirection) Valid() bool {
 	}
 }
 
+// Defines values for AnnulmentAnnulledBy.
+const (
+	AnnulmentAnnulledByVeedor AnnulmentAnnulledBy = "veedor"
+)
+
+// Valid indicates whether the value is a known member of the AnnulmentAnnulledBy enum.
+func (e AnnulmentAnnulledBy) Valid() bool {
+	switch e {
+	case AnnulmentAnnulledByVeedor:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ElectionListStatus.
 const (
 	ElectionListStatusApproved ElectionListStatus = "approved"
@@ -292,19 +307,22 @@ func (e NotFoundErrorError) Valid() bool {
 
 // Defines values for Role.
 const (
-	Officer     Role = "officer"
-	SchoolAdmin Role = "school_admin"
-	Student     Role = "student"
+	RoleOfficer     Role = "officer"
+	RoleSchoolAdmin Role = "school_admin"
+	RoleStudent     Role = "student"
+	RoleVeedor      Role = "veedor"
 )
 
 // Valid indicates whether the value is a known member of the Role enum.
 func (e Role) Valid() bool {
 	switch e {
-	case Officer:
+	case RoleOfficer:
 		return true
-	case SchoolAdmin:
+	case RoleSchoolAdmin:
 		return true
-	case Student:
+	case RoleStudent:
+		return true
+	case RoleVeedor:
 		return true
 	default:
 		return false
@@ -545,6 +563,72 @@ const (
 func (e InvalidRangeError) Valid() bool {
 	switch e {
 	case InvalidRangeErrorInvalidRange:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostAuthInvitationAccept401JSONResponseBodyError.
+const (
+	PostAuthInvitationAccept401JSONResponseBodyErrorLoginRequired   PostAuthInvitationAccept401JSONResponseBodyError = "login_required"
+	PostAuthInvitationAccept401JSONResponseBodyErrorUnauthenticated PostAuthInvitationAccept401JSONResponseBodyError = "unauthenticated"
+)
+
+// Valid indicates whether the value is a known member of the PostAuthInvitationAccept401JSONResponseBodyError enum.
+func (e PostAuthInvitationAccept401JSONResponseBodyError) Valid() bool {
+	switch e {
+	case PostAuthInvitationAccept401JSONResponseBodyErrorLoginRequired:
+		return true
+	case PostAuthInvitationAccept401JSONResponseBodyErrorUnauthenticated:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostAuthInvitationAccept403JSONResponseBodyError.
+const (
+	PostAuthInvitationAccept403JSONResponseBodyErrorMfaRequired PostAuthInvitationAccept403JSONResponseBodyError = "mfa_required"
+)
+
+// Valid indicates whether the value is a known member of the PostAuthInvitationAccept403JSONResponseBodyError enum.
+func (e PostAuthInvitationAccept403JSONResponseBodyError) Valid() bool {
+	switch e {
+	case PostAuthInvitationAccept403JSONResponseBodyErrorMfaRequired:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostAuthInvitationAccept422JSONResponseBodyError.
+const (
+	PostAuthInvitationAccept422JSONResponseBodyErrorInvalidToken PostAuthInvitationAccept422JSONResponseBodyError = "invalid_token"
+	PostAuthInvitationAccept422JSONResponseBodyErrorWeakPassword PostAuthInvitationAccept422JSONResponseBodyError = "weak_password"
+)
+
+// Valid indicates whether the value is a known member of the PostAuthInvitationAccept422JSONResponseBodyError enum.
+func (e PostAuthInvitationAccept422JSONResponseBodyError) Valid() bool {
+	switch e {
+	case PostAuthInvitationAccept422JSONResponseBodyErrorInvalidToken:
+		return true
+	case PostAuthInvitationAccept422JSONResponseBodyErrorWeakPassword:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostAuthInvitationAccept429JSONResponseBodyError.
+const (
+	PostAuthInvitationAccept429JSONResponseBodyErrorTooManyAttempts PostAuthInvitationAccept429JSONResponseBodyError = "too_many_attempts"
+)
+
+// Valid indicates whether the value is a known member of the PostAuthInvitationAccept429JSONResponseBodyError enum.
+func (e PostAuthInvitationAccept429JSONResponseBodyError) Valid() bool {
+	switch e {
+	case PostAuthInvitationAccept429JSONResponseBodyErrorTooManyAttempts:
 		return true
 	default:
 		return false
@@ -1484,6 +1568,24 @@ func (e GetFinanceReportCsv422JSONResponseBodyError) Valid() bool {
 	}
 }
 
+// Defines values for PostMemberInvitation422JSONResponseBodyError.
+const (
+	InvalidEmail PostMemberInvitation422JSONResponseBodyError = "invalid_email"
+	InvalidRole  PostMemberInvitation422JSONResponseBodyError = "invalid_role"
+)
+
+// Valid indicates whether the value is a known member of the PostMemberInvitation422JSONResponseBodyError enum.
+func (e PostMemberInvitation422JSONResponseBodyError) Valid() bool {
+	switch e {
+	case InvalidEmail:
+		return true
+	case InvalidRole:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for DeleteMemberOfficer404JSONResponseBodyError.
 const (
 	DeleteMemberOfficer404JSONResponseBodyErrorNotFound DeleteMemberOfficer404JSONResponseBodyError = "not_found"
@@ -1640,8 +1742,14 @@ type AccountabilityReportSummary struct {
 // Annulment defines model for Annulment.
 type Annulment struct {
 	AnnulledAt time.Time `json:"annulledAt"`
-	Reason     string    `json:"reason"`
+
+	// AnnulledBy Present when a Veedor annulled the election.
+	AnnulledBy *AnnulmentAnnulledBy `json:"annulledBy,omitempty"`
+	Reason     string               `json:"reason"`
 }
+
+// AnnulmentAnnulledBy Present when a Veedor annulled the election.
+type AnnulmentAnnulledBy string
 
 // AnnulmentRequest defines model for AnnulmentRequest.
 type AnnulmentRequest struct {
@@ -2575,6 +2683,24 @@ type TooManyAttempts = Error
 // Unauthenticated defines model for Unauthenticated.
 type Unauthenticated = Error
 
+// PostAuthInvitationAcceptJSONBody defines parameters for PostAuthInvitationAccept.
+type PostAuthInvitationAcceptJSONBody struct {
+	Password *string `json:"password,omitempty"`
+	Token    string  `json:"token"`
+}
+
+// PostAuthInvitationAccept401JSONResponseBodyError defines parameters for PostAuthInvitationAccept.
+type PostAuthInvitationAccept401JSONResponseBodyError string
+
+// PostAuthInvitationAccept403JSONResponseBodyError defines parameters for PostAuthInvitationAccept.
+type PostAuthInvitationAccept403JSONResponseBodyError string
+
+// PostAuthInvitationAccept422JSONResponseBodyError defines parameters for PostAuthInvitationAccept.
+type PostAuthInvitationAccept422JSONResponseBodyError string
+
+// PostAuthInvitationAccept429JSONResponseBodyError defines parameters for PostAuthInvitationAccept.
+type PostAuthInvitationAccept429JSONResponseBodyError string
+
 // GetContactsParams defines parameters for GetContacts.
 type GetContactsParams struct {
 	HeadingId *string `form:"headingId,omitempty" json:"headingId,omitempty"`
@@ -2758,6 +2884,15 @@ type GetFinanceReportCsvParams struct {
 // GetFinanceReportCsv422JSONResponseBodyError defines parameters for GetFinanceReportCsv.
 type GetFinanceReportCsv422JSONResponseBodyError string
 
+// PostMemberInvitationJSONBody defines parameters for PostMemberInvitation.
+type PostMemberInvitationJSONBody struct {
+	Email string `json:"email"`
+	Role  string `json:"role"`
+}
+
+// PostMemberInvitation422JSONResponseBodyError defines parameters for PostMemberInvitation.
+type PostMemberInvitation422JSONResponseBodyError string
+
 // DeleteMemberOfficer404JSONResponseBodyError defines parameters for DeleteMemberOfficer.
 type DeleteMemberOfficer404JSONResponseBodyError string
 
@@ -2790,6 +2925,9 @@ type PostAuthClaimJSONRequestBody = ClaimRequest
 
 // PostAuthEmailVerifyJSONRequestBody defines body for PostAuthEmailVerify for application/json ContentType.
 type PostAuthEmailVerifyJSONRequestBody = TokenRequest
+
+// PostAuthInvitationAcceptJSONRequestBody defines body for PostAuthInvitationAccept for application/json ContentType.
+type PostAuthInvitationAcceptJSONRequestBody PostAuthInvitationAcceptJSONBody
 
 // PostAuthLinkJSONRequestBody defines body for PostAuthLink for application/json ContentType.
 type PostAuthLinkJSONRequestBody = EmailRequest
@@ -2896,6 +3034,9 @@ type PostFinanceDuePaymentJSONRequestBody = NewFinanceDuePayment
 // PostFinanceEntriesJSONRequestBody defines body for PostFinanceEntries for application/json ContentType.
 type PostFinanceEntriesJSONRequestBody = NewFinanceEntry
 
+// PostMemberInvitationJSONRequestBody defines body for PostMemberInvitation for application/json ContentType.
+type PostMemberInvitationJSONRequestBody PostMemberInvitationJSONBody
+
 // PostMemberOfficerJSONRequestBody defines body for PostMemberOfficer for application/json ContentType.
 type PostMemberOfficerJSONRequestBody PostMemberOfficerJSONBody
 
@@ -2910,6 +3051,9 @@ type ServerInterface interface {
 	// PostAuthEmailVerify Confirm the email address with an emailed token
 	// (POST /auth/email/verify)
 	PostAuthEmailVerify(w http.ResponseWriter, r *http.Request)
+	// PostAuthInvitationAccept Accept a school invitation
+	// (POST /auth/invitations/accept)
+	PostAuthInvitationAccept(w http.ResponseWriter, r *http.Request)
 	// PostAuthLink Email a sign-in link
 	// (POST /auth/link)
 	PostAuthLink(w http.ResponseWriter, r *http.Request)
@@ -3165,6 +3309,9 @@ type ServerInterface interface {
 	// GetMembers List accounts and unclaimed officers in the active school
 	// (GET /members)
 	GetMembers(w http.ResponseWriter, r *http.Request)
+	// PostMemberInvitation Invite a school admin or Veedor by email
+	// (POST /members/invitations)
+	PostMemberInvitation(w http.ResponseWriter, r *http.Request)
 	// DeleteMemberOfficer Remove an officer position
 	// (DELETE /members/{memberId}/officer)
 	DeleteMemberOfficer(w http.ResponseWriter, r *http.Request, memberId string)
@@ -3233,6 +3380,20 @@ func (siw *ServerInterfaceWrapper) PostAuthEmailVerify(w http.ResponseWriter, r 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostAuthEmailVerify(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostAuthInvitationAccept operation middleware
+func (siw *ServerInterfaceWrapper) PostAuthInvitationAccept(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostAuthInvitationAccept(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5188,6 +5349,20 @@ func (siw *ServerInterfaceWrapper) GetMembers(w http.ResponseWriter, r *http.Req
 	handler.ServeHTTP(w, r)
 }
 
+// PostMemberInvitation operation middleware
+func (siw *ServerInterfaceWrapper) PostMemberInvitation(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostMemberInvitation(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // DeleteMemberOfficer operation middleware
 func (siw *ServerInterfaceWrapper) DeleteMemberOfficer(w http.ResponseWriter, r *http.Request) {
 
@@ -5513,6 +5688,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/members/invitations", wrapper.PostMemberInvitation)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/invitations/accept", wrapper.PostAuthInvitationAccept)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/health", wrapper.GetHealth)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/login", wrapper.PostAuthLogin)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/logout", wrapper.PostAuthLogout)

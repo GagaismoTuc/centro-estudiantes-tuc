@@ -291,6 +291,8 @@ func TestDuesR5StudentMineAndForbiddenFullList(t *testing.T) {
 			t.Fatalf("mine=%+v err=%v", mine, err)
 		}
 	}
+	_, veedorPending := f.signIn(t, ctx, "veedor")
+	wantResponse(t, f.do(http.MethodGet, "/api/finance/dues/mine", "", "198.51.100.10", veedorPending, nil), http.StatusForbidden, `{"error":"mfa_required"}`)
 }
 
 func TestDuesR6WriteAuthorizationTable(t *testing.T) {

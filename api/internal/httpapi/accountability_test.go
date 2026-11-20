@@ -394,6 +394,8 @@ func TestAccountabilityRoles(t *testing.T) {
 	_, student, _ := rf.student(t, rf.ctx, "Beto Ficticio", "30111223")
 	_, adminMFA, _, _ := rf.signInMFA(t, rf.ctx, "school_admin")
 	_, admin := rf.signIn(t, rf.ctx, "school_admin")
+	_, veedor, _, _ := rf.signInMFA(t, rf.ctx, "veedor")
+	_, veedorNoMFA := rf.signIn(t, rf.ctx, "veedor")
 	body := `{"from":"2026-03-01","to":"2026-11-30","term":"Gestión 2026"}`
 
 	for _, c := range []struct {
@@ -415,7 +417,7 @@ func TestAccountabilityRoles(t *testing.T) {
 			}
 		})
 	}
-	for name, token := range map[string]string{"officer": rf.officer, "officer without two-factor": officerNoMFA, "student": student, "school admin": admin, "school admin with two-factor": adminMFA} {
+	for name, token := range map[string]string{"officer": rf.officer, "officer without two-factor": officerNoMFA, "student": student, "school admin": admin, "school admin with two-factor": adminMFA, "Veedor with MFA": veedor} {
 		t.Run("read "+name, func(t *testing.T) {
 			if r := rf.get(acctPath, token); r.Code != http.StatusOK || !strings.Contains(r.Body.String(), rep.ID) {
 				t.Fatalf("list %d %s", r.Code, r.Body)
@@ -424,6 +426,11 @@ func TestAccountabilityRoles(t *testing.T) {
 				t.Fatalf("report id=%s", got.ID)
 			}
 			readCSV(t, rf.get(acctPath+"/"+rep.ID+".csv", token), "rendicion-de-cuentas-2026-03-01-a-2026-11-30.csv")
+		})
+	}
+	for _, path := range []string{acctPath, acctPath + "/" + rep.ID, acctPath + "/" + rep.ID + ".csv"} {
+		t.Run("Veedor without MFA "+path, func(t *testing.T) {
+			wantResponse(t, rf.get(path, veedorNoMFA), http.StatusForbidden, `{"error":"mfa_required"}`)
 		})
 	}
 	for _, path := range []string{acctPath, acctPath + "/" + rep.ID, acctPath + "/" + rep.ID + ".csv"} {
