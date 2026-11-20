@@ -1058,6 +1058,21 @@ func (e PutElectoralCommission422JSONResponseBodyError) Valid() bool {
 	}
 }
 
+// Defines values for DeleteEventBudget409JSONResponseBodyError.
+const (
+	BudgetHasEntries DeleteEventBudget409JSONResponseBodyError = "budget_has_entries"
+)
+
+// Valid indicates whether the value is a known member of the DeleteEventBudget409JSONResponseBodyError enum.
+func (e DeleteEventBudget409JSONResponseBodyError) Valid() bool {
+	switch e {
+	case BudgetHasEntries:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PostFinanceAccountabilityReports422JSONResponseBodyError.
 const (
 	PostFinanceAccountabilityReports422JSONResponseBodyErrorFutureDate   PostFinanceAccountabilityReports422JSONResponseBodyError = "future_date"
@@ -1316,6 +1331,45 @@ func (e PostFinanceDuePayment422JSONResponseBodyError) Valid() bool {
 	case PostFinanceDuePayment422JSONResponseBodyErrorNotOwed:
 		return true
 	case PostFinanceDuePayment422JSONResponseBodyErrorOverpayment:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostFinanceEntries422JSONResponseBodyError.
+const (
+	PostFinanceEntries422JSONResponseBodyErrorDescriptionRequired PostFinanceEntries422JSONResponseBodyError = "description_required"
+	PostFinanceEntries422JSONResponseBodyErrorDescriptionTooLong  PostFinanceEntries422JSONResponseBodyError = "description_too_long"
+	PostFinanceEntries422JSONResponseBodyErrorFutureDate          PostFinanceEntries422JSONResponseBodyError = "future_date"
+	PostFinanceEntries422JSONResponseBodyErrorHeadingNotInBudget  PostFinanceEntries422JSONResponseBodyError = "heading_not_in_budget"
+	PostFinanceEntries422JSONResponseBodyErrorInvalidAmount       PostFinanceEntries422JSONResponseBodyError = "invalid_amount"
+	PostFinanceEntries422JSONResponseBodyErrorInvalidCategory     PostFinanceEntries422JSONResponseBodyError = "invalid_category"
+	PostFinanceEntries422JSONResponseBodyErrorInvalidDate         PostFinanceEntries422JSONResponseBodyError = "invalid_date"
+	PostFinanceEntries422JSONResponseBodyErrorInvalidEventLink    PostFinanceEntries422JSONResponseBodyError = "invalid_event_link"
+	PostFinanceEntries422JSONResponseBodyErrorReservedCategory    PostFinanceEntries422JSONResponseBodyError = "reserved_category"
+)
+
+// Valid indicates whether the value is a known member of the PostFinanceEntries422JSONResponseBodyError enum.
+func (e PostFinanceEntries422JSONResponseBodyError) Valid() bool {
+	switch e {
+	case PostFinanceEntries422JSONResponseBodyErrorDescriptionRequired:
+		return true
+	case PostFinanceEntries422JSONResponseBodyErrorDescriptionTooLong:
+		return true
+	case PostFinanceEntries422JSONResponseBodyErrorFutureDate:
+		return true
+	case PostFinanceEntries422JSONResponseBodyErrorHeadingNotInBudget:
+		return true
+	case PostFinanceEntries422JSONResponseBodyErrorInvalidAmount:
+		return true
+	case PostFinanceEntries422JSONResponseBodyErrorInvalidCategory:
+		return true
+	case PostFinanceEntries422JSONResponseBodyErrorInvalidDate:
+		return true
+	case PostFinanceEntries422JSONResponseBodyErrorInvalidEventLink:
+		return true
+	case PostFinanceEntries422JSONResponseBodyErrorReservedCategory:
 		return true
 	default:
 		return false
@@ -1970,11 +2024,23 @@ type FinanceEntry struct {
 	Description string `json:"description"`
 	Direction   string `json:"direction"`
 
+	// EventBudgetId Present when this entry is linked to an Event budget.
+	EventBudgetId *string `json:"eventBudgetId,omitempty"`
+
+	// EventBudgetName Present when this entry is linked to an Event budget; visible to all school members in the ledger.
+	EventBudgetName *string `json:"eventBudgetName,omitempty"`
+
 	// HasReceipt True when at least one Receipt backs this entry.
-	HasReceipt bool      `json:"hasReceipt"`
-	Id         string    `json:"id"`
-	RecordedAt time.Time `json:"recordedAt"`
-	RecordedBy string    `json:"recordedBy"`
+	HasReceipt bool `json:"hasReceipt"`
+
+	// HeadingId Present when this entry is linked to an Event budget; the Heading id.
+	HeadingId *string `json:"headingId,omitempty"`
+
+	// HeadingName Present when this entry is linked to an Event budget; the Heading name.
+	HeadingName *string   `json:"headingName,omitempty"`
+	Id          string    `json:"id"`
+	RecordedAt  time.Time `json:"recordedAt"`
+	RecordedBy  string    `json:"recordedBy"`
 
 	// ReversalId Present when this entry was reversed; the id of its Reversal.
 	ReversalId *string `json:"reversalId,omitempty"`
@@ -2211,6 +2277,12 @@ type NewFinanceEntry struct {
 	Date        string `json:"date"`
 	Description string `json:"description"`
 	Direction   string `json:"direction"`
+
+	// EventBudgetId Optional active Event budget id; must be paired with headingId.
+	EventBudgetId *string `json:"eventBudgetId,omitempty"`
+
+	// HeadingId Optional Heading id with at least one line in eventBudgetId; must be paired with eventBudgetId.
+	HeadingId *string `json:"headingId,omitempty"`
 }
 
 // NotFoundError defines model for NotFoundError.
@@ -2560,6 +2632,9 @@ type PutElectoralCommission409JSONResponseBodyError string
 // PutElectoralCommission422JSONResponseBodyError defines parameters for PutElectoralCommission.
 type PutElectoralCommission422JSONResponseBodyError string
 
+// DeleteEventBudget409JSONResponseBodyError defines parameters for DeleteEventBudget.
+type DeleteEventBudget409JSONResponseBodyError string
+
 // PostFinanceAccountabilityReports422JSONResponseBodyError defines parameters for PostFinanceAccountabilityReports.
 type PostFinanceAccountabilityReports422JSONResponseBodyError string
 
@@ -2601,6 +2676,9 @@ type PostFinanceDueExemptions422JSONResponseBodyError string
 
 // PostFinanceDuePayment422JSONResponseBodyError defines parameters for PostFinanceDuePayment.
 type PostFinanceDuePayment422JSONResponseBodyError string
+
+// PostFinanceEntries422JSONResponseBodyError defines parameters for PostFinanceEntries.
+type PostFinanceEntries422JSONResponseBodyError string
 
 // GetFinanceEntriesCsvParams defines parameters for GetFinanceEntriesCsv.
 type GetFinanceEntriesCsvParams struct {

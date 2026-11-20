@@ -17,17 +17,19 @@ import (
 )
 
 var (
-	ErrForbidden       = errors.New("finance: forbidden")
-	ErrNotFound        = errors.New("finance: not found")
-	ErrAmount          = errors.New("finance: invalid amount")
-	ErrDate            = errors.New("finance: invalid date")
-	ErrFutureDate      = errors.New("finance: future date")
-	ErrDescription     = errors.New("finance: description required")
-	ErrDescriptionLong = errors.New("finance: description too long")
-	ErrCategory        = errors.New("finance: invalid category")
-	ErrReserved        = errors.New("finance: reserved category")
-	ErrAlreadyReversed = errors.New("finance: entry already reversed")
-	ErrReverseReversal = errors.New("finance: cannot reverse a reversal")
+	ErrForbidden          = errors.New("finance: forbidden")
+	ErrNotFound           = errors.New("finance: not found")
+	ErrAmount             = errors.New("finance: invalid amount")
+	ErrDate               = errors.New("finance: invalid date")
+	ErrFutureDate         = errors.New("finance: future date")
+	ErrDescription        = errors.New("finance: description required")
+	ErrDescriptionLong    = errors.New("finance: description too long")
+	ErrCategory           = errors.New("finance: invalid category")
+	ErrReserved           = errors.New("finance: reserved category")
+	ErrAlreadyReversed    = errors.New("finance: entry already reversed")
+	ErrReverseReversal    = errors.New("finance: cannot reverse a reversal")
+	ErrInvalidEventLink   = errors.New("finance: invalid event link")
+	ErrHeadingNotInBudget = errors.New("finance: heading not in budget")
 )
 var uuidPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 var argentina = time.FixedZone("Argentina", -3*60*60)
@@ -47,21 +49,38 @@ type Entry struct {
 	// Report and Ledger clear them for viewers who may not see who paid (ADR 0004).
 	RosterMemberID, RosterMemberName string
 	HasReceipt                       bool
+	// EventBudgetID, EventBudgetName, HeadingID and HeadingName are set when the Entry is linked
+	// to an Event budget and one of its Headings. Visible to all school members in the ledger.
+	EventBudgetID, EventBudgetName, HeadingID, HeadingName string
 }
 
-// entryColumns selects an Entry of finance_entries e, with its Reversal r and, for a Due payment,
-// the Roster member pm who paid (LEFT JOINs), in the field order of Entry.
+// entryColumns selects an Entry of finance_entries e, with its Reversal r, optional Due payment
+// payer pm, and optional Event budget eb and Heading ch (LEFT JOINs), in the field order of Entry.
 const entryColumns = `e.id::text,e.category_id::text,e.direction,to_char(e.entry_date,'YYYY-MM-DD'),e.description,e.recorded_by_name,e.amount_cents,e.recorded_at,
   COALESCE(e.reverses_id::text,''),COALESCE(r.id::text,''),COALESCE(r.recorded_by_name,''),COALESCE(to_char(r.entry_date,'YYYY-MM-DD'),''),
   COALESCE(pm.id::text,''),COALESCE(pm.full_name,''),
-  EXISTS(SELECT 1 FROM finance_receipts fr WHERE fr.tenant_id=e.tenant_id AND fr.entry_id=e.id)
+  EXISTS(SELECT 1 FROM finance_receipts fr WHERE fr.tenant_id=e.tenant_id AND fr.entry_id=e.id),
+  COALESCE(e.event_budget_id::text,''),COALESCE(eb.name,''),COALESCE(e.heading_id::text,''),COALESCE(ch.name,'')
   FROM finance_entries e LEFT JOIN finance_entries r ON r.tenant_id=e.tenant_id AND r.reverses_id=e.id
   LEFT JOIN finance_due_payments dp ON dp.tenant_id=e.tenant_id AND dp.entry_id=e.id
-  LEFT JOIN roster_members pm ON pm.tenant_id=dp.tenant_id AND pm.id=dp.roster_member_id`
+  LEFT JOIN roster_members pm ON pm.tenant_id=dp.tenant_id AND pm.id=dp.roster_member_id
+  LEFT JOIN event_budgets eb ON eb.tenant_id=e.tenant_id AND eb.id=e.event_budget_id
+  LEFT JOIN contact_headings ch ON ch.tenant_id=e.tenant_id AND ch.id=e.heading_id`
+
+// scanEntry scans one row produced by entryColumns into dst.
+func scanEntry(row pgx.Row, dst *Entry) error {
+	return row.Scan(
+		&dst.ID, &dst.CategoryID, &dst.Direction, &dst.Date, &dst.Description, &dst.RecordedBy,
+		&dst.AmountCents, &dst.RecordedAt, &dst.ReversesID, &dst.ReversalID, &dst.ReversedBy,
+		&dst.ReversedOn, &dst.RosterMemberID, &dst.RosterMemberName, &dst.HasReceipt,
+		&dst.EventBudgetID, &dst.EventBudgetName, &dst.HeadingID, &dst.HeadingName,
+	)
+}
 
 type NewEntry struct {
 	CategoryID, Direction, Date, Description string
 	AmountCents                              int64
+	EventBudgetID, HeadingID                 string
 }
 type Store struct {
 	pool *pgxpool.Pool
@@ -167,12 +186,49 @@ func (s *Store) Create(ctx context.Context, sess auth.Session, in NewEntry) (out
 		if reserved {
 			return ErrReserved
 		}
+		var eventBudgetParam, headingParam any
+		var eventBudgetName, headingName string
+		if (in.EventBudgetID == "") != (in.HeadingID == "") {
+			return ErrInvalidEventLink
+		}
+		if in.EventBudgetID != "" {
+			if !uuidPattern.MatchString(in.EventBudgetID) || !uuidPattern.MatchString(in.HeadingID) {
+				return ErrNotFound
+			}
+			var archived bool
+			// FOR SHARE serializes with DELETE (FOR UPDATE) and Archive (UPDATE) on event_budgets.
+			e = tx.QueryRow(ctx, `SELECT name, archived_at IS NOT NULL FROM event_budgets WHERE tenant_id=$1 AND id=$2 FOR SHARE`, sess.TenantID, in.EventBudgetID).Scan(&eventBudgetName, &archived)
+			if errors.Is(e, pgx.ErrNoRows) {
+				return ErrNotFound
+			}
+			if e != nil {
+				return e
+			}
+			e = tx.QueryRow(ctx, `SELECT name FROM contact_headings WHERE tenant_id=$1 AND id=$2`, sess.TenantID, in.HeadingID).Scan(&headingName)
+			if errors.Is(e, pgx.ErrNoRows) {
+				return ErrNotFound
+			}
+			if e != nil {
+				return e
+			}
+			if archived {
+				return ErrInvalidEventLink
+			}
+			var hasLine bool
+			if e = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM event_budget_lines WHERE tenant_id=$1 AND budget_id=$2 AND heading_id=$3)`, sess.TenantID, in.EventBudgetID, in.HeadingID).Scan(&hasLine); e != nil {
+				return e
+			}
+			if !hasLine {
+				return ErrHeadingNotInBudget
+			}
+			eventBudgetParam, headingParam = in.EventBudgetID, in.HeadingID
+		}
 		name, e := officerName(ctx, tx, sess)
 		if e != nil {
 			return e
 		}
 		recordedAt := s.now()
-		e = tx.QueryRow(ctx, `INSERT INTO finance_entries(tenant_id,category_id,direction,entry_date,amount_cents,description,recorded_by,recorded_by_name,recorded_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id::text, recorded_at`, sess.TenantID, in.CategoryID, in.Direction, date, in.AmountCents, in.Description, sess.UserID, name, recordedAt).Scan(&out.ID, &out.RecordedAt)
+		e = tx.QueryRow(ctx, `INSERT INTO finance_entries(tenant_id,category_id,direction,entry_date,amount_cents,description,recorded_by,recorded_by_name,recorded_at,event_budget_id,heading_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id::text, recorded_at`, sess.TenantID, in.CategoryID, in.Direction, date, in.AmountCents, in.Description, sess.UserID, name, recordedAt, eventBudgetParam, headingParam).Scan(&out.ID, &out.RecordedAt)
 		if e != nil {
 			return e
 		}
@@ -182,6 +238,10 @@ func (s *Store) Create(ctx context.Context, sess auth.Session, in NewEntry) (out
 		out.AmountCents = in.AmountCents
 		out.Description = in.Description
 		out.RecordedBy = name
+		out.EventBudgetID = in.EventBudgetID
+		out.EventBudgetName = eventBudgetName
+		out.HeadingID = in.HeadingID
+		out.HeadingName = headingName
 		return nil
 	})
 	return
@@ -206,7 +266,7 @@ func (s *Store) Reverse(ctx context.Context, sess auth.Session, id string) (out 
 			return ErrNotFound
 		}
 		var original Entry
-		e := tx.QueryRow(ctx, `SELECT `+entryColumns+` WHERE e.tenant_id=$1 AND e.id=$2`, sess.TenantID, id).Scan(&original.ID, &original.CategoryID, &original.Direction, &original.Date, &original.Description, &original.RecordedBy, &original.AmountCents, &original.RecordedAt, &original.ReversesID, &original.ReversalID, &original.ReversedBy, &original.ReversedOn, &original.RosterMemberID, &original.RosterMemberName, &original.HasReceipt)
+		e := scanEntry(tx.QueryRow(ctx, `SELECT `+entryColumns+` WHERE e.tenant_id=$1 AND e.id=$2`, sess.TenantID, id), &original)
 		if errors.Is(e, pgx.ErrNoRows) {
 			return ErrNotFound
 		}
@@ -223,11 +283,23 @@ func (s *Store) Reverse(ctx context.Context, sess auth.Session, id string) (out 
 		if e != nil {
 			return e
 		}
-		out = Entry{CategoryID: original.CategoryID, Direction: "income", Date: s.now().In(argentina).Format("2006-01-02"), Description: "Reversión: " + original.Description, RecordedBy: name, AmountCents: original.AmountCents, ReversesID: original.ID}
+		out = Entry{
+			CategoryID:      original.CategoryID,
+			Direction:       "income",
+			Date:            s.now().In(argentina).Format("2006-01-02"),
+			Description:     "Reversión: " + original.Description,
+			RecordedBy:      name,
+			AmountCents:     original.AmountCents,
+			ReversesID:      original.ID,
+			EventBudgetID:   original.EventBudgetID,
+			EventBudgetName: original.EventBudgetName,
+			HeadingID:       original.HeadingID,
+			HeadingName:     original.HeadingName,
+		}
 		if original.Direction == "income" {
 			out.Direction = "expense"
 		}
-		e = tx.QueryRow(ctx, `INSERT INTO finance_entries(tenant_id,category_id,direction,entry_date,amount_cents,description,recorded_by,recorded_by_name,recorded_at,reverses_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id::text, recorded_at`, sess.TenantID, out.CategoryID, out.Direction, out.Date, out.AmountCents, out.Description, sess.UserID, name, s.now(), out.ReversesID).Scan(&out.ID, &out.RecordedAt)
+		e = tx.QueryRow(ctx, `INSERT INTO finance_entries(tenant_id,category_id,direction,entry_date,amount_cents,description,recorded_by,recorded_by_name,recorded_at,reverses_id,event_budget_id,heading_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NULLIF($11,'')::uuid,NULLIF($12,'')::uuid) RETURNING id::text, recorded_at`, sess.TenantID, out.CategoryID, out.Direction, out.Date, out.AmountCents, out.Description, sess.UserID, name, s.now(), out.ReversesID, out.EventBudgetID, out.HeadingID).Scan(&out.ID, &out.RecordedAt)
 		var pgErr *pgconn.PgError
 		if errors.As(e, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "finance_entries_reverses_id_key" {
 			return ErrAlreadyReversed
@@ -273,7 +345,7 @@ func (s *Store) Get(ctx context.Context, sess auth.Session, id string) (out Entr
 		if !uuidPattern.MatchString(id) {
 			return ErrNotFound
 		}
-		e := tx.QueryRow(ctx, `SELECT `+entryColumns+` WHERE e.tenant_id=$1 AND e.id=$2`, sess.TenantID, id).Scan(&out.ID, &out.CategoryID, &out.Direction, &out.Date, &out.Description, &out.RecordedBy, &out.AmountCents, &out.RecordedAt, &out.ReversesID, &out.ReversalID, &out.ReversedBy, &out.ReversedOn, &out.RosterMemberID, &out.RosterMemberName, &out.HasReceipt)
+		e := scanEntry(tx.QueryRow(ctx, `SELECT `+entryColumns+` WHERE e.tenant_id=$1 AND e.id=$2`, sess.TenantID, id), &out)
 		if errors.Is(e, pgx.ErrNoRows) {
 			return ErrNotFound
 		}
