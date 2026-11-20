@@ -3,6 +3,7 @@
 const GENERIC = "Algo salió mal de nuestro lado. Probá de nuevo en un rato.";
 
 const messages: Record<string, string> = {
+  pdf_unavailable: "No pudimos generar el PDF. Prob\u00e1 de nuevo en unos minutos.",
   invalid_credentials: "El mail o la contraseña no coinciden.",
   too_many_attempts: "Hiciste demasiados intentos. Esperá unos 15 minutos y probá de nuevo.",
   bad_request: "No pudimos procesar el pedido. Revisá los datos e intentá otra vez.",

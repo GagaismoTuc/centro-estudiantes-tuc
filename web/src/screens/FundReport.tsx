@@ -25,6 +25,7 @@ export function FundReport() {
   const [report, setReport] = useState<Report | null | undefined>(undefined);
   const [status, setStatus] = useState<Status>(null);
   const [busy, setBusy] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
   const latest = useRef(0);
   const form = useFormErrors();
   const ids = useId();
@@ -53,6 +54,32 @@ export function FundReport() {
     void load(from, to, true);
   }
 
+  async function downloadPdf() {
+    setPdfBusy(true); setStatus(null);
+    try {
+      const response = await fetch(new Request(new URL(`/api/finance/report.pdf${query(from, to)}`, window.location.origin)));
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({})) as { error?: string };
+        const code = body.error ?? "server_error";
+        if (code === "mfa_required" || code === "unauthenticated") void refresh();
+        setStatus({ tone: "error", text: errorMessage(code, "finance") });
+        form.failed(code);
+        return;
+      }
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `informe-de-caja-${from}-a-${to}.pdf`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      setStatus({ tone: "error", text: errorMessage("network", "finance") });
+      form.failed("network");
+    } finally {
+      setPdfBusy(false);
+    }
+  }
+
   const valid = !!from && !!to && from <= to;
   const names = new Map(report?.totals.map((t) => [t.categoryId, t.name]));
   const totals = (direction: "income" | "expense", title: string, none: string) => {
@@ -75,6 +102,7 @@ export function FundReport() {
         <div className="panel__actions">
           <button className="button button--primary" disabled={busy}>Ver informe</button>
           {valid && <a className="button button--secondary" href={`/api/finance/report.csv${query(from, to)}`} download>Descargar CSV</a>}
+          {valid && <button type="button" className="button button--secondary" disabled={pdfBusy} onClick={() => void downloadPdf()}>Descargar PDF</button>}
         </div>
       </form>
       <FormStatus status={status} {...form.statusProps} />
