@@ -14,7 +14,15 @@ export const financeEntries = () => moneyRequest<Entry[]>("/finance/entries");
 export const financeBalance = () => moneyRequest<{ balanceCents: string }>("/finance/balance");
 export const financeCalculatorSummary = () => moneyRequest<FinanceCalculatorSummary>("/finance/calculator-summary");
 
-export function createFinanceEntry(input: { categoryId: string; direction: string; date: string; description: string; amountCents: string }) {
+export function createFinanceEntry(input: {
+  categoryId: string;
+  direction: string;
+  date: string;
+  description: string;
+  amountCents: string;
+  eventBudgetId?: string;
+  headingId?: string;
+}) {
   const { amountCents, ...rest } = input;
   return sendMoneyJSON<Entry>("/finance/entries", "POST", amountCents, rest);
 }

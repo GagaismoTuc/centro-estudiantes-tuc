@@ -3606,9 +3606,29 @@ components:
       properties:
         day: {type: string}
         totals: {$ref: "#/components/schemas/EventBudgetTotals"}
+    EventBudgetHeadingComparison:
+      type: object
+      required:
+        - headingId
+        - headingName
+        - budgetedExpenseCents
+        - actualExpenseCents
+        - expenseDifferenceCents
+        - budgetedIncomeCents
+        - actualIncomeCents
+        - incomeDifferenceCents
+      properties:
+        headingId: {type: string}
+        headingName: {type: string}
+        budgetedExpenseCents: {type: integer, format: int64}
+        actualExpenseCents: {type: integer, format: int64}
+        expenseDifferenceCents: {type: integer, format: int64, description: "budgetedExpenseCents minus actualExpenseCents (negative means overspent)."}
+        budgetedIncomeCents: {type: integer, format: int64}
+        actualIncomeCents: {type: integer, format: int64}
+        incomeDifferenceCents: {type: integer, format: int64, description: "actualIncomeCents minus budgetedIncomeCents (positive means more income than budgeted)."}
     EventBudgetDetail:
       type: object
-      required: [id, name, startsOn, endsOn, archived, lines, totals, days]
+      required: [id, name, startsOn, endsOn, archived, lines, totals, days, byHeading]
       properties:
         id: {type: string}
         name: {type: string}
@@ -3622,6 +3642,9 @@ components:
         days:
           type: array
           items: {$ref: "#/components/schemas/EventBudgetDay"}
+        byHeading:
+          type: array
+          items: {$ref: "#/components/schemas/EventBudgetHeadingComparison"}
     EventBudgetLineInput:
       type: object
       additionalProperties: false

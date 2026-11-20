@@ -10,7 +10,7 @@ const categories = [
   { id: "c3", name: "Viajes", direction: "expense", active: true, reserved: false },
 ];
 const entry = { id: "e1", categoryId: "c1", direction: "income", date: "2026-11-10", amountCents: 200000, description: "Venta de tortas", recordedBy: "Ana Ficticia", recordedAt: "2026-11-14T12:00:00Z", hasReceipt: false };
-const reads = { "GET /finance/categories": ok(categories), "GET /finance/balance": ok({ balanceCents: 200000 }), "GET /finance/entries": ok([entry]) };
+const reads = { "GET /finance/categories": ok(categories), "GET /finance/balance": ok({ balanceCents: 200000 }), "GET /finance/entries": ok([entry]), "GET /event-budgets": ok([]) };
 
 test("R15 students read the ledger and balance without an entry form", async () => {
   mockApi({ "GET /auth/me": ok(me()), ...reads });

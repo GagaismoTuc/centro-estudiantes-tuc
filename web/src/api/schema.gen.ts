@@ -1633,6 +1633,28 @@ export interface components {
             day: string;
             totals: components["schemas"]["EventBudgetTotals"];
         };
+        EventBudgetHeadingComparison: {
+            headingId: string;
+            headingName: string;
+            /** Format: int64 */
+            budgetedExpenseCents: number;
+            /** Format: int64 */
+            actualExpenseCents: number;
+            /**
+             * Format: int64
+             * @description budgetedExpenseCents minus actualExpenseCents (negative means overspent).
+             */
+            expenseDifferenceCents: number;
+            /** Format: int64 */
+            budgetedIncomeCents: number;
+            /** Format: int64 */
+            actualIncomeCents: number;
+            /**
+             * Format: int64
+             * @description actualIncomeCents minus budgetedIncomeCents (positive means more income than budgeted).
+             */
+            incomeDifferenceCents: number;
+        };
         EventBudgetDetail: {
             id: string;
             name: string;
@@ -1642,6 +1664,7 @@ export interface components {
             lines: components["schemas"]["EventBudgetLine"][];
             totals: components["schemas"]["EventBudgetTotals"];
             days: components["schemas"]["EventBudgetDay"][];
+            byHeading: components["schemas"]["EventBudgetHeadingComparison"][];
         };
         EventBudgetLineInput: {
             /** @description cost, ticket, foodtruck, sponsor or due */

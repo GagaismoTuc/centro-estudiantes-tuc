@@ -6,6 +6,7 @@ import (
 	"errors"
 	"math/big"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -213,11 +214,46 @@ type DayTotals struct {
 	Day    string
 	Totals Totals
 }
+type HeadingComparison struct {
+	HeadingID              string
+	HeadingName            string
+	BudgetedExpenseCents   int64
+	ActualExpenseCents     int64
+	ExpenseDifferenceCents int64
+	BudgetedIncomeCents    int64
+	ActualIncomeCents      int64
+	IncomeDifferenceCents  int64
+}
 type Detail struct {
 	Budget
-	Lines  []Line
-	Totals Totals
-	Days   []DayTotals
+	Lines     []Line
+	Totals    Totals
+	Days      []DayTotals
+	ByHeading []HeadingComparison
+}
+
+type headingAccumulator struct {
+	id, name                                                     string
+	budgetedExpense, actualExpense, budgetedIncome, actualIncome big.Int
+}
+
+func (h *headingAccumulator) comparison() (HeadingComparison, error) {
+	expDiff := new(big.Int).Sub(&h.budgetedExpense, &h.actualExpense)
+	incDiff := new(big.Int).Sub(&h.actualIncome, &h.budgetedIncome)
+	if !h.budgetedExpense.IsInt64() || !h.actualExpense.IsInt64() || !expDiff.IsInt64() ||
+		!h.budgetedIncome.IsInt64() || !h.actualIncome.IsInt64() || !incDiff.IsInt64() {
+		return HeadingComparison{}, errors.New("budget heading totals overflow")
+	}
+	return HeadingComparison{
+		HeadingID:              h.id,
+		HeadingName:            h.name,
+		BudgetedExpenseCents:   h.budgetedExpense.Int64(),
+		ActualExpenseCents:     h.actualExpense.Int64(),
+		ExpenseDifferenceCents: expDiff.Int64(),
+		BudgetedIncomeCents:    h.budgetedIncome.Int64(),
+		ActualIncomeCents:      h.actualIncome.Int64(),
+		IncomeDifferenceCents:  incDiff.Int64(),
+	}, nil
 }
 
 type accumulator struct{ cost, income, other, tickets big.Int }
@@ -281,7 +317,7 @@ func (s *Store) Get(ctx context.Context, sess auth.Session, id string) (Detail, 
 		if err != nil {
 			return err
 		}
-		rows, err := tx.Query(ctx, `SELECT id::text,kind,description,heading_id::text,contact_id::text,quantity,unit_amount_cents,day::text FROM event_budget_lines WHERE tenant_id=$1 AND budget_id=$2 ORDER BY created_at,id`, sess.TenantID, id)
+		rows, err := tx.Query(ctx, `SELECT l.id::text,l.kind,l.description,l.heading_id::text,l.contact_id::text,l.quantity,l.unit_amount_cents,l.day::text,COALESCE(ch.name,'') FROM event_budget_lines l LEFT JOIN contact_headings ch ON ch.tenant_id=l.tenant_id AND ch.id=l.heading_id WHERE l.tenant_id=$1 AND l.budget_id=$2 ORDER BY l.created_at,l.id`, sess.TenantID, id)
 		if err != nil {
 			return err
 		}
@@ -289,9 +325,21 @@ func (s *Store) Get(ctx context.Context, sess auth.Session, id string) (Detail, 
 		out.Lines = []Line{}
 		var all accumulator
 		byDay := map[string]*accumulator{}
+		byHeading := map[string]*headingAccumulator{}
+		headingOf := func(hid, hname string) *headingAccumulator {
+			acc := byHeading[hid]
+			if acc == nil {
+				acc = &headingAccumulator{id: hid, name: hname}
+				byHeading[hid] = acc
+			} else if acc.name == "" && hname != "" {
+				acc.name = hname
+			}
+			return acc
+		}
 		for rows.Next() {
 			var l Line
-			if err := rows.Scan(&l.ID, &l.Kind, &l.Description, &l.HeadingID, &l.ContactID, &l.Quantity, &l.UnitAmountCents, &l.Day); err != nil {
+			var headingName string
+			if err := rows.Scan(&l.ID, &l.Kind, &l.Description, &l.HeadingID, &l.ContactID, &l.Quantity, &l.UnitAmountCents, &l.Day, &headingName); err != nil {
 				return err
 			}
 			out.Lines = append(out.Lines, l)
@@ -302,9 +350,81 @@ func (s *Store) Get(ctx context.Context, sess auth.Session, id string) (Detail, 
 				}
 				byDay[*l.Day].add(l)
 			}
+			if l.HeadingID != nil {
+				acc := headingOf(*l.HeadingID, headingName)
+				if l.Quantity != nil && l.UnitAmountCents != nil {
+					v := new(big.Int).Mul(big.NewInt(*l.Quantity), big.NewInt(*l.UnitAmountCents))
+					if l.Kind == "cost" {
+						acc.budgetedExpense.Add(&acc.budgetedExpense, v)
+					} else {
+						acc.budgetedIncome.Add(&acc.budgetedIncome, v)
+					}
+				}
+			}
 		}
 		if err := rows.Err(); err != nil {
 			return err
+		}
+		actualRows, err := tx.Query(ctx, `SELECT fe.heading_id::text, ch.name,
+			COALESCE(SUM(CASE
+				WHEN fe.reverses_id IS NULL AND fe.direction = 'expense' THEN fe.amount_cents
+				WHEN fe.reverses_id IS NOT NULL AND fe.direction = 'income' THEN -fe.amount_cents
+				ELSE 0
+			END), 0)::text,
+			COALESCE(SUM(CASE
+				WHEN fe.reverses_id IS NULL AND fe.direction = 'income' THEN fe.amount_cents
+				WHEN fe.reverses_id IS NOT NULL AND fe.direction = 'expense' THEN -fe.amount_cents
+				ELSE 0
+			END), 0)::text
+			FROM finance_entries fe
+			JOIN contact_headings ch ON ch.tenant_id = fe.tenant_id AND ch.id = fe.heading_id
+			WHERE fe.tenant_id = $1 AND fe.event_budget_id = $2 AND fe.heading_id IS NOT NULL
+			GROUP BY fe.heading_id, ch.name`, sess.TenantID, id)
+		if err != nil {
+			return err
+		}
+		defer actualRows.Close()
+		for actualRows.Next() {
+			var hid, hname, expStr, incStr string
+			if err := actualRows.Scan(&hid, &hname, &expStr, &incStr); err != nil {
+				return err
+			}
+			acc := headingOf(hid, hname)
+			if v, ok := new(big.Int).SetString(expStr, 10); ok {
+				acc.actualExpense.Add(&acc.actualExpense, v)
+			} else {
+				return errors.New("budgets: invalid actual expense sum")
+			}
+			if v, ok := new(big.Int).SetString(incStr, 10); ok {
+				acc.actualIncome.Add(&acc.actualIncome, v)
+			} else {
+				return errors.New("budgets: invalid actual income sum")
+			}
+		}
+		if err := actualRows.Err(); err != nil {
+			return err
+		}
+		sorted := make([]*headingAccumulator, 0, len(byHeading))
+		for _, acc := range byHeading {
+			sorted = append(sorted, acc)
+		}
+		sort.Slice(sorted, func(i, j int) bool {
+			li, lj := strings.ToLower(sorted[i].name), strings.ToLower(sorted[j].name)
+			if li != lj {
+				return li < lj
+			}
+			if sorted[i].name != sorted[j].name {
+				return sorted[i].name < sorted[j].name
+			}
+			return sorted[i].id < sorted[j].id
+		})
+		out.ByHeading = make([]HeadingComparison, 0, len(sorted))
+		for _, acc := range sorted {
+			cmp, err := acc.comparison()
+			if err != nil {
+				return err
+			}
+			out.ByHeading = append(out.ByHeading, cmp)
 		}
 		out.Totals, err = all.totals()
 		if err != nil {
