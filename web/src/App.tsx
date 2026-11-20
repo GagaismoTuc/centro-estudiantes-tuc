@@ -18,6 +18,7 @@ import { Home } from "./screens/Home.tsx";
 import { EventBudgets } from "./screens/EventBudgets.tsx";
 import { Finance } from "./screens/Finance.tsx";
 import { FundReport } from "./screens/FundReport.tsx";
+import { AccountabilityReports } from "./screens/AccountabilityReports.tsx";
 import { Dues } from "./screens/Dues.tsx";
 import { MfaEnroll } from "./screens/MfaEnroll.tsx";
 import { MfaVerify } from "./screens/MfaVerify.tsx";
@@ -49,6 +50,7 @@ const shellRoutes: Record<string, { page: string; Screen: () => JSX.Element }> =
   "/": { page: "Inicio", Screen: Home },
   "/caja": { page: "Caja", Screen: Finance },
   "/caja/informe": { page: "Informe", Screen: FundReport },
+  "/caja/rendiciones": { page: "Rendiciones", Screen: AccountabilityReports },
   "/cuotas": { page: "Cuotas", Screen: Dues },
   "/padron": { page: "Padrón", Screen: Roster },
   "/miembros": { page: "Miembros", Screen: Members },

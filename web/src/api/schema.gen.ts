@@ -4,6 +4,46 @@
  */
 
 export interface paths {
+    "/members/invitations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Invite a school admin or Veedor by email
+         * @description Only a school admin with a verified second factor may invite; a new invitation for the same school and email invalidates the previous one. Mail is sent after commit, off the request path.
+         */
+        post: operations["postMemberInvitation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/invitations/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept a school invitation
+         * @description New invitees create a verified account with a password. Existing account holders must sign in and prove their second factor first; their password is never changed. Tokens are single-use, expire after 48 hours and invalid tokens are rate-limited per IP.
+         */
+        post: operations["postAuthInvitationAccept"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -756,12 +796,12 @@ export interface paths {
         };
         /**
          * Read the active school's current Electoral commission
-         * @description Any member of the active school (student, officer or school admin); no second factor needed. `commission` is null until one is designated. `isMember` says whether the caller's roster entry sits on it; `canDesignate` whether the caller may designate or replace it now by role (any officer when the school has officers, otherwise the school admin), regardless of the second factor and of `election_frozen`. Responses carry `Cache-Control: no-store`.
+         * @description Any member of the active school (student, officer or school admin); a Veedor must prove a second factor. `commission` is null until one is designated. `isMember` says whether the caller's roster entry sits on it; `canDesignate` whether the caller may designate or replace it now by role (any officer when the school has officers, otherwise the school admin, or a Veedor when there are no officers or an existing commission can be replaced before the election opens). Responses carry `Cache-Control: no-store`.
          */
         get: operations["getElectoralCommission"];
         /**
          * Designate or replace the members of the current Electoral commission
-         * @description Any officer when the school has officers (an officer position or the officer role); otherwise the school admin. Checked on every request, so it applies to replacing too. The role is checked first (`forbidden`), then the second factor (`mfa_required`); both before the body is read. Each id is a roster member of the active school with an account; a repeated id is stored once. The whole list replaces the current members; the commission is created when the school has none. Every error writes nothing. Responses carry `Cache-Control: no-store`.
+         * @description Any officer when the school has officers (an officer position or the officer role); otherwise the school admin. A Veedor may designate when the school has no officers or replace the current commission before the election opens. Checked on every request, so it applies to replacing too. The role is checked first (`forbidden`), then the second factor (`mfa_required`); both before the body is read. Each id is a roster member of the active school with an account; a repeated id is stored once. The whole list replaces the current members; the commission is created when the school has none. Every error writes nothing. Responses carry `Cache-Control: no-store`.
          */
         put: operations["putElectoralCommission"];
         post?: never;
@@ -802,7 +842,7 @@ export interface paths {
         put?: never;
         /**
          * Create the draft of an election
-         * @description Members of the current Electoral commission only, with a verified second factor (`forbidden` first, then `mfa_required`, both before the body is read): students, officers (the Presidente included) and school admins who are not on it get `forbidden`. The election belongs to the current commission. Every error writes nothing; the validation codes are listed in the 422 response. Responses carry `Cache-Control: no-store`.
+         * @description Members of the current Electoral commission other than Veedors, with a verified second factor (`forbidden` first, then `mfa_required`, both before the body is read): students, officers (the Presidente included) and school admins who are not on it get `forbidden`. The election belongs to the current commission. Every error writes nothing; the validation codes are listed in the 422 response. Responses carry `Cache-Control: no-store`.
          */
         post: operations["postElection"];
         delete?: never;
@@ -820,7 +860,7 @@ export interface paths {
         };
         /**
          * Read the active school's election in progress (neither published nor annulled)
-         * @description Any member of the active school. Responses carry `Cache-Control: no-store`.
+         * @description Any member of the active school; a Veedor must prove MFA before election data is read. Responses carry `Cache-Control: no-store`.
          */
         get: operations["getCurrentElection"];
         put?: never;
@@ -840,7 +880,7 @@ export interface paths {
         };
         /**
          * Read the active school's election in progress, or else its most recently created one
-         * @description Any member of the active school. The election in progress when there is one (the same as `GET /elections/current`); otherwise the most recently created election, so everyone still sees an annulled election and its reason. Responses carry `Cache-Control: no-store`.
+         * @description Any member of the active school; a Veedor must prove MFA before election data is read. The election in progress when there is one (the same as `GET /elections/current`); otherwise the most recently created election, so everyone still sees an annulled election and its reason. Responses carry `Cache-Control: no-store`.
          */
         get: operations["getLatestElection"];
         put?: never;
@@ -862,7 +902,7 @@ export interface paths {
         };
         /**
          * Read an election of the active school
-         * @description Any member of the active school. Responses carry `Cache-Control: no-store`.
+         * @description Any member of the active school; a Veedor must prove MFA before election data is read. Responses carry `Cache-Control: no-store`.
          */
         get: operations["getElection"];
         /**
@@ -890,7 +930,7 @@ export interface paths {
         put?: never;
         /**
          * Annul an election before its result is published
-         * @description Members of the election's Electoral commission only, with a verified second factor. Checks, in order and before the body is read: `forbidden` (no membership in the active school), `not_found` (no such election in it, whether or not it exists in another), `forbidden` (not on the election's commission: students, officers and school admins who are not on it), `mfa_required`. Then the reason (422) and the election's state (409). Annulling is irreversible: the election publishes no result, accepts no change and never reopens; the commission's mandate ends, so the school can organize another election once the officers designate a new commission. Of two simultaneous requests exactly one annuls. Every error writes nothing. Responses carry `Cache-Control: no-store`.
+         * @description Members of the election's Electoral commission, or a Veedor, with a verified second factor. Before the body is read, a Veedor's role is checked and then MFA is required (`mfa_required`) before election data is read. For other members, checks are `forbidden` (no membership in the active school), `not_found` (no such election in it, whether or not it exists in another), `forbidden` (not on the election's commission: students, officers and school admins who are not on it), then `mfa_required`. Then the reason (422) and the election's state (409). Annulling is irreversible: the election publishes no result, accepts no change and never reopens; the commission's mandate ends, so the school can organize another election once the officers designate a new commission. Of two simultaneous requests exactly one annuls. Every error writes nothing. Responses carry `Cache-Control: no-store`.
          */
         post: operations["postElectionAnnulment"];
         delete?: never;
@@ -910,7 +950,7 @@ export interface paths {
         };
         /**
          * Search roster members by name for an election list
-         * @description List builders only (a student with a roster link, or an Electoral commission member with a verified two-factor session). Searches roster members of the active school by name with at least 3 letters and returns at most 20 results (names and ids only, never document numbers). Responses carry `Cache-Control: no-store`.
+         * @description List builders only (a student with a roster link, or an Electoral commission member with a verified two-factor session). Veedores cannot search, even if they also hold either role. Searches roster members of the active school by name with at least 3 letters and returns at most 20 results (names and ids only, never document numbers). Responses carry `Cache-Control: no-store`.
          */
         get: operations["getElectionCandidates"];
         put?: never;
@@ -932,13 +972,13 @@ export interface paths {
         };
         /**
          * List election lists visible to the caller
-         * @description Any member of the active school. Returns approved lists to all members; pending and rejected lists (with `rejectionReason`) are included only for the election's Electoral commission and each list's representative ("Apoderado"). Also returns `rosterMemberId` of the caller, if linked to the roster. Responses carry `Cache-Control: no-store`.
+         * @description Any member of the active school; a Veedor must prove a second factor before list data is read. Returns approved lists to all members; pending and rejected lists (with `rejectionReason`) are included only for the election's Electoral commission and each list's representative ("Apoderado"). Also returns `rosterMemberId` of the caller, if linked to the roster. Responses carry `Cache-Control: no-store`.
          */
         get: operations["getElectionLists"];
         put?: never;
         /**
          * Present a list as a student representative
-         * @description Any member of the active school linked to a roster entry presents a list during the submission period and becomes its representative ("Apoderado"). School admins without a roster entry and accounts without membership receive `forbidden` before the body is read. Does not require a second factor beyond the session. Responses carry `Cache-Control: no-store`.
+         * @description Any member of the active school linked to a roster entry, except a Veedor, presents a list during the submission period and becomes its representative ("Apoderado"). School admins without a roster entry and accounts without membership receive `forbidden` before the body is read. Does not require a second factor beyond the session. Responses carry `Cache-Control: no-store`.
          */
         post: operations["postElectionList"];
         delete?: never;
@@ -960,7 +1000,7 @@ export interface paths {
         put?: never;
         /**
          * Load a list as the Electoral commission on behalf of a representative
-         * @description Members of the current Electoral commission with a verified second factor (`forbidden` first, then `mfa_required`, both before the body is read). Names a roster member of the active school as the representative ("Apoderado"). Responses carry `Cache-Control: no-store`.
+         * @description Members of the current Electoral commission other than Veedors, with a verified second factor (`forbidden` first, then `mfa_required`, both before the body is read). Names a roster member of the active school as the representative ("Apoderado"). Responses carry `Cache-Control: no-store`.
          */
         post: operations["postCommissionElectionList"];
         delete?: never;
@@ -981,12 +1021,12 @@ export interface paths {
         };
         /**
          * Read one election list
-         * @description Approved lists are visible to any member of the active school. Pending and rejected lists are visible only to the election's Electoral commission and the list's representative; another student requesting a pending or rejected list receives `not_found`. Responses carry `Cache-Control: no-store`.
+         * @description Approved lists are visible to any member of the active school; a Veedor must prove MFA before list data is read. Pending and rejected lists are visible only to the election's Electoral commission and the list's representative; another student requesting a pending or rejected list receives `not_found`. Responses carry `Cache-Control: no-store`.
          */
         get: operations["getElectionList"];
         /**
          * Edit a pending election list
-         * @description The list's representative (no second factor beyond the session) or a member of the current Electoral commission (verified second factor required) during the submission period. Approved lists return `list_frozen`, rejected lists return `list_rejected`. Responses carry `Cache-Control: no-store`.
+         * @description The list's representative (no second factor beyond the session) or a member of the current Electoral commission (verified second factor required) during the submission period. Veedors cannot edit lists. Approved lists return `list_frozen`, rejected lists return `list_rejected`. Responses carry `Cache-Control: no-store`.
          */
         put: operations["putElectionList"];
         post?: never;
@@ -1010,7 +1050,7 @@ export interface paths {
         put?: never;
         /**
          * Approve a pending election list
-         * @description Members of the current Electoral commission with a verified second factor (`forbidden` first, then `mfa_required`), during the submission period. Responses carry `Cache-Control: no-store`.
+         * @description Members of the current Electoral commission other than Veedors, with a verified second factor (`forbidden` first, then `mfa_required`), during the submission period. Responses carry `Cache-Control: no-store`.
          */
         post: operations["postApproveElectionList"];
         delete?: never;
@@ -1033,7 +1073,7 @@ export interface paths {
         put?: never;
         /**
          * Reject a pending election list with a reason
-         * @description Members of the current Electoral commission with a verified second factor (`forbidden` first, then `mfa_required`, both before the body is read), during the submission period. Requires a non-empty reason of up to 500 characters. Rejecting frees the list's candidates and name. Responses carry `Cache-Control: no-store`.
+         * @description Members of the current Electoral commission other than Veedors, with a verified second factor (`forbidden` first, then `mfa_required`, both before the body is read), during the submission period. Requires a non-empty reason of up to 500 characters. Rejecting frees the list's candidates and name. Responses carry `Cache-Control: no-store`.
          */
         post: operations["postRejectElectionList"];
         delete?: never;
@@ -1096,8 +1136,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Votes per list of an election
-         * @description Any member of the active school. Not available yet: publishing the result is a later feature, so every election answers `results_not_available`; while voting is open nobody sees votes per list. Responses carry `Cache-Control: no-store`.
+         * The result of an election, published at its close
+         * @description Any member of the active school, from `endsAt` on (inclusive): before it every election, annulled or not, answers `results_not_available` with no count. An annulled election publishes no result: it answers `status: annulled` with its reason. Otherwise the result is computed on read, from the Ballot box written once at the close, so every read returns the same result; it carries no voter nor Ballot identifier. Responses carry `Cache-Control: no-store`.
          */
         get: operations["getElectionResults"];
         put?: never;
@@ -1174,6 +1214,28 @@ export interface paths {
         };
         /** Fund balance in cents */
         get: operations["getFinanceBalance"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/finance/calculator-summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Officer-only totals for the financial calculators
+         * @description Returns the active school's current roster headcount, Fund balance and total still owed
+         *     across all Dues (excluding exempt Roster members). Read-only; returns totals only, never
+         *     names or per-student data. Restricted to Officers with a verified second factor.
+         */
+        get: operations["getFinanceCalculatorSummary"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1280,6 +1342,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/finance/accountability-reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Published Financial accountability reports (Rendiciones de cuentas), newest first
+         * @description Any member of the active school reads them (Officers, Students, School admins and, once it exists, the Veedor). Lists period, Term and who published; the frozen copy is at `/finance/accountability-reports/{id}`.
+         */
+        get: operations["getFinanceAccountabilityReports"];
+        put?: never;
+        /**
+         * Publish a frozen Financial accountability report as an Officer with MFA
+         * @description Any current Officer publishes any period, also one of the previous Term, and may publish overlapping periods more than once. The Fund report of the period, its totals per Category, its balances and the totals per Due whose due date falls in the period are read in one consistent snapshot and stored with the publisher's name; the copy never changes and never names a Roster member. There is no PUT or DELETE.
+         */
+        post: operations["postFinanceAccountabilityReports"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/finance/accountability-reports/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The report id. The router also routes `/finance/accountability-reports/{id}.csv` here, because a path wildcard must be a whole segment; see that path for the CSV. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * One published Financial accountability report with its frozen copy
+         * @description Same readers as the list. Every read returns the same copy, whatever Reversals, Category renames or payments came after publication.
+         */
+        get: operations["getFinanceAccountabilityReport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/finance/accountability-reports/{id}.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * One published Financial accountability report as a CSV download
+         * @description Same readers as the list; served by the `{id}` route (excluded from code generation). Same encoding and escaping as `/finance/report.csv`. A header section (`concepto;valor`: Gestión, Período, Publicada por, Publicada el), an empty line, the summary of `/finance/report.csv`, an empty line, the totals per Due (`cuota;vencimiento;pagaron;de`), an empty line and the period's Entries with the columns of `/finance/entries.csv` without `alumno`, as published.
+         */
+        get: operations["getFinanceAccountabilityReportCsv"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/finance/entries/{entryId}": {
         parameters: {
             query?: never;
@@ -1312,7 +1443,7 @@ export interface paths {
         put?: never;
         /**
          * Reverse an entry as any officer with MFA
-         * @description Records, in one transaction, a Reversal: an entry with the same amount and category, the opposite direction, today's date in Argentina and the description "Reversión: " followed by the original's. Old entries may be reversed; the Reversal falls in the current period.
+         * @description Records, in one transaction, a Reversal: an entry with the same amount and category (and optional event budget and heading link), the opposite direction, today's date in Argentina and the description "Reversión: " followed by the original's. Old entries may be reversed; the Reversal falls in the current period.
          */
         post: operations["postFinanceEntryReversal"];
         delete?: never;
@@ -1398,7 +1529,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List dues owed by the signed-in roster member */
+        /**
+         * List dues owed by the signed-in roster member
+         * @description A Veedor must prove a second factor before this request reads membership or due data.
+         */
         get: operations["getMyFinanceDues"];
         put?: never;
         post?: never;
@@ -1588,6 +1722,10 @@ export interface components {
             /** Format: int64 */
             amountCents: number;
             description: string;
+            /** @description Optional active Event budget id; must be paired with headingId. */
+            eventBudgetId?: string;
+            /** @description Optional Heading id with at least one line in eventBudgetId; must be paired with eventBudgetId. */
+            headingId?: string;
         };
         FinanceEntry: {
             id: string;
@@ -1602,6 +1740,14 @@ export interface components {
             recordedAt: string;
             /** @description True when at least one Receipt backs this entry. */
             hasReceipt: boolean;
+            /** @description Present when this entry is linked to an Event budget. */
+            eventBudgetId?: string;
+            /** @description Present when this entry is linked to an Event budget; visible to all school members in the ledger. */
+            eventBudgetName?: string;
+            /** @description Present when this entry is linked to an Event budget; the Heading id. */
+            headingId?: string;
+            /** @description Present when this entry is linked to an Event budget; the Heading name. */
+            headingName?: string;
             /** @description Present when this entry is a Reversal; the id of the entry it reverses. */
             reversesId?: string;
             /** @description Present when this entry was reversed; the id of its Reversal. */
@@ -1666,9 +1812,75 @@ export interface components {
             /** @description Entries in the range, oldest first. */
             entries: components["schemas"]["FinanceEntry"][];
         };
+        NewAccountabilityReport: {
+            /** @description First day of the period, YYYY-MM-DD, inclusive. */
+            from: string;
+            /** @description Last day of the period, YYYY-MM-DD, inclusive; not after today. */
+            to: string;
+            /** @description The Term (Gestión) the report belongs to, such as "Gestión 2026". */
+            term: string;
+        };
+        AccountabilityReportSummary: {
+            id: string;
+            from: string;
+            to: string;
+            term: string;
+            /** @description The publishing Officer's Roster name. */
+            publishedBy: string;
+            /** Format: date-time */
+            publishedAt: string;
+        };
+        AccountabilityReport: components["schemas"]["AccountabilityReportSummary"] & {
+            /** Format: int64 */
+            openingCents: number;
+            /** Format: int64 */
+            closingCents: number;
+            /** @description Categories with Entries in the period, with their names at publication. */
+            totals: components["schemas"]["FinanceCategoryTotal"][];
+            /** @description Dues whose due date falls in the period, by due date. */
+            dues: components["schemas"]["AccountabilityDueTotal"][];
+            /** @description Entries in the period as published, oldest first; never who paid. */
+            entries: components["schemas"]["AccountabilityEntry"][];
+        };
+        AccountabilityDueTotal: {
+            dueId: string;
+            name: string;
+            dueDate: string;
+            /** Format: int64 */
+            amountCents: number;
+            /** @description Roster members who paid the Due in full by the period's `to`: payments dated up to `to` whose Entry has no Reversal dated up to `to`. */
+            paidCount: number;
+            /** @description Roster members who owe the Due, Exemptions excluded. */
+            totalCount: number;
+        };
+        AccountabilityEntry: {
+            id: string;
+            date: string;
+            /** @enum {string} */
+            direction: "income" | "expense";
+            categoryId: string;
+            /** @description The Category's name at publication. */
+            category: string;
+            description: string;
+            /** Format: int64 */
+            amountCents: number;
+            recordedBy: string;
+            /** @description Set on a Reversal. */
+            reversesId?: string;
+            /** @description Whether the Entry had a Reversal at publication. */
+            reversed: boolean;
+        };
         FinanceBalance: {
             /** @description The exact sum; may exceed int64. */
             balanceCents: number;
+        };
+        FinanceCalculatorSummary: {
+            /** @description Current number of Roster members in the active school. */
+            rosterCount: number;
+            /** @description Current Fund balance in integer cents; exact sum, may exceed int64 and may be negative. */
+            balance: number;
+            /** @description Total in integer cents still owed across all Dues by non-exempt Roster members; exact sum, may exceed int64. */
+            owedOnDues: number;
         };
         NewFinanceDue: {
             name: string;
@@ -1811,11 +2023,48 @@ export interface components {
             /** @description Whether the caller voted; nobody learns whether anyone else did. */
             hasVoted: boolean;
         };
+        /** @description With `status: annulled`, only `annulmentReason`. With `status: published`, every other property and `winner` only when `outcome` is `winner`. */
+        ElectionResult: {
+            /** @enum {string} */
+            status: "published" | "annulled";
+            /** @description The public reason of the Annulment. */
+            annulmentReason?: string;
+            mode?: components["schemas"]["ElectionMode"];
+            /** @description Every approved list of the election, also those with 0 votes; most votes first, then by name. */
+            lists?: components["schemas"]["ElectionResultList"][];
+            /** @description Blank votes; counted, they never win. */
+            blankVotes?: number;
+            /** @description How many students of the Electorate voted (X); the votes of the lists plus `blankVotes`. */
+            voted?: number;
+            /** @description The size of the Electorate (Y). When voting never opened (`no_lists`), the roster when the result was first read. */
+            electorate?: number;
+            /**
+             * @description `winner`: one list has the most votes (simple majority, no quorum). `tie`: two or more lists share the most votes. `no_votes`: every list has 0 votes, even with Blank votes. `no_lists`: no approved list, so voting never opened.
+             * @enum {string}
+             */
+            outcome?: "winner" | "tie" | "no_votes" | "no_lists";
+            winner?: components["schemas"]["ElectionResultWinner"];
+        };
+        ElectionResultList: {
+            id: string;
+            name: string;
+            votes: number;
+        };
+        /** @description The list with the most votes; only when `outcome` is `winner`. */
+        ElectionResultWinner: {
+            id: string;
+            name: string;
+        };
         AnnulmentRequest: {
             /** @description Public: every member of the school sees it next to the election. Trimmed; 1 to 500 characters once trimmed (`reason_required`, `reason_too_long`). The request body is capped at 4 KiB (`bad_request`). */
             reason: string;
         };
         Annulment: {
+            /**
+             * @description Present when a Veedor annulled the election.
+             * @enum {string}
+             */
+            annulledBy?: "veedor";
             reason: string;
             /** Format: date-time */
             annulledAt: string;
@@ -1947,7 +2196,7 @@ export interface components {
             code: string;
         };
         /** @enum {string} */
-        Role: "school_admin" | "officer" | "student";
+        Role: "school_admin" | "officer" | "student" | "veedor";
         /**
          * @description Two-factor state of the session, computed from the role in the active tenant. School admins, officers and members of the current Electoral commission are privileged. `not_required`: not privileged or no membership. `enrollment_required`: privileged without a confirmed TOTP. `pending`: confirmed TOTP but this session has not verified it. `satisfied`: this session verified a code. Endpoints for privileged users answer 403 `mfa_required` unless `satisfied`.
          * @enum {string}
@@ -2299,6 +2548,148 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    postMemberInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    email: string;
+                    role: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Invitation committed. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            /** @description Forbidden or MFA required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForbiddenError"];
+                };
+            };
+            /** @description Invalid email or role. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "invalid_email" | "invalid_role";
+                    };
+                };
+            };
+            /** @description Too many requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    postAuthInvitationAccept: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    token: string;
+                    password?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Existing account joined the school; a rotated session cookie is set. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Me"];
+                };
+            };
+            /** @description Verified account created; a session cookie is set. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Me"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            /** @description Sign in with the invited account first, or the session expired. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "login_required" | "unauthenticated";
+                    };
+                };
+            };
+            /** @description Prove the second factor first. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "mfa_required";
+                    };
+                };
+            };
+            /** @description Invalid token or weak password. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "invalid_token" | "weak_password";
+                    };
+                };
+            };
+            /** @description Too many invalid token attempts. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "too_many_attempts";
+                    };
+                };
+            };
+        };
+    };
     getHealth: {
         parameters: {
             query?: never;
@@ -2852,7 +3243,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description already_officer or position_taken. */
+            /** @description `already_officer`, `position_taken`, or `board_elected`: the latest published election (an annulled one does not count) had a winner, whose list is the Board, so positions are no longer assigned by hand; nothing changes. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -2860,7 +3251,7 @@ export interface operations {
                 content: {
                     "application/json": {
                         /** @enum {string} */
-                        error: "already_officer" | "position_taken";
+                        error: "already_officer" | "position_taken" | "board_elected";
                     };
                 };
             };
@@ -2907,6 +3298,18 @@ export interface operations {
                     "application/json": {
                         /** @enum {string} */
                         error: "not_found";
+                    };
+                };
+            };
+            /** @description `board_elected`: the latest published election (an annulled one does not count) had a winner, whose list is the Board, so positions are no longer removed by hand; nothing changes. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "board_elected";
                     };
                 };
             };
@@ -3204,6 +3607,18 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Budget has linked finance entries (`budget_has_entries`); archive it instead. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "budget_has_entries";
+                    };
                 };
             };
         };
@@ -4008,7 +4423,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
-            /** @description The account has no membership in the active school (`forbidden`). */
+            /** @description The account has no membership (`forbidden`), or a Veedor has not proved MFA (`mfa_required`). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -4150,7 +4565,7 @@ export interface operations {
                     "application/json": components["schemas"]["ForbiddenError"];
                 };
             };
-            /** @description The school already has an election neither published nor annulled (`election_in_progress`). Of two simultaneous requests exactly one gets 201. */
+            /** @description The school already has an election neither published nor annulled (`election_in_progress`); an election's result is published at its `endsAt`, so from then on it no longer blocks a new one. Of two simultaneous requests exactly one gets 201. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -4264,7 +4679,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
-            /** @description The account has no membership in the active school (`forbidden`). */
+            /** @description The account has no membership (`forbidden`), or a Veedor has not proved MFA (`mfa_required`). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -4369,7 +4784,7 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
-            /** @description `forbidden` (not on the election's Electoral commission) or `mfa_required`. */
+            /** @description `forbidden` (not on the election's Electoral commission and not a Veedor) or `mfa_required`. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -4437,7 +4852,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
-            /** @description Caller may not build a list (`forbidden` for school admins, officers without a roster link, or accounts without membership) or is on the Electoral commission without a verified second factor (`mfa_required`). */
+            /** @description Caller may not build a list (`forbidden` for Veedores, school admins, officers without a roster link, or accounts without membership) or is on the Electoral commission without a verified second factor (`mfa_required`). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -4490,7 +4905,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
-            /** @description The account has no membership in the active school (`forbidden`). */
+            /** @description The account has no membership (`forbidden`), or a Veedor has not proved MFA (`mfa_required`). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -4536,7 +4951,7 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
-            /** @description Not a roster member of the active school (`forbidden`). */
+            /** @description Not a roster member or a Veedor (`forbidden`). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -4628,7 +5043,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
-            /** @description The account has no membership in the active school (`forbidden`). */
+            /** @description The account has no membership (`forbidden`), or a Veedor has not proved MFA (`mfa_required`). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -4892,7 +5307,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
-            /** @description The account has no membership in the active school (`forbidden`). */
+            /** @description The account has no membership (`forbidden`), or a Veedor has not proved MFA (`mfa_required`). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -4935,8 +5350,17 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description The published result, or the annulment. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ElectionResult"];
+                };
+            };
             401: components["responses"]["Unauthenticated"];
-            /** @description The account has no membership in the active school (`forbidden`). */
+            /** @description The account has no membership (`forbidden`), or a Veedor has not proved MFA (`mfa_required`). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -4954,7 +5378,7 @@ export interface operations {
                     "application/json": components["schemas"]["NotFoundError"];
                 };
             };
-            /** @description The votes per list are not available (`results_not_available`). */
+            /** @description `results_not_available`: before `endsAt` by the server clock, or while the database clock has not reached it yet. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -5211,6 +5635,28 @@ export interface operations {
             403: components["responses"]["Forbidden"];
         };
     };
+    getFinanceCalculatorSummary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current calculator totals in integer cents plus roster count. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinanceCalculatorSummary"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["DirectoryForbidden"];
+        };
+    };
     getFinanceEntries: {
         parameters: {
             query?: never;
@@ -5258,7 +5704,7 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
-            /** @description Category not found in the active school (`not_found`). */
+            /** @description Category, event budget or heading not found in the active school (`not_found`). */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -5267,13 +5713,16 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Invalid input: invalid_amount, invalid_date, future_date, description_required, description_too_long, invalid_category, reserved_category. */
+            /** @description Invalid input: `invalid_amount`, `invalid_date`, `future_date`, `description_required`, `description_too_long`, `invalid_category`, `reserved_category`, `invalid_event_link`, `heading_not_in_budget`. */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Error"];
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "invalid_amount" | "invalid_date" | "future_date" | "description_required" | "description_too_long" | "invalid_category" | "reserved_category" | "invalid_event_link" | "heading_not_in_budget";
+                    };
                 };
             };
         };
@@ -5400,6 +5849,142 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["MemberForbidden"];
             422: components["responses"]["InvalidRange"];
+        };
+    };
+    getFinanceAccountabilityReports: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The school's reports, newest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountabilityReportSummary"][];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["MemberForbidden"];
+        };
+    };
+    postFinanceAccountabilityReports: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewAccountabilityReport"];
+            };
+        };
+        responses: {
+            /** @description The published report with its frozen copy. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountabilityReport"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            /** @description The user is not an Officer of the active school (`forbidden`), or is one without a verified two-factor session (`mfa_required`). Nothing is read or written. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `from` or `to` missing, malformed or reversed (`invalid_range`), `to` after today in Argentina (`future_date`), or a blank Term (`term_required`). Nothing is written. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "invalid_range" | "future_date" | "term_required";
+                    };
+                };
+            };
+        };
+    };
+    getFinanceAccountabilityReport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The report id. The router also routes `/finance/accountability-reports/{id}.csv` here, because a path wildcard must be a whole segment; see that path for the CSV. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The report. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountabilityReport"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["MemberForbidden"];
+            /** @description No such report in the active school (`not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotFoundError"];
+                };
+            };
+        };
+    };
+    getFinanceAccountabilityReportCsv: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Attachment `rendicion-de-cuentas-<from>-a-<to>.csv`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["MemberForbidden"];
+            /** @description No such report in the active school (`not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotFoundError"];
+                };
+            };
         };
     };
     getFinanceEntry: {

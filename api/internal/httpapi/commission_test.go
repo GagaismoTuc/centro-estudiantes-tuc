@@ -442,3 +442,44 @@ func TestCommissionCandidates(t *testing.T) {
 	wantResponse(t, f.do(http.MethodGet, candidatesPath, "", commissionIP, student, nil), http.StatusForbidden, forbiddenBody)
 	wantResponse(t, f.do(http.MethodGet, candidatesPath, "", commissionIP, "", nil), http.StatusUnauthorized, unauthBody)
 }
+
+// R4: Veedores must enroll and prove a second factor in their active school.
+func TestVeedorMFAState(t *testing.T) {
+	ctx := integration(t)
+	f := newFixture(t, ctx)
+	_, token := f.signIn(t, ctx, "veedor")
+	if state, _ := meJSON(t, f, token); state != "enrollment_required" {
+		t.Fatalf("veedor mfa = %q, want enrollment_required", state)
+	}
+	secret := f.enroll(t, token)
+	token, _ = f.confirm(t, token, secret)
+	if state, _ := meJSON(t, f, token); state != "satisfied" {
+		t.Fatalf("verified veedor mfa = %q, want satisfied", state)
+	}
+}
+
+// R8: a Veedor bootstraps or replaces the current commission until voting opens.
+func TestVeedorDesignatesCommission(t *testing.T) {
+	ctx := integration(t)
+	f := newFixture(t, ctx)
+	_, _, ana := f.student(t, ctx, "Ana Ficticia", "30111222")
+	_, _, beto := f.student(t, ctx, "Beto Ficticio", "30111223")
+	_, pending := f.signIn(t, ctx, "veedor")
+	_, veedor, _, _ := f.signInMFA(t, ctx, "veedor")
+	wantResponse(t, f.designate(pending, ana), http.StatusForbidden, mfaBody)
+	first := decodeCommission(t, f.designate(veedor, ana))
+	if _, err := tdb.Super.Exec(ctx, `INSERT INTO officer_positions (tenant_id, roster_member_id, position) VALUES ($1, $2, 'Presidente')`, f.tenant, ana); err != nil {
+		t.Fatal(err)
+	}
+	second := decodeCommission(t, f.designate(veedor, beto))
+	if second.ID != first.ID {
+		t.Fatal("replacement changed commission")
+	}
+	wantStoredMembers(t, ctx, f.tenant, beto)
+	now := f.clk.Now()
+	if _, err := tdb.Super.Exec(ctx, `INSERT INTO elections (tenant_id, commission_id, name, mode, submission_starts_at, submission_ends_at, starts_at, ends_at) VALUES ($1, $2, 'Election', 'secret', $3, $4, $5, $6)`, f.tenant, first.ID, now.Add(-72*time.Hour), now.Add(-48*time.Hour), now.Add(-time.Hour), now.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	wantResponse(t, f.designate(veedor, ana), http.StatusConflict, `{"error":"election_frozen"}`)
+	wantStoredMembers(t, ctx, f.tenant, beto)
+}

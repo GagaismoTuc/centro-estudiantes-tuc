@@ -21,6 +21,10 @@ func electionJSON(e elections.Election, now time.Time) oapi.Election {
 		State: oapi.ElectionState(elections.State(now, e)), Commission: commissionMembersJSON(e.Commission)}
 	if e.AnnulledAt != nil && e.AnnulmentReason != nil {
 		out.Annulment = &oapi.Annulment{Reason: *e.AnnulmentReason, AnnulledAt: e.AnnulledAt.UTC()}
+		if e.AnnulledByVeedor {
+			by := oapi.AnnulmentAnnulledByVeedor
+			out.Annulment.AnnulledBy = &by
+		}
 	}
 	return out
 }

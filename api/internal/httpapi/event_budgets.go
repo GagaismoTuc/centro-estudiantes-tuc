@@ -19,6 +19,8 @@ func writeBudgetError(w http.ResponseWriter, err error) {
 		writeError(w, 404, "not_found")
 	case errors.Is(err, budgets.ErrArchived):
 		writeError(w, 409, "budget_archived")
+	case errors.Is(err, budgets.ErrHasEntries):
+		writeError(w, 409, "budget_has_entries")
 	case errors.Is(err, budgets.ErrQuantity):
 		writeError(w, 422, "invalid_quantity")
 	case errors.Is(err, budgets.ErrAmount):

@@ -99,8 +99,10 @@ function PaymentForm({ member, owed, busy, form, onSubmit, onCancel }: PaymentFo
   );
 }
 
-type DueFormProps = {
+export type DueFormProps = {
   heading: string;
+  headingId?: string | undefined;
+  plain?: boolean | undefined;
   submitLabel: string;
   busy: boolean;
   initial?: { name: string; amount: string; dueDate: string };
@@ -109,8 +111,9 @@ type DueFormProps = {
   onCancel: () => void;
 };
 
-function DueForm({ heading, submitLabel, busy, initial, form, onSubmit, onCancel }: DueFormProps) {
-  const headingId = useId();
+export function DueForm({ heading, headingId: providedHeadingId, plain, submitLabel, busy, initial, form, onSubmit, onCancel }: DueFormProps) {
+  const generatedHeadingId = useId();
+  const headingId = providedHeadingId ?? generatedHeadingId;
   const [name, setName] = useState(initial?.name ?? "");
   const [amount, setAmount] = useState(initial?.amount ?? "");
   const [dueDate, setDueDate] = useState(initial?.dueDate ?? "");
@@ -126,8 +129,8 @@ function DueForm({ heading, submitLabel, busy, initial, form, onSubmit, onCancel
     onSubmit({ name: name.trim(), amountCents: centsOf(amount)!, dueDate });
   }
 
-  return (
-    <section className="panel">
+  const content = (
+    <>
       <h2 id={headingId}>{heading}</h2>
       <form
         aria-labelledby={headingId}
@@ -149,8 +152,10 @@ function DueForm({ heading, submitLabel, busy, initial, form, onSubmit, onCancel
           </button>
         </div>
       </form>
-    </section>
+    </>
   );
+
+  return plain ? content : <section className="panel">{content}</section>;
 }
 
 type ExemptTarget = { rosterMemberId: string; fullName: string };

@@ -506,3 +506,31 @@ func TestReadElection(t *testing.T) {
 		}
 	})
 }
+
+// R4: a Veedor must prove MFA before reading election data.
+func TestVeedorElectionReadsRequireMFA(t *testing.T) {
+	ctx := integration(t)
+	s := newSchool(t, ctx)
+	e := decodeElection(t, s.create(s.member, encode(draft())), http.StatusCreated)
+	_, pending := s.signIn(t, ctx, "veedor")
+	_, veedor, _, _ := s.signInMFA(t, ctx, "veedor")
+	for _, path := range []string{electionsPath + "/" + e.ID, currentPath, latestPath, commissionPath} {
+		wantResponse(t, s.get(pending, path), http.StatusForbidden, mfaBody)
+		if r := s.get(veedor, path); r.Code != http.StatusOK {
+			t.Fatalf("%s: %d %s", path, r.Code, r.Body)
+		}
+	}
+}
+
+// R11: a Veedor cannot inspect or annul another school's election.
+func TestVeedorElectionTenantIsolation(t *testing.T) {
+	ctx := integration(t)
+	a := newSchool(t, ctx)
+	b := newSchool(t, ctx)
+	foreign := decodeElection(t, b.create(b.member, encode(draft())), http.StatusCreated)
+	_, veedor, _, _ := a.signInMFA(t, ctx, "veedor")
+	wantResponse(t, a.get(veedor, electionsPath+"/"+foreign.ID), http.StatusNotFound, `{"error":"not_found"}`)
+	wantResponse(t, a.get(veedor, electionsPath+"/"+foreign.ID+"/turnout"), http.StatusNotFound, `{"error":"not_found"}`)
+	wantResponse(t, a.annul(veedor, foreign.ID, reasonBody(exampleReason)), http.StatusNotFound, `{"error":"not_found"}`)
+	b.wantNotAnnulled(t, ctx, foreign.ID)
+}

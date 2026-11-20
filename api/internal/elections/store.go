@@ -36,7 +36,8 @@ var (
 	ErrElectionFrozen = errors.New("elections: election frozen")
 	// ErrNoCommission means the tenant has no current Electoral commission.
 	ErrNoCommission = errors.New("elections: no current commission")
-	// ErrElectionInProgress means the tenant already has an election neither published nor annulled.
+	// ErrElectionInProgress means the tenant already has an election neither published nor annulled;
+	// one past its EndsAt counts as published (CreateElection publishes it).
 	ErrElectionInProgress = errors.New("elections: election in progress")
 	// ErrInvalidPositions means the position list is empty or has a blank or repeated
 	// (case-insensitive) name.
@@ -83,6 +84,7 @@ type Election struct {
 	PublishedAt, AnnulledAt                                *time.Time
 	// AnnulmentReason is the public reason of an annulled election; nil exactly when AnnulledAt is.
 	AnnulmentReason      *string
+	AnnulledByVeedor     bool
 	CreatedAt, UpdatedAt time.Time
 	Positions            []string
 	// Commission lists the members of the election's commission, ordered by name.
@@ -95,6 +97,9 @@ type Store struct {
 	now  func() time.Time
 	// ballotFault, set only by tests (export_test.go), replaces a vote's Ballot write with its error.
 	ballotFault func() error
+	// handoverFault, set only by tests (export_test.go), fails a Board handover between removing the
+	// old Board and writing the new one.
+	handoverFault func() error
 }
 
 // NewStore returns a Store with the clock now. It panics when now is nil.
@@ -252,9 +257,10 @@ func (s *Store) IsCommissionMember(ctx context.Context, tenant, userID string) (
 }
 
 // CreateElection stores d as an election of the tenant's current commission, after checkDraft.
-// Errors: those of checkDraft, ErrNoCommission and ErrElectionInProgress (decided by the database, so
-// of two concurrent calls exactly one wins). It does no authorization: Create is the entry point for
-// requests.
+// Errors: ErrNoCommission, then those of checkDraft, and ErrElectionInProgress (decided by the database, so
+// of two concurrent calls exactly one wins). A closed election (EndsAt reached at the store's clock,
+// not annulled) is first published (see publishClosed), which ends its commission's mandate. It does
+// no authorization: Create is the entry point for requests.
 func (s *Store) CreateElection(ctx context.Context, tenant string, d Draft) (Election, error) {
 	var out Election
 	err := db.WithTenant(ctx, s.pool, tenant, func(tx pgx.Tx) error {
@@ -266,15 +272,24 @@ func (s *Store) CreateElection(ctx context.Context, tenant string, d Draft) (Ele
 }
 
 func (s *Store) createElection(ctx context.Context, tx pgx.Tx, tenant string, d Draft) (Election, error) {
-	d, err := checkDraft(s.now(), d)
-	if err != nil {
+	// The result is published at the close with no background process (#57 S1): an election whose
+	// end the clock reached is published here first (#58: with its Board handover and the end of its
+	// commission's mandate), so it no longer holds elections_one_in_progress and its commission can
+	// no longer create the next one. Concurrent creates both run this; the index still decides.
+	if err := s.publishClosed(ctx, tx, tenant); err != nil {
 		return Election{}, err
 	}
+	// The commission comes before the draft: a mandate that the publication just ended answers
+	// ErrNoCommission (Create: ErrForbidden) whatever the draft says (#58 S6).
 	var commission string
-	err = tx.QueryRow(ctx, `SELECT id::text FROM electoral_commissions WHERE tenant_id = $1 AND ended_at IS NULL`, tenant).Scan(&commission)
+	err := tx.QueryRow(ctx, `SELECT id::text FROM electoral_commissions WHERE tenant_id = $1 AND ended_at IS NULL`, tenant).Scan(&commission)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Election{}, ErrNoCommission
 	}
+	if err != nil {
+		return Election{}, err
+	}
+	d, err = checkDraft(s.now(), d)
 	if err != nil {
 		return Election{}, err
 	}
@@ -389,11 +404,11 @@ func getElection(ctx context.Context, tx pgx.Tx, where string, args ...any) (Ele
 	var e Election
 	err := tx.QueryRow(ctx, `
 		SELECT e.id::text, e.commission_id::text, e.name, e.mode, e.submission_starts_at, e.submission_ends_at,
-		       e.starts_at, e.ends_at, e.published_at, e.annulled_at, e.annulment_reason, e.created_at, e.updated_at,
+		       e.starts_at, e.ends_at, e.published_at, e.annulled_at, e.annulment_reason, e.annulled_by_veedor, e.created_at, e.updated_at,
 		       ARRAY(SELECT p.name FROM election_positions p WHERE p.tenant_id = e.tenant_id AND p.election_id = e.id ORDER BY p.position_order)
 		FROM elections e WHERE e.tenant_id = $1 AND `+where, args...).
 		Scan(&e.ID, &e.CommissionID, &e.Name, &e.Mode, &e.SubmissionStartsAt, &e.SubmissionEndsAt,
-			&e.StartsAt, &e.EndsAt, &e.PublishedAt, &e.AnnulledAt, &e.AnnulmentReason, &e.CreatedAt, &e.UpdatedAt, &e.Positions)
+			&e.StartsAt, &e.EndsAt, &e.PublishedAt, &e.AnnulledAt, &e.AnnulmentReason, &e.AnnulledByVeedor, &e.CreatedAt, &e.UpdatedAt, &e.Positions)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return e, ErrNotFound
 	}

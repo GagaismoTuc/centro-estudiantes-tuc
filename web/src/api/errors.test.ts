@@ -5,7 +5,7 @@ import { errorMessage } from "./errors.ts";
 // Error codes the contract names in backticks (`invalid_credentials`), minus the
 // backticked words that are states, token purposes or CSV columns, plus the two
 // one-word codes the snake_case pattern cannot tell apart from prose.
-const notErrorCodes = ["enrollment_required", "not_required", "reset_password", "sign_in", "verify_email", "document_number", "full_name"];
+const notErrorCodes = ["enrollment_required", "not_required", "reset_password", "sign_in", "verify_email", "document_number", "full_name", "no_votes", "no_lists"];
 const codes = [
   ...new Set([...contract.matchAll(/`([a-z]+(?:_[a-z]+)+)`/g)].map((m) => m[1] as string)),
   "unauthenticated",

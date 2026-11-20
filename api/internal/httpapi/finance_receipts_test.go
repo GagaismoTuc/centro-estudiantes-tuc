@@ -94,6 +94,7 @@ func TestFinanceReceipts(t *testing.T) {
 
 	_, officerNoMFA := f.signIn(t, ctx, "officer")
 	_, adminMFA, _, _ := f.signInMFA(t, ctx, "school_admin")
+	_, veedor, _, _ := f.signInMFA(t, ctx, "veedor")
 	_, adminNoMFA := f.signIn(t, ctx, "school_admin")
 	_, student := f.signIn(t, ctx, "student")
 
@@ -385,6 +386,7 @@ func TestFinanceReceipts(t *testing.T) {
 			{"no session", "", 401, "unauthenticated"},
 			{"student", student, 403, "forbidden"},
 			{"school_admin with MFA", adminMFA, 403, "forbidden"},
+			{"veedor with MFA", veedor, 403, "forbidden"},
 			{"school_admin without MFA", adminNoMFA, 403, "forbidden"},
 			{"officer without MFA", officerNoMFA, 403, "mfa_required"},
 		} {
@@ -401,7 +403,7 @@ func TestFinanceReceipts(t *testing.T) {
 			t.Fatalf("position officer upload: %d %s", r.Code, r.Body)
 		}
 
-		// Download & list matrix (veedor arrives with #28; memberships.role CHECK currently allows school_admin, officer, student).
+		// Download and list role and MFA matrix.
 		for _, tc := range []struct {
 			name   string
 			token  string
@@ -420,9 +422,12 @@ func TestFinanceReceipts(t *testing.T) {
 				wantResponse(t, rList, tc.status, fmt.Sprintf(`{"error":%q}`, tc.code))
 			})
 		}
-		for _, tok := range []string{ana, beto, posToken, adminMFA} {
+		for _, tok := range []string{ana, beto, posToken, adminMFA, veedor} {
 			if r := f.do(http.MethodGet, "/api/finance/entries/"+chairs+"/receipts/"+pngID, "", "198.51.100.20", tok, nil); r.Code != 200 {
 				t.Fatalf("authorized download failed: %d %s", r.Code, r.Body)
+			}
+			if r := f.do(http.MethodGet, "/api/finance/entries/"+chairs+"/receipts", "", "198.51.100.20", tok, nil); r.Code != 200 {
+				t.Fatalf("authorized list failed: %d %s", r.Code, r.Body)
 			}
 		}
 	})

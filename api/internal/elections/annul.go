@@ -13,14 +13,24 @@ import (
 
 // asElectionCommission runs fn with election id of the session's tenant, locked, after checking in
 // the same transaction, in order: a membership in the tenant (ErrForbidden), the election
-// (ErrNotFound), the user's roster entry on the election's commission, ended or not (ErrForbidden),
-// and the second factor (auth.ErrMFARequired). It holds the commission lock, like asCommissionMember,
+// (ErrNotFound), the user's roster entry on the election's commission, ended or not, unless its
+// mandate ended with the publication of this election's result (ErrForbidden, #58 S6), and the
+// second factor (auth.ErrMFARequired). It holds the commission lock, like asCommissionMember,
 // so a concurrent Designate commits either before the check or after fn's write.
-func (s *Store) asElectionCommission(ctx context.Context, sess auth.Session, id string, fn func(pgx.Tx, Election) error) error {
+func (s *Store) asElectionCommission(ctx context.Context, sess auth.Session, id string, fn func(pgx.Tx, Election, bool) error) error {
 	if sess.TenantID == "" {
 		return ErrForbidden
 	}
 	return db.WithTenant(ctx, s.pool, sess.TenantID, func(tx pgx.Tx) error {
+		var veedor bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT FROM memberships WHERE tenant_id = $1 AND user_id = $2 AND role = 'veedor')`, sess.TenantID, sess.UserID).Scan(&veedor); err != nil {
+			return err
+		}
+		if veedor {
+			if err := auth.RequireMFA(sess); err != nil {
+				return err
+			}
+		}
 		if err := lockCommission(ctx, tx, sess.TenantID); err != nil {
 			return err
 		}
@@ -38,21 +48,23 @@ func (s *Store) asElectionCommission(ctx context.Context, sess auth.Session, id 
 		if err != nil {
 			return err
 		}
-		var onCommission bool
+		var onCommission, ended bool
 		if err := tx.QueryRow(ctx, `
 			SELECT EXISTS (SELECT FROM electoral_commission_members cm
 			               JOIN memberships ms ON ms.tenant_id = cm.tenant_id AND ms.roster_member_id = cm.roster_member_id
-			               WHERE cm.tenant_id = $1 AND cm.commission_id = $2 AND ms.user_id = $3)`,
-			sess.TenantID, e.CommissionID, sess.UserID).Scan(&onCommission); err != nil {
+			               WHERE cm.tenant_id = $1 AND cm.commission_id = $2 AND ms.user_id = $3),
+			       EXISTS (SELECT FROM electoral_commissions WHERE tenant_id = $1 AND id = $2 AND ended_at IS NOT NULL)`,
+			sess.TenantID, e.CommissionID, sess.UserID).Scan(&onCommission, &ended); err != nil {
 			return err
 		}
-		if !onCommission {
+		// A Veedor can annul independently of commission membership; publication still prevents annulment.
+		if !veedor && (!onCommission || (ended && e.AnnulledAt == nil && e.PublishedAt != nil)) {
 			return ErrForbidden
 		}
 		if err := auth.RequireMFA(sess); err != nil {
 			return err
 		}
-		return fn(tx, e)
+		return fn(tx, e, veedor)
 	})
 }
 
@@ -60,7 +72,7 @@ func (s *Store) asElectionCommission(ctx context.Context, sess auth.Session, id 
 // ErrNotFound or auth.ErrMFARequired. Callers use it to refuse a request before reading its body;
 // Annul checks again in its own transaction.
 func (s *Store) AuthorizeAnnulment(ctx context.Context, sess auth.Session, id string) error {
-	return s.asElectionCommission(ctx, sess, id, func(pgx.Tx, Election) error { return nil })
+	return s.asElectionCommission(ctx, sess, id, func(pgx.Tx, Election, bool) error { return nil })
 }
 
 // Annul annuls election id of the session's tenant with a public reason, for a member of its
@@ -70,7 +82,7 @@ func (s *Store) AuthorizeAnnulment(ctx context.Context, sess auth.Session, id st
 // store's clock). On error nothing is written; of two concurrent calls exactly one annuls.
 func (s *Store) Annul(ctx context.Context, sess auth.Session, id, reason string) (Election, error) {
 	var out Election
-	err := s.asElectionCommission(ctx, sess, id, func(tx pgx.Tx, e Election) error {
+	err := s.asElectionCommission(ctx, sess, id, func(tx pgx.Tx, e Election, veedor bool) error {
 		reason := strings.TrimSpace(reason)
 		switch {
 		case reason == "":
@@ -83,8 +95,8 @@ func (s *Store) Annul(ctx context.Context, sess auth.Session, id, reason string)
 			return ErrElectionPublished
 		}
 		now := s.stamp()
-		if _, err := tx.Exec(ctx, `UPDATE elections SET annulled_at = $3, annulment_reason = $4, updated_at = $3 WHERE tenant_id = $1 AND id = $2`,
-			sess.TenantID, e.ID, now, reason); err != nil {
+		if _, err := tx.Exec(ctx, `UPDATE elections SET annulled_at = $3, annulment_reason = $4, annulled_by_veedor = $5, updated_at = $3 WHERE tenant_id = $1 AND id = $2`,
+			sess.TenantID, e.ID, now, reason, veedor); err != nil {
 			return err
 		}
 		if _, err := tx.Exec(ctx, `UPDATE electoral_commissions SET ended_at = $3 WHERE tenant_id = $1 AND id = $2 AND ended_at IS NULL`,

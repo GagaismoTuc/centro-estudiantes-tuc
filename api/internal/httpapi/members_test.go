@@ -274,3 +274,161 @@ func TestMembersListIncludesAccountsAndUnclaimedOfficersOnlyFromActiveSchool(t *
 		t.Fatalf("missing account or unclaimed officer: %s", rec.Body.String())
 	}
 }
+
+// S7 (#58, A18): once the latest published election had a winner, the School admin can no longer
+// assign or remove positions by hand: 409 board_elected and the Board stays as it was. Before any
+// published election, or when the latest published one had no winner, it still can (#55). An
+// annulled election does not count as published.
+func TestManualBoardChangesAfterAnElection(t *testing.T) {
+	ctx := integration(t)
+	h := map[string]string{"Content-Type": "application/json"}
+	assign := func(v *voteSchool, member, position string) *httptest.ResponseRecorder {
+		return v.do(http.MethodPost, "/api/members/"+member+"/officer", `{"position":"`+position+`"}`, electionIP, v.admin, h)
+	}
+	remove := func(v *voteSchool, member string) *httptest.ResponseRecorder {
+		return v.do(http.MethodDelete, "/api/members/"+member+"/officer", "", electionIP, v.admin, nil)
+	}
+	// stillManual assigns Tesorero to a new member and removes it again.
+	stillManual := func(t *testing.T, v *voteSchool) {
+		t.Helper()
+		x := seedMember(t, ctx, v.tenant, "Xime Ficticia", "30555099")
+		wantResponse(t, assign(v, x, "Tesorero"), http.StatusCreated, "")
+		wantResponse(t, remove(v, x), http.StatusNoContent, "")
+	}
+	// elected publishes a win of Lista Azul with Ana Ficticia as its only candidate (Presidente).
+	elected := func(t *testing.T) (*voteSchool, string) {
+		t.Helper()
+		v := handoverSchool(t, ctx, defaultPositions)
+		ana := seedMember(t, ctx, v.tenant, "Ana Ficticia", "30555001")
+		seedCandidates(t, ctx, v.tenant, v.electionID, v.blue, ana)
+		seedBallots(t, ctx, v.tenant, v.electionID, v.blue, 1)
+		if r := v.publish(t, ctx); r.Outcome != "winner" {
+			t.Fatalf("outcome = %q, want winner", r.Outcome)
+		}
+		return v, ana
+	}
+	wantBlocked := func(t *testing.T, v *voteSchool, holder string) {
+		t.Helper()
+		boardBefore, storedBefore := v.board(t), storedBoard(t, ctx, v.tenant)
+		x := seedMember(t, ctx, v.tenant, "Xime Ficticia", "30555099")
+		wantResponse(t, assign(v, x, "Tesorero"), http.StatusConflict, `{"error":"board_elected"}`)
+		wantResponse(t, remove(v, holder), http.StatusConflict, `{"error":"board_elected"}`)
+		// Malformed input is still reported as such (validation runs before the Board check).
+		wantResponse(t, assign(v, x, "Otro"), http.StatusUnprocessableEntity, `{"error":"invalid_position"}`)
+		if got := v.board(t); !slices.Equal(got, boardBefore) {
+			t.Fatalf("board = %v, want unchanged %v", got, boardBefore)
+		}
+		if got := storedBoard(t, ctx, v.tenant); !slices.Equal(got, storedBefore) {
+			t.Fatalf("stored board = %v, want unchanged %v", got, storedBefore)
+		}
+	}
+
+	t.Run("latest published election had a winner", func(t *testing.T) {
+		v, ana := elected(t)
+		if got, want := v.board(t), []string{"Ana Ficticia|Presidente"}; !slices.Equal(got, want) {
+			t.Fatalf("board = %v, want %v", got, want)
+		}
+		wantBlocked(t, v, ana)
+	})
+	t.Run("a later annulled election does not hide the winner", func(t *testing.T) {
+		v, ana := elected(t)
+		if _, err := tdb.Super.Exec(ctx, `
+			INSERT INTO elections (tenant_id, commission_id, name, mode, submission_starts_at, submission_ends_at, starts_at, ends_at, published_at, annulled_at, annulment_reason)
+			SELECT tenant_id, commission_id, name, mode, submission_starts_at + interval '1 year', submission_ends_at + interval '1 year',
+			       starts_at + interval '1 year', ends_at + interval '1 year', ends_at + interval '1 year', starts_at + interval '1 year', $2
+			FROM elections WHERE id = $1`, v.electionID, exampleReason); err != nil {
+			t.Fatal(err)
+		}
+		wantBlocked(t, v, ana)
+	})
+	t.Run("before any published election", func(t *testing.T) {
+		stillManual(t, handoverSchool(t, ctx, defaultPositions))
+	})
+	for _, tc := range []struct {
+		name, outcome      string
+		blue, green, blank int
+	}{
+		{"latest published election was a tie", "tie", 2, 2, 0},
+		{"latest published election had no votes for any list", "no_votes", 0, 0, 3},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			v := handoverSchool(t, ctx, defaultPositions)
+			seedCandidates(t, ctx, v.tenant, v.electionID, v.blue, seedMember(t, ctx, v.tenant, "Ana Ficticia", "30555011"))
+			seedBallots(t, ctx, v.tenant, v.electionID, v.blue, tc.blue)
+			seedBallots(t, ctx, v.tenant, v.electionID, v.green, tc.green)
+			seedBallots(t, ctx, v.tenant, v.electionID, "", tc.blank)
+			if r := v.publish(t, ctx); r.Outcome != tc.outcome {
+				t.Fatalf("outcome = %q, want %q", r.Outcome, tc.outcome)
+			}
+			stillManual(t, v)
+		})
+	}
+	t.Run("only an annulled election", func(t *testing.T) {
+		v := handoverSchool(t, ctx, defaultPositions)
+		seedCandidates(t, ctx, v.tenant, v.electionID, v.blue, seedMember(t, ctx, v.tenant, "Ana Ficticia", "30555021"))
+		seedBallots(t, ctx, v.tenant, v.electionID, v.blue, 1)
+		if _, err := tdb.Super.Exec(ctx, `UPDATE elections SET annulled_at = starts_at, annulment_reason = $2 WHERE id = $1`, v.electionID, exampleReason); err != nil {
+			t.Fatal(err)
+		}
+		if r := v.publish(t, ctx); r.Status != "annulled" {
+			t.Fatalf("result = %+v, want annulled", r)
+		}
+		stillManual(t, v)
+	})
+	t.Run("an election annulled after its publication with a winner", func(t *testing.T) {
+		v, _ := elected(t)
+		if _, err := tdb.Super.Exec(ctx, `UPDATE elections SET annulled_at = ends_at, annulment_reason = $2 WHERE id = $1`, v.electionID, exampleReason); err != nil {
+			t.Fatal(err)
+		}
+		stillManual(t, v)
+	})
+}
+
+// S7/S10 (#58): the result is published at the close (#57), so a manual change after the close and
+// before anyone reads the result gets 409 board_elected and is not silently discarded, and the
+// "Miembros" screen already shows the new Board.
+func TestManualBoardChangeBetweenCloseAndFirstRead(t *testing.T) {
+	ctx := integration(t)
+	closed := func(t *testing.T) (*voteSchool, string) {
+		t.Helper()
+		v := handoverSchool(t, ctx, defaultPositions)
+		ana := seedMember(t, ctx, v.tenant, "Ana Ficticia", "30555001")
+		seedCandidates(t, ctx, v.tenant, v.electionID, v.blue, ana)
+		seedBallots(t, ctx, v.tenant, v.electionID, v.blue, 1)
+		v.clk.t = vEnd
+		return v, ana
+	}
+	wantBoard := func(t *testing.T, v *voteSchool) {
+		t.Helper()
+		if got, want := v.board(t), []string{"Ana Ficticia|Presidente"}; !slices.Equal(got, want) {
+			t.Fatalf("board = %v, want %v", got, want)
+		}
+	}
+	t.Run("assign", func(t *testing.T) {
+		v, _ := closed(t)
+		x := seedMember(t, ctx, v.tenant, "Xime Ficticia", "30555099")
+		wantResponse(t, v.do(http.MethodPost, "/api/members/"+x+"/officer", `{"position":"Tesorero"}`, electionIP, v.admin,
+			map[string]string{"Content-Type": "application/json"}), http.StatusConflict, `{"error":"board_elected"}`)
+		wantBoard(t, v)
+	})
+	t.Run("remove", func(t *testing.T) {
+		v, _ := closed(t)
+		var member string // Beto Ficticio, Presidente of the outgoing Board
+		if err := tdb.Super.QueryRow(ctx, `SELECT roster_member_id::text FROM officer_positions WHERE tenant_id = $1`, v.tenant).Scan(&member); err != nil {
+			t.Fatal(err)
+		}
+		wantResponse(t, v.do(http.MethodDelete, "/api/members/"+member+"/officer", "", electionIP, v.admin, nil),
+			http.StatusConflict, `{"error":"board_elected"}`)
+		wantBoard(t, v)
+	})
+	t.Run("members list", func(t *testing.T) {
+		v, ana := closed(t)
+		wantBoard(t, v)
+		if got, want := storedBoard(t, ctx, v.tenant), []string{"position:" + ana + ":Presidente"}; !slices.Equal(got, want) {
+			t.Fatalf("stored board = %v, want %v", got, want)
+		}
+		if published, winner, _ := publication(t, ctx, v.electionID); !published || winner != v.blue {
+			t.Fatalf("published = %t, winner = %q; want published with %s", published, winner, v.blue)
+		}
+	})
+}

@@ -49,6 +49,8 @@ func (s *server) PostMemberOfficer(w http.ResponseWriter, r *http.Request, membe
 		writeError(w, http.StatusConflict, "already_officer")
 	case errors.Is(err, roster.ErrPositionTaken):
 		writeError(w, http.StatusConflict, "position_taken")
+	case errors.Is(err, roster.ErrBoardElected):
+		writeError(w, http.StatusConflict, "board_elected")
 	case errors.Is(err, roster.ErrInvalidPosition):
 		writeError(w, http.StatusUnprocessableEntity, "invalid_position")
 	case err != nil:
@@ -63,7 +65,12 @@ func (s *server) DeleteMemberOfficer(w http.ResponseWriter, r *http.Request, mem
 	if !ok {
 		return
 	}
-	if err := s.roster.RemoveOfficer(r.Context(), sess, memberID); err != nil {
+	err := s.roster.RemoveOfficer(r.Context(), sess, memberID)
+	switch {
+	case errors.Is(err, roster.ErrBoardElected):
+		writeError(w, http.StatusConflict, "board_elected")
+		return
+	case err != nil:
 		writeRosterError(w, "remove officer", err)
 		return
 	}

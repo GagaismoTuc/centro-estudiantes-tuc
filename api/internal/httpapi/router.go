@@ -125,6 +125,8 @@ func NewRouter(d Deps) http.Handler {
 		baseURL:      strings.TrimSuffix(d.BaseURL, "/"),
 		background:   d.Background,
 	}
+	// Manual Board changes and the members list publish a closed election first (#58 S7, S10).
+	s.roster.SetPublisher(s.elections.PublishClosed)
 	// Go 1.22 ServeMux rejects registering both DELETE /api/contacts/headings/{id} and
 	// DELETE /api/contacts/{id}/share on the same mux because both match /api/contacts/headings/share.
 	mux := &conflictBypassMux{primary: http.NewServeMux(), secondary: http.NewServeMux()}

@@ -428,13 +428,28 @@ func TestElectionConfigurationFrozenFromTheStart(t *testing.T) {
 		t.Run(at.name, func(t *testing.T) {
 			ls.clk.t = at.t
 			check(t, "election_frozen", "election_frozen")
+			if at.name == "after the end" {
+				return // designating after the end publishes the result and starts a new commission (#58 S6)
+			}
 			wantResponse(t, ls.designate(ls.officer, ls.ana, ls.betoID), http.StatusConflict, `{"error":"election_frozen"}`)
 			if got := storedMembers(t, ctx, ls.tenant); !slices.Equal(got, commissionBefore) {
 				t.Fatalf("commission = %v, want unchanged %v", got, commissionBefore)
 			}
 		})
 	}
+	// #58 S6: after the end, the designation publishes the result (no winner here: no Ballots), which
+	// ends the frozen commission's mandate, and designates a new one; the closed election stays as it was.
+	decodeCommission(t, ls.designate(ls.officer, ls.ana, ls.betoID))
+	if got, want := storedMembers(t, ctx, ls.tenant), sortedIDs(ls.ana, ls.betoID); !slices.Equal(got, want) {
+		t.Fatalf("new commission = %v, want %v", got, want)
+	}
+	ls.assertSnapshotEqual(t, ctx, listsBefore, "after the new designation")
+	if got := electionRow(t, ctx, ls.electionID); got != electionBefore {
+		t.Fatalf("election = %s, want unchanged %s", got, electionBefore)
+	}
 }
+
+func sortedIDs(ids ...string) []string { slices.Sort(ids); return ids }
 
 // S5: the choice is an approved list of the election or "blank"; a rejected or pending list, a
 // list of another election, empty, null or missing get 422 invalid_choice; a list or election of
@@ -633,7 +648,7 @@ func TestVoteLogsNeverLinkTheChoiceToTheVoter(t *testing.T) {
 }
 
 // S12: while open every member sees "X of Y voted" and whether they voted themselves, nothing
-// else; the per-list votes get 409 results_not_available.
+// else; the per-list votes get 409 results_not_available until the end publishes them (#57).
 func TestTurnoutShowsOnlyHowManyVoted(t *testing.T) {
 	ctx := integration(t)
 	v := newVoteSchool(t, ctx)
@@ -662,7 +677,8 @@ func TestTurnoutShowsOnlyHowManyVoted(t *testing.T) {
 
 	v.clk.t = vEnd
 	wantTurnout(t, v.turnout(darioTok, v.electionID), 1, size, false)
-	wantVoteError(t, v.results(carlaTok, v.electionID), http.StatusConflict, "results_not_available")
+	wantPublished(t, v.results(carlaTok, v.electionID),
+		[]resultList{{v.blue, "Lista Azul", 1}, {v.green, "Lista Verde", 0}}, 0, 1, size, "winner", v.blue)
 }
 
 // S12: turnout right at the close answers from the Voter registry even while the database clock is
@@ -747,4 +763,35 @@ func TestVoteOnAnAnnulledElection(t *testing.T) {
 	wantVoteError(t, v.vote(carlaTok, v.electionID, voteBody(v.blue)), http.StatusConflict, "election_annulled")
 	wantBox(t, ctx, v.electionID, 1, carla.member)
 	wantVoteError(t, v.turnout(carlaTok, v.electionID), http.StatusConflict, "election_annulled")
+}
+
+// R4-R6: a Veedor proves MFA to read turnout, cannot vote, and sees no live list results.
+func TestVeedorTurnoutAndVote(t *testing.T) {
+	ctx := integration(t)
+	v := newVoteSchool(t, ctx)
+	carla := v.voter(t, ctx, "Carla Ficticia", "30333101")
+	carlaToken := v.loginOK(t, carla.email)
+	_, pending := v.signIn(t, ctx, "veedor")
+	_, token, _, _ := v.signInMFA(t, ctx, "veedor")
+	v.clk.t = vStart
+	size := rosterSize(t, ctx, v.tenant)
+	wantVoteError(t, v.turnout(pending, v.electionID), http.StatusForbidden, "mfa_required")
+	wantTurnout(t, v.turnout(token, v.electionID), 0, size, false)
+	wantVoteError(t, v.vote(token, v.electionID, voteBody(v.blue)), http.StatusForbidden, "not_in_electorate")
+	wantVoted(t, v.vote(carlaToken, v.electionID, voteBody(v.blue)))
+	wantTurnout(t, v.turnout(token, v.electionID), 1, size, false)
+	wantVoteError(t, v.results(token, v.electionID), http.StatusConflict, "results_not_available")
+}
+
+// R5: Veedor cannot vote even when the existing account remains linked to the roster.
+func TestVeedorRoleOverridesExistingRosterForVoting(t *testing.T) {
+	ctx := integration(t)
+	v := newVoteSchool(t, ctx)
+	student := v.voter(t, ctx, "Carla Ficticia", "30333102")
+	if _, err := tdb.Super.Exec(ctx, `INSERT INTO memberships(tenant_id,user_id,role) VALUES($1,$2,'veedor')`, v.tenant, student.userID); err != nil {
+		t.Fatal(err)
+	}
+	token := v.loginOK(t, student.email)
+	v.clk.t = vStart
+	wantVoteError(t, v.vote(token, v.electionID, voteBody(v.blue)), http.StatusForbidden, "not_in_electorate")
 }

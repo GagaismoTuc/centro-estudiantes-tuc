@@ -14,6 +14,39 @@ import (
 	"github.com/oapi-codegen/runtime"
 )
 
+// Defines values for AccountabilityEntryDirection.
+const (
+	AccountabilityEntryDirectionExpense AccountabilityEntryDirection = "expense"
+	AccountabilityEntryDirectionIncome  AccountabilityEntryDirection = "income"
+)
+
+// Valid indicates whether the value is a known member of the AccountabilityEntryDirection enum.
+func (e AccountabilityEntryDirection) Valid() bool {
+	switch e {
+	case AccountabilityEntryDirectionExpense:
+		return true
+	case AccountabilityEntryDirectionIncome:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AnnulmentAnnulledBy.
+const (
+	AnnulmentAnnulledByVeedor AnnulmentAnnulledBy = "veedor"
+)
+
+// Valid indicates whether the value is a known member of the AnnulmentAnnulledBy enum.
+func (e AnnulmentAnnulledBy) Valid() bool {
+	switch e {
+	case AnnulmentAnnulledByVeedor:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ElectionListStatus.
 const (
 	ElectionListStatusApproved ElectionListStatus = "approved"
@@ -50,30 +83,72 @@ func (e ElectionMode) Valid() bool {
 	}
 }
 
+// Defines values for ElectionResultOutcome.
+const (
+	NoLists ElectionResultOutcome = "no_lists"
+	NoVotes ElectionResultOutcome = "no_votes"
+	Tie     ElectionResultOutcome = "tie"
+	Winner  ElectionResultOutcome = "winner"
+)
+
+// Valid indicates whether the value is a known member of the ElectionResultOutcome enum.
+func (e ElectionResultOutcome) Valid() bool {
+	switch e {
+	case NoLists:
+		return true
+	case NoVotes:
+		return true
+	case Tie:
+		return true
+	case Winner:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ElectionResultStatus.
+const (
+	ElectionResultStatusAnnulled  ElectionResultStatus = "annulled"
+	ElectionResultStatusPublished ElectionResultStatus = "published"
+)
+
+// Valid indicates whether the value is a known member of the ElectionResultStatus enum.
+func (e ElectionResultStatus) Valid() bool {
+	switch e {
+	case ElectionResultStatusAnnulled:
+		return true
+	case ElectionResultStatusPublished:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ElectionState.
 const (
-	Annulled   ElectionState = "annulled"
-	Closed     ElectionState = "closed"
-	Draft      ElectionState = "draft"
-	Open       ElectionState = "open"
-	Scheduled  ElectionState = "scheduled"
-	Submission ElectionState = "submission"
+	ElectionStateAnnulled   ElectionState = "annulled"
+	ElectionStateClosed     ElectionState = "closed"
+	ElectionStateDraft      ElectionState = "draft"
+	ElectionStateOpen       ElectionState = "open"
+	ElectionStateScheduled  ElectionState = "scheduled"
+	ElectionStateSubmission ElectionState = "submission"
 )
 
 // Valid indicates whether the value is a known member of the ElectionState enum.
 func (e ElectionState) Valid() bool {
 	switch e {
-	case Annulled:
+	case ElectionStateAnnulled:
 		return true
-	case Closed:
+	case ElectionStateClosed:
 		return true
-	case Draft:
+	case ElectionStateDraft:
 		return true
-	case Open:
+	case ElectionStateOpen:
 		return true
-	case Scheduled:
+	case ElectionStateScheduled:
 		return true
-	case Submission:
+	case ElectionStateSubmission:
 		return true
 	default:
 		return false
@@ -232,19 +307,22 @@ func (e NotFoundErrorError) Valid() bool {
 
 // Defines values for Role.
 const (
-	Officer     Role = "officer"
-	SchoolAdmin Role = "school_admin"
-	Student     Role = "student"
+	RoleOfficer     Role = "officer"
+	RoleSchoolAdmin Role = "school_admin"
+	RoleStudent     Role = "student"
+	RoleVeedor      Role = "veedor"
 )
 
 // Valid indicates whether the value is a known member of the Role enum.
 func (e Role) Valid() bool {
 	switch e {
-	case Officer:
+	case RoleOfficer:
 		return true
-	case SchoolAdmin:
+	case RoleSchoolAdmin:
 		return true
-	case Student:
+	case RoleStudent:
+		return true
+	case RoleVeedor:
 		return true
 	default:
 		return false
@@ -485,6 +563,72 @@ const (
 func (e InvalidRangeError) Valid() bool {
 	switch e {
 	case InvalidRangeErrorInvalidRange:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostAuthInvitationAccept401JSONResponseBodyError.
+const (
+	PostAuthInvitationAccept401JSONResponseBodyErrorLoginRequired   PostAuthInvitationAccept401JSONResponseBodyError = "login_required"
+	PostAuthInvitationAccept401JSONResponseBodyErrorUnauthenticated PostAuthInvitationAccept401JSONResponseBodyError = "unauthenticated"
+)
+
+// Valid indicates whether the value is a known member of the PostAuthInvitationAccept401JSONResponseBodyError enum.
+func (e PostAuthInvitationAccept401JSONResponseBodyError) Valid() bool {
+	switch e {
+	case PostAuthInvitationAccept401JSONResponseBodyErrorLoginRequired:
+		return true
+	case PostAuthInvitationAccept401JSONResponseBodyErrorUnauthenticated:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostAuthInvitationAccept403JSONResponseBodyError.
+const (
+	PostAuthInvitationAccept403JSONResponseBodyErrorMfaRequired PostAuthInvitationAccept403JSONResponseBodyError = "mfa_required"
+)
+
+// Valid indicates whether the value is a known member of the PostAuthInvitationAccept403JSONResponseBodyError enum.
+func (e PostAuthInvitationAccept403JSONResponseBodyError) Valid() bool {
+	switch e {
+	case PostAuthInvitationAccept403JSONResponseBodyErrorMfaRequired:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostAuthInvitationAccept422JSONResponseBodyError.
+const (
+	PostAuthInvitationAccept422JSONResponseBodyErrorInvalidToken PostAuthInvitationAccept422JSONResponseBodyError = "invalid_token"
+	PostAuthInvitationAccept422JSONResponseBodyErrorWeakPassword PostAuthInvitationAccept422JSONResponseBodyError = "weak_password"
+)
+
+// Valid indicates whether the value is a known member of the PostAuthInvitationAccept422JSONResponseBodyError enum.
+func (e PostAuthInvitationAccept422JSONResponseBodyError) Valid() bool {
+	switch e {
+	case PostAuthInvitationAccept422JSONResponseBodyErrorInvalidToken:
+		return true
+	case PostAuthInvitationAccept422JSONResponseBodyErrorWeakPassword:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostAuthInvitationAccept429JSONResponseBodyError.
+const (
+	PostAuthInvitationAccept429JSONResponseBodyErrorTooManyAttempts PostAuthInvitationAccept429JSONResponseBodyError = "too_many_attempts"
+)
+
+// Valid indicates whether the value is a known member of the PostAuthInvitationAccept429JSONResponseBodyError enum.
+func (e PostAuthInvitationAccept429JSONResponseBodyError) Valid() bool {
+	switch e {
+	case PostAuthInvitationAccept429JSONResponseBodyErrorTooManyAttempts:
 		return true
 	default:
 		return false
@@ -998,6 +1142,42 @@ func (e PutElectoralCommission422JSONResponseBodyError) Valid() bool {
 	}
 }
 
+// Defines values for DeleteEventBudget409JSONResponseBodyError.
+const (
+	BudgetHasEntries DeleteEventBudget409JSONResponseBodyError = "budget_has_entries"
+)
+
+// Valid indicates whether the value is a known member of the DeleteEventBudget409JSONResponseBodyError enum.
+func (e DeleteEventBudget409JSONResponseBodyError) Valid() bool {
+	switch e {
+	case BudgetHasEntries:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PostFinanceAccountabilityReports422JSONResponseBodyError.
+const (
+	PostFinanceAccountabilityReports422JSONResponseBodyErrorFutureDate   PostFinanceAccountabilityReports422JSONResponseBodyError = "future_date"
+	PostFinanceAccountabilityReports422JSONResponseBodyErrorInvalidRange PostFinanceAccountabilityReports422JSONResponseBodyError = "invalid_range"
+	PostFinanceAccountabilityReports422JSONResponseBodyErrorTermRequired PostFinanceAccountabilityReports422JSONResponseBodyError = "term_required"
+)
+
+// Valid indicates whether the value is a known member of the PostFinanceAccountabilityReports422JSONResponseBodyError enum.
+func (e PostFinanceAccountabilityReports422JSONResponseBodyError) Valid() bool {
+	switch e {
+	case PostFinanceAccountabilityReports422JSONResponseBodyErrorFutureDate:
+		return true
+	case PostFinanceAccountabilityReports422JSONResponseBodyErrorInvalidRange:
+		return true
+	case PostFinanceAccountabilityReports422JSONResponseBodyErrorTermRequired:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PostFinanceCategories409JSONResponseBodyError.
 const (
 	PostFinanceCategories409JSONResponseBodyErrorCategoryExists PostFinanceCategories409JSONResponseBodyError = "category_exists"
@@ -1241,6 +1421,45 @@ func (e PostFinanceDuePayment422JSONResponseBodyError) Valid() bool {
 	}
 }
 
+// Defines values for PostFinanceEntries422JSONResponseBodyError.
+const (
+	PostFinanceEntries422JSONResponseBodyErrorDescriptionRequired PostFinanceEntries422JSONResponseBodyError = "description_required"
+	PostFinanceEntries422JSONResponseBodyErrorDescriptionTooLong  PostFinanceEntries422JSONResponseBodyError = "description_too_long"
+	PostFinanceEntries422JSONResponseBodyErrorFutureDate          PostFinanceEntries422JSONResponseBodyError = "future_date"
+	PostFinanceEntries422JSONResponseBodyErrorHeadingNotInBudget  PostFinanceEntries422JSONResponseBodyError = "heading_not_in_budget"
+	PostFinanceEntries422JSONResponseBodyErrorInvalidAmount       PostFinanceEntries422JSONResponseBodyError = "invalid_amount"
+	PostFinanceEntries422JSONResponseBodyErrorInvalidCategory     PostFinanceEntries422JSONResponseBodyError = "invalid_category"
+	PostFinanceEntries422JSONResponseBodyErrorInvalidDate         PostFinanceEntries422JSONResponseBodyError = "invalid_date"
+	PostFinanceEntries422JSONResponseBodyErrorInvalidEventLink    PostFinanceEntries422JSONResponseBodyError = "invalid_event_link"
+	PostFinanceEntries422JSONResponseBodyErrorReservedCategory    PostFinanceEntries422JSONResponseBodyError = "reserved_category"
+)
+
+// Valid indicates whether the value is a known member of the PostFinanceEntries422JSONResponseBodyError enum.
+func (e PostFinanceEntries422JSONResponseBodyError) Valid() bool {
+	switch e {
+	case PostFinanceEntries422JSONResponseBodyErrorDescriptionRequired:
+		return true
+	case PostFinanceEntries422JSONResponseBodyErrorDescriptionTooLong:
+		return true
+	case PostFinanceEntries422JSONResponseBodyErrorFutureDate:
+		return true
+	case PostFinanceEntries422JSONResponseBodyErrorHeadingNotInBudget:
+		return true
+	case PostFinanceEntries422JSONResponseBodyErrorInvalidAmount:
+		return true
+	case PostFinanceEntries422JSONResponseBodyErrorInvalidCategory:
+		return true
+	case PostFinanceEntries422JSONResponseBodyErrorInvalidDate:
+		return true
+	case PostFinanceEntries422JSONResponseBodyErrorInvalidEventLink:
+		return true
+	case PostFinanceEntries422JSONResponseBodyErrorReservedCategory:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GetFinanceEntriesCsv422JSONResponseBodyError.
 const (
 	GetFinanceEntriesCsv422JSONResponseBodyErrorInvalidRange GetFinanceEntriesCsv422JSONResponseBodyError = "invalid_range"
@@ -1379,6 +1598,24 @@ func (e GetFinanceReportPdf503JSONResponseBodyError) Valid() bool {
 	}
 }
 
+// Defines values for PostMemberInvitation422JSONResponseBodyError.
+const (
+	InvalidEmail PostMemberInvitation422JSONResponseBodyError = "invalid_email"
+	InvalidRole  PostMemberInvitation422JSONResponseBodyError = "invalid_role"
+)
+
+// Valid indicates whether the value is a known member of the PostMemberInvitation422JSONResponseBodyError enum.
+func (e PostMemberInvitation422JSONResponseBodyError) Valid() bool {
+	switch e {
+	case InvalidEmail:
+		return true
+	case InvalidRole:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for DeleteMemberOfficer404JSONResponseBodyError.
 const (
 	DeleteMemberOfficer404JSONResponseBodyErrorNotFound DeleteMemberOfficer404JSONResponseBodyError = "not_found"
@@ -1388,6 +1625,21 @@ const (
 func (e DeleteMemberOfficer404JSONResponseBodyError) Valid() bool {
 	switch e {
 	case DeleteMemberOfficer404JSONResponseBodyErrorNotFound:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DeleteMemberOfficer409JSONResponseBodyError.
+const (
+	DeleteMemberOfficer409JSONResponseBodyErrorBoardElected DeleteMemberOfficer409JSONResponseBodyError = "board_elected"
+)
+
+// Valid indicates whether the value is a known member of the DeleteMemberOfficer409JSONResponseBodyError enum.
+func (e DeleteMemberOfficer409JSONResponseBodyError) Valid() bool {
+	switch e {
+	case DeleteMemberOfficer409JSONResponseBodyErrorBoardElected:
 		return true
 	default:
 		return false
@@ -1411,16 +1663,19 @@ func (e PostMemberOfficer404JSONResponseBodyError) Valid() bool {
 
 // Defines values for PostMemberOfficer409JSONResponseBodyError.
 const (
-	AlreadyOfficer PostMemberOfficer409JSONResponseBodyError = "already_officer"
-	PositionTaken  PostMemberOfficer409JSONResponseBodyError = "position_taken"
+	PostMemberOfficer409JSONResponseBodyErrorAlreadyOfficer PostMemberOfficer409JSONResponseBodyError = "already_officer"
+	PostMemberOfficer409JSONResponseBodyErrorBoardElected   PostMemberOfficer409JSONResponseBodyError = "board_elected"
+	PostMemberOfficer409JSONResponseBodyErrorPositionTaken  PostMemberOfficer409JSONResponseBodyError = "position_taken"
 )
 
 // Valid indicates whether the value is a known member of the PostMemberOfficer409JSONResponseBodyError enum.
 func (e PostMemberOfficer409JSONResponseBodyError) Valid() bool {
 	switch e {
-	case AlreadyOfficer:
+	case PostMemberOfficer409JSONResponseBodyErrorAlreadyOfficer:
 		return true
-	case PositionTaken:
+	case PostMemberOfficer409JSONResponseBodyErrorBoardElected:
+		return true
+	case PostMemberOfficer409JSONResponseBodyErrorPositionTaken:
 		return true
 	default:
 		return false
@@ -1442,11 +1697,89 @@ func (e PostMemberOfficer422JSONResponseBodyError) Valid() bool {
 	}
 }
 
+// AccountabilityDueTotal defines model for AccountabilityDueTotal.
+type AccountabilityDueTotal struct {
+	AmountCents int64  `json:"amountCents"`
+	DueDate     string `json:"dueDate"`
+	DueId       string `json:"dueId"`
+	Name        string `json:"name"`
+
+	// PaidCount Roster members who paid the Due in full by the period's `to`: payments dated up to `to` whose Entry has no Reversal dated up to `to`.
+	PaidCount int `json:"paidCount"`
+
+	// TotalCount Roster members who owe the Due, Exemptions excluded.
+	TotalCount int `json:"totalCount"`
+}
+
+// AccountabilityEntry defines model for AccountabilityEntry.
+type AccountabilityEntry struct {
+	AmountCents int64 `json:"amountCents"`
+
+	// Category The Category's name at publication.
+	Category    string                       `json:"category"`
+	CategoryId  string                       `json:"categoryId"`
+	Date        string                       `json:"date"`
+	Description string                       `json:"description"`
+	Direction   AccountabilityEntryDirection `json:"direction"`
+	Id          string                       `json:"id"`
+	RecordedBy  string                       `json:"recordedBy"`
+
+	// Reversed Whether the Entry had a Reversal at publication.
+	Reversed bool `json:"reversed"`
+
+	// ReversesId Set on a Reversal.
+	ReversesId *string `json:"reversesId,omitempty"`
+}
+
+// AccountabilityEntryDirection defines model for AccountabilityEntry.Direction.
+type AccountabilityEntryDirection string
+
+// AccountabilityReport defines model for AccountabilityReport.
+type AccountabilityReport struct {
+	ClosingCents int64 `json:"closingCents"`
+
+	// Dues Dues whose due date falls in the period, by due date.
+	Dues []AccountabilityDueTotal `json:"dues"`
+
+	// Entries Entries in the period as published, oldest first; never who paid.
+	Entries      []AccountabilityEntry `json:"entries"`
+	From         string                `json:"from"`
+	Id           string                `json:"id"`
+	OpeningCents int64                 `json:"openingCents"`
+	PublishedAt  time.Time             `json:"publishedAt"`
+
+	// PublishedBy The publishing Officer's Roster name.
+	PublishedBy string `json:"publishedBy"`
+	Term        string `json:"term"`
+	To          string `json:"to"`
+
+	// Totals Categories with Entries in the period, with their names at publication.
+	Totals []FinanceCategoryTotal `json:"totals"`
+}
+
+// AccountabilityReportSummary defines model for AccountabilityReportSummary.
+type AccountabilityReportSummary struct {
+	From        string    `json:"from"`
+	Id          string    `json:"id"`
+	PublishedAt time.Time `json:"publishedAt"`
+
+	// PublishedBy The publishing Officer's Roster name.
+	PublishedBy string `json:"publishedBy"`
+	Term        string `json:"term"`
+	To          string `json:"to"`
+}
+
 // Annulment defines model for Annulment.
 type Annulment struct {
 	AnnulledAt time.Time `json:"annulledAt"`
-	Reason     string    `json:"reason"`
+
+	// AnnulledBy Present when a Veedor annulled the election.
+	AnnulledBy *AnnulmentAnnulledBy `json:"annulledBy,omitempty"`
+	Reason     string               `json:"reason"`
 }
+
+// AnnulmentAnnulledBy Present when a Veedor annulled the election.
+type AnnulmentAnnulledBy string
 
 // AnnulmentRequest defines model for AnnulmentRequest.
 type AnnulmentRequest struct {
@@ -1606,6 +1939,53 @@ type ElectionListsResponse struct {
 // ElectionMode Only "Voto secreto"; any other value is 422 `mode_not_supported`.
 type ElectionMode string
 
+// ElectionResult With `status: annulled`, only `annulmentReason`. With `status: published`, every other property and `winner` only when `outcome` is `winner`.
+type ElectionResult struct {
+	// AnnulmentReason The public reason of the Annulment.
+	AnnulmentReason *string `json:"annulmentReason,omitempty"`
+
+	// BlankVotes Blank votes; counted, they never win.
+	BlankVotes *int `json:"blankVotes,omitempty"`
+
+	// Electorate The size of the Electorate (Y). When voting never opened (`no_lists`), the roster when the result was first read.
+	Electorate *int `json:"electorate,omitempty"`
+
+	// Lists Every approved list of the election, also those with 0 votes; most votes first, then by name.
+	Lists *[]ElectionResultList `json:"lists,omitempty"`
+
+	// Mode Only "Voto secreto"; any other value is 422 `mode_not_supported`.
+	Mode *ElectionMode `json:"mode,omitempty"`
+
+	// Outcome `winner`: one list has the most votes (simple majority, no quorum). `tie`: two or more lists share the most votes. `no_votes`: every list has 0 votes, even with Blank votes. `no_lists`: no approved list, so voting never opened.
+	Outcome *ElectionResultOutcome `json:"outcome,omitempty"`
+	Status  ElectionResultStatus   `json:"status"`
+
+	// Voted How many students of the Electorate voted (X); the votes of the lists plus `blankVotes`.
+	Voted *int `json:"voted,omitempty"`
+
+	// Winner The list with the most votes; only when `outcome` is `winner`.
+	Winner *ElectionResultWinner `json:"winner,omitempty"`
+}
+
+// ElectionResultOutcome `winner`: one list has the most votes (simple majority, no quorum). `tie`: two or more lists share the most votes. `no_votes`: every list has 0 votes, even with Blank votes. `no_lists`: no approved list, so voting never opened.
+type ElectionResultOutcome string
+
+// ElectionResultStatus defines model for ElectionResult.Status.
+type ElectionResultStatus string
+
+// ElectionResultList defines model for ElectionResultList.
+type ElectionResultList struct {
+	Id    string `json:"id"`
+	Name  string `json:"name"`
+	Votes int    `json:"votes"`
+}
+
+// ElectionResultWinner The list with the most votes; only when `outcome` is `winner`.
+type ElectionResultWinner struct {
+	Id   string `json:"id"`
+	Name string `json:"name"`
+}
+
 // ElectionState `annulled` once the election was annulled, whatever the clock says. Otherwise computed from the server clock against the dates; every window includes its start and excludes its end. `draft` before `submissionStartsAt`, `submission` until `submissionEndsAt`, `scheduled` until `startsAt`, `open` until `endsAt`, `closed` from `endsAt` on.
 type ElectionState string
 
@@ -1714,6 +2094,18 @@ type FinanceBalance struct {
 	BalanceCents int `json:"balanceCents"`
 }
 
+// FinanceCalculatorSummary defines model for FinanceCalculatorSummary.
+type FinanceCalculatorSummary struct {
+	// Balance Current Fund balance in integer cents; exact sum, may exceed int64 and may be negative.
+	Balance int `json:"balance"`
+
+	// OwedOnDues Total in integer cents still owed across all Dues by non-exempt Roster members; exact sum, may exceed int64.
+	OwedOnDues int `json:"owedOnDues"`
+
+	// RosterCount Current number of Roster members in the active school.
+	RosterCount int `json:"rosterCount"`
+}
+
 // FinanceCategory defines model for FinanceCategory.
 type FinanceCategory struct {
 	Active    bool   `json:"active"`
@@ -1800,11 +2192,23 @@ type FinanceEntry struct {
 	Description string `json:"description"`
 	Direction   string `json:"direction"`
 
+	// EventBudgetId Present when this entry is linked to an Event budget.
+	EventBudgetId *string `json:"eventBudgetId,omitempty"`
+
+	// EventBudgetName Present when this entry is linked to an Event budget; visible to all school members in the ledger.
+	EventBudgetName *string `json:"eventBudgetName,omitempty"`
+
 	// HasReceipt True when at least one Receipt backs this entry.
-	HasReceipt bool      `json:"hasReceipt"`
-	Id         string    `json:"id"`
-	RecordedAt time.Time `json:"recordedAt"`
-	RecordedBy string    `json:"recordedBy"`
+	HasReceipt bool `json:"hasReceipt"`
+
+	// HeadingId Present when this entry is linked to an Event budget; the Heading id.
+	HeadingId *string `json:"headingId,omitempty"`
+
+	// HeadingName Present when this entry is linked to an Event budget; the Heading name.
+	HeadingName *string   `json:"headingName,omitempty"`
+	Id          string    `json:"id"`
+	RecordedAt  time.Time `json:"recordedAt"`
+	RecordedBy  string    `json:"recordedBy"`
 
 	// ReversalId Present when this entry was reversed; the id of its Reversal.
 	ReversalId *string `json:"reversalId,omitempty"`
@@ -1990,6 +2394,18 @@ type MyFinanceDue struct {
 	Status    FinanceDueStatus `json:"status"`
 }
 
+// NewAccountabilityReport defines model for NewAccountabilityReport.
+type NewAccountabilityReport struct {
+	// From First day of the period, YYYY-MM-DD, inclusive.
+	From string `json:"from"`
+
+	// Term The Term (Gestión) the report belongs to, such as "Gestión 2026".
+	Term string `json:"term"`
+
+	// To Last day of the period, YYYY-MM-DD, inclusive; not after today.
+	To string `json:"to"`
+}
+
 // NewFinanceCategory defines model for NewFinanceCategory.
 type NewFinanceCategory struct {
 	Direction NewFinanceCategoryDirection `json:"direction"`
@@ -2029,6 +2445,12 @@ type NewFinanceEntry struct {
 	Date        string `json:"date"`
 	Description string `json:"description"`
 	Direction   string `json:"direction"`
+
+	// EventBudgetId Optional active Event budget id; must be paired with headingId.
+	EventBudgetId *string `json:"eventBudgetId,omitempty"`
+
+	// HeadingId Optional Heading id with at least one line in eventBudgetId; must be paired with eventBudgetId.
+	HeadingId *string `json:"headingId,omitempty"`
 }
 
 // NotFoundError defines model for NotFoundError.
@@ -2291,6 +2713,24 @@ type TooManyAttempts = Error
 // Unauthenticated defines model for Unauthenticated.
 type Unauthenticated = Error
 
+// PostAuthInvitationAcceptJSONBody defines parameters for PostAuthInvitationAccept.
+type PostAuthInvitationAcceptJSONBody struct {
+	Password *string `json:"password,omitempty"`
+	Token    string  `json:"token"`
+}
+
+// PostAuthInvitationAccept401JSONResponseBodyError defines parameters for PostAuthInvitationAccept.
+type PostAuthInvitationAccept401JSONResponseBodyError string
+
+// PostAuthInvitationAccept403JSONResponseBodyError defines parameters for PostAuthInvitationAccept.
+type PostAuthInvitationAccept403JSONResponseBodyError string
+
+// PostAuthInvitationAccept422JSONResponseBodyError defines parameters for PostAuthInvitationAccept.
+type PostAuthInvitationAccept422JSONResponseBodyError string
+
+// PostAuthInvitationAccept429JSONResponseBodyError defines parameters for PostAuthInvitationAccept.
+type PostAuthInvitationAccept429JSONResponseBodyError string
+
 // GetContactsParams defines parameters for GetContacts.
 type GetContactsParams struct {
 	HeadingId *string `form:"headingId,omitempty" json:"headingId,omitempty"`
@@ -2378,6 +2818,12 @@ type PutElectoralCommission409JSONResponseBodyError string
 // PutElectoralCommission422JSONResponseBodyError defines parameters for PutElectoralCommission.
 type PutElectoralCommission422JSONResponseBodyError string
 
+// DeleteEventBudget409JSONResponseBodyError defines parameters for DeleteEventBudget.
+type DeleteEventBudget409JSONResponseBodyError string
+
+// PostFinanceAccountabilityReports422JSONResponseBodyError defines parameters for PostFinanceAccountabilityReports.
+type PostFinanceAccountabilityReports422JSONResponseBodyError string
+
 // PostFinanceCategories409JSONResponseBodyError defines parameters for PostFinanceCategories.
 type PostFinanceCategories409JSONResponseBodyError string
 
@@ -2416,6 +2862,9 @@ type PostFinanceDueExemptions422JSONResponseBodyError string
 
 // PostFinanceDuePayment422JSONResponseBodyError defines parameters for PostFinanceDuePayment.
 type PostFinanceDuePayment422JSONResponseBodyError string
+
+// PostFinanceEntries422JSONResponseBodyError defines parameters for PostFinanceEntries.
+type PostFinanceEntries422JSONResponseBodyError string
 
 // GetFinanceEntriesCsvParams defines parameters for GetFinanceEntriesCsv.
 type GetFinanceEntriesCsvParams struct {
@@ -2480,8 +2929,20 @@ type GetFinanceReportPdf422JSONResponseBodyError string
 // GetFinanceReportPdf503JSONResponseBodyError defines parameters for GetFinanceReportPdf.
 type GetFinanceReportPdf503JSONResponseBodyError string
 
+// PostMemberInvitationJSONBody defines parameters for PostMemberInvitation.
+type PostMemberInvitationJSONBody struct {
+	Email string `json:"email"`
+	Role  string `json:"role"`
+}
+
+// PostMemberInvitation422JSONResponseBodyError defines parameters for PostMemberInvitation.
+type PostMemberInvitation422JSONResponseBodyError string
+
 // DeleteMemberOfficer404JSONResponseBodyError defines parameters for DeleteMemberOfficer.
 type DeleteMemberOfficer404JSONResponseBodyError string
+
+// DeleteMemberOfficer409JSONResponseBodyError defines parameters for DeleteMemberOfficer.
+type DeleteMemberOfficer409JSONResponseBodyError string
 
 // PostMemberOfficerJSONBody defines parameters for PostMemberOfficer.
 type PostMemberOfficerJSONBody struct {
@@ -2509,6 +2970,9 @@ type PostAuthClaimJSONRequestBody = ClaimRequest
 
 // PostAuthEmailVerifyJSONRequestBody defines body for PostAuthEmailVerify for application/json ContentType.
 type PostAuthEmailVerifyJSONRequestBody = TokenRequest
+
+// PostAuthInvitationAcceptJSONRequestBody defines body for PostAuthInvitationAccept for application/json ContentType.
+type PostAuthInvitationAcceptJSONRequestBody PostAuthInvitationAcceptJSONBody
 
 // PostAuthLinkJSONRequestBody defines body for PostAuthLink for application/json ContentType.
 type PostAuthLinkJSONRequestBody = EmailRequest
@@ -2591,6 +3055,9 @@ type PostEventBudgetLineJSONRequestBody = EventBudgetLineInput
 // PutEventBudgetLineJSONRequestBody defines body for PutEventBudgetLine for application/json ContentType.
 type PutEventBudgetLineJSONRequestBody = EventBudgetLineInput
 
+// PostFinanceAccountabilityReportsJSONRequestBody defines body for PostFinanceAccountabilityReports for application/json ContentType.
+type PostFinanceAccountabilityReportsJSONRequestBody = NewAccountabilityReport
+
 // PostFinanceCategoriesJSONRequestBody defines body for PostFinanceCategories for application/json ContentType.
 type PostFinanceCategoriesJSONRequestBody = NewFinanceCategory
 
@@ -2612,6 +3079,9 @@ type PostFinanceDuePaymentJSONRequestBody = NewFinanceDuePayment
 // PostFinanceEntriesJSONRequestBody defines body for PostFinanceEntries for application/json ContentType.
 type PostFinanceEntriesJSONRequestBody = NewFinanceEntry
 
+// PostMemberInvitationJSONRequestBody defines body for PostMemberInvitation for application/json ContentType.
+type PostMemberInvitationJSONRequestBody PostMemberInvitationJSONBody
+
 // PostMemberOfficerJSONRequestBody defines body for PostMemberOfficer for application/json ContentType.
 type PostMemberOfficerJSONRequestBody PostMemberOfficerJSONBody
 
@@ -2626,6 +3096,9 @@ type ServerInterface interface {
 	// PostAuthEmailVerify Confirm the email address with an emailed token
 	// (POST /auth/email/verify)
 	PostAuthEmailVerify(w http.ResponseWriter, r *http.Request)
+	// PostAuthInvitationAccept Accept a school invitation
+	// (POST /auth/invitations/accept)
+	PostAuthInvitationAccept(w http.ResponseWriter, r *http.Request)
 	// PostAuthLink Email a sign-in link
 	// (POST /auth/link)
 	PostAuthLink(w http.ResponseWriter, r *http.Request)
@@ -2743,7 +3216,7 @@ type ServerInterface interface {
 	// PostRejectElectionList Reject a pending election list with a reason
 	// (POST /elections/{electionId}/lists/{listId}/reject)
 	PostRejectElectionList(w http.ResponseWriter, r *http.Request, electionId string, listId string)
-	// GetElectionResults Votes per list of an election
+	// GetElectionResults The result of an election, published at its close
 	// (GET /elections/{electionId}/results)
 	GetElectionResults(w http.ResponseWriter, r *http.Request, electionId string)
 	// GetElectionTurnout How many students of the Electorate voted
@@ -2788,9 +3261,21 @@ type ServerInterface interface {
 	// PutEventBudgetLine Replace a budget line
 	// (PUT /event-budgets/{id}/lines/{lineId})
 	PutEventBudgetLine(w http.ResponseWriter, r *http.Request, id string, lineId string)
+	// GetFinanceAccountabilityReports Published Financial accountability reports (Rendiciones de cuentas), newest first
+	// (GET /finance/accountability-reports)
+	GetFinanceAccountabilityReports(w http.ResponseWriter, r *http.Request)
+	// PostFinanceAccountabilityReports Publish a frozen Financial accountability report as an Officer with MFA
+	// (POST /finance/accountability-reports)
+	PostFinanceAccountabilityReports(w http.ResponseWriter, r *http.Request)
+	// GetFinanceAccountabilityReport One published Financial accountability report with its frozen copy
+	// (GET /finance/accountability-reports/{id})
+	GetFinanceAccountabilityReport(w http.ResponseWriter, r *http.Request, id string)
 	// GetFinanceBalance Fund balance in cents
 	// (GET /finance/balance)
 	GetFinanceBalance(w http.ResponseWriter, r *http.Request)
+	// GetFinanceCalculatorSummary Officer-only totals for the financial calculators
+	// (GET /finance/calculator-summary)
+	GetFinanceCalculatorSummary(w http.ResponseWriter, r *http.Request)
 	// GetFinanceCategories List categories in the active school
 	// (GET /finance/categories)
 	GetFinanceCategories(w http.ResponseWriter, r *http.Request)
@@ -2872,6 +3357,9 @@ type ServerInterface interface {
 	// GetMembers List accounts and unclaimed officers in the active school
 	// (GET /members)
 	GetMembers(w http.ResponseWriter, r *http.Request)
+	// PostMemberInvitation Invite a school admin or Veedor by email
+	// (POST /members/invitations)
+	PostMemberInvitation(w http.ResponseWriter, r *http.Request)
 	// DeleteMemberOfficer Remove an officer position
 	// (DELETE /members/{memberId}/officer)
 	DeleteMemberOfficer(w http.ResponseWriter, r *http.Request, memberId string)
@@ -2940,6 +3428,20 @@ func (siw *ServerInterfaceWrapper) PostAuthEmailVerify(w http.ResponseWriter, r 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostAuthEmailVerify(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostAuthInvitationAccept operation middleware
+func (siw *ServerInterfaceWrapper) PostAuthInvitationAccept(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostAuthInvitationAccept(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4176,11 +4678,79 @@ func (siw *ServerInterfaceWrapper) PutEventBudgetLine(w http.ResponseWriter, r *
 	handler.ServeHTTP(w, r)
 }
 
+// GetFinanceAccountabilityReports operation middleware
+func (siw *ServerInterfaceWrapper) GetFinanceAccountabilityReports(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetFinanceAccountabilityReports(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostFinanceAccountabilityReports operation middleware
+func (siw *ServerInterfaceWrapper) PostFinanceAccountabilityReports(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostFinanceAccountabilityReports(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetFinanceAccountabilityReport operation middleware
+func (siw *ServerInterfaceWrapper) GetFinanceAccountabilityReport(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetFinanceAccountabilityReport(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetFinanceBalance operation middleware
 func (siw *ServerInterfaceWrapper) GetFinanceBalance(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetFinanceBalance(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetFinanceCalculatorSummary operation middleware
+func (siw *ServerInterfaceWrapper) GetFinanceCalculatorSummary(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetFinanceCalculatorSummary(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4873,6 +5443,20 @@ func (siw *ServerInterfaceWrapper) GetMembers(w http.ResponseWriter, r *http.Req
 	handler.ServeHTTP(w, r)
 }
 
+// PostMemberInvitation operation middleware
+func (siw *ServerInterfaceWrapper) PostMemberInvitation(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostMemberInvitation(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // DeleteMemberOfficer operation middleware
 func (siw *ServerInterfaceWrapper) DeleteMemberOfficer(w http.ResponseWriter, r *http.Request) {
 
@@ -5198,6 +5782,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/members/invitations", wrapper.PostMemberInvitation)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/invitations/accept", wrapper.PostAuthInvitationAccept)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/health", wrapper.GetHealth)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/login", wrapper.PostAuthLogin)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/logout", wrapper.PostAuthLogout)
@@ -5271,12 +5857,16 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/finance/categories/{id}", wrapper.PatchFinanceCategory)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/finance/categories/{id}/archive", wrapper.PostFinanceCategoryArchive)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/balance", wrapper.GetFinanceBalance)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/calculator-summary", wrapper.GetFinanceCalculatorSummary)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/entries", wrapper.GetFinanceEntries)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/finance/entries", wrapper.PostFinanceEntries)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/report", wrapper.GetFinanceReport)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/report.pdf", wrapper.GetFinanceReportPdf)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/report.csv", wrapper.GetFinanceReportCsv)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/entries.csv", wrapper.GetFinanceEntriesCsv)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/accountability-reports", wrapper.GetFinanceAccountabilityReports)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/finance/accountability-reports", wrapper.PostFinanceAccountabilityReports)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/accountability-reports/{id}", wrapper.GetFinanceAccountabilityReport)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/entries/{entryId}", wrapper.GetFinanceEntry)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/finance/entries/{entryId}/reversal", wrapper.PostFinanceEntryReversal)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/entries/{entryId}/receipts", wrapper.GetFinanceEntryReceipts)

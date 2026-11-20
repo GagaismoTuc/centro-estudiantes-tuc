@@ -12,6 +12,7 @@ import (
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/auth"
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/db"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -75,12 +76,13 @@ func (s *Store) Create(ctx context.Context, sess auth.Session, name, start, end 
 }
 
 var (
-	ErrNotFound = errors.New("budgets: not found")
-	ErrArchived = errors.New("budgets: archived")
-	ErrQuantity = errors.New("budgets: invalid quantity")
-	ErrAmount   = errors.New("budgets: invalid amount")
-	ErrDay      = errors.New("budgets: invalid day")
-	ErrKind     = errors.New("budgets: invalid kind")
+	ErrNotFound   = errors.New("budgets: not found")
+	ErrArchived   = errors.New("budgets: archived")
+	ErrHasEntries = errors.New("budgets: has linked entries")
+	ErrQuantity   = errors.New("budgets: invalid quantity")
+	ErrAmount     = errors.New("budgets: invalid amount")
+	ErrDay        = errors.New("budgets: invalid day")
+	ErrKind       = errors.New("budgets: invalid kind")
 )
 
 type LineInput struct {
@@ -333,7 +335,27 @@ func (s *Store) Delete(ctx context.Context, sess auth.Session, id string) error 
 		if !validUUID(id) {
 			return ErrNotFound
 		}
+		var exists int
+		// FOR UPDATE serializes with finance.Store.Create (FOR SHARE) on event_budgets.
+		err := tx.QueryRow(ctx, `SELECT 1 FROM event_budgets WHERE tenant_id=$1 AND id=$2 FOR UPDATE`, sess.TenantID, id).Scan(&exists)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
+		var hasEntries bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM finance_entries WHERE tenant_id=$1 AND event_budget_id=$2)`, sess.TenantID, id).Scan(&hasEntries); err != nil {
+			return err
+		}
+		if hasEntries {
+			return ErrHasEntries
+		}
 		tag, err := tx.Exec(ctx, `DELETE FROM event_budgets WHERE tenant_id=$1 AND id=$2`, sess.TenantID, id)
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && (pgErr.Code == "23001" || pgErr.Code == "23503") {
+			return ErrHasEntries
+		}
 		if err != nil {
 			return err
 		}

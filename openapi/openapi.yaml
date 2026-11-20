@@ -6,6 +6,110 @@ info:
 servers:
   - url: /api
 paths:
+  /members/invitations:
+    post:
+      operationId: postMemberInvitation
+      summary: Invite a school admin or Veedor by email
+      description: >
+        Only a school admin with a verified second factor may invite; a new invitation for the same
+        school and email invalidates the previous one. Mail is sent after commit, off the request path.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [email, role]
+              properties:
+                email: { type: string }
+                role: { type: string }
+      responses:
+        "202": { description: Invitation committed. }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          description: Forbidden or MFA required.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ForbiddenError" }
+        "429": { description: Too many requests, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "422":
+          description: Invalid email or role.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error: { type: string, enum: [invalid_email, invalid_role] }
+  /auth/invitations/accept:
+    post:
+      operationId: postAuthInvitationAccept
+      summary: Accept a school invitation
+      description: >
+        New invitees create a verified account with a password. Existing account holders must sign
+        in and prove their second factor first; their password is never changed. Tokens are single-use,
+        expire after 48 hours and invalid tokens are rate-limited per IP.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [token]
+              properties:
+                token: { type: string }
+                password: { type: string }
+      responses:
+        "200":
+          description: Existing account joined the school; a rotated session cookie is set.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Me" }
+        "201":
+          description: Verified account created; a session cookie is set.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Me" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401":
+          description: Sign in with the invited account first, or the session expired.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error: { type: string, enum: [login_required, unauthenticated] }
+        "403":
+          description: Prove the second factor first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error: { type: string, enum: [mfa_required] }
+        "422":
+          description: Invalid token or weak password.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error: { type: string, enum: [invalid_token, weak_password] }
+        "429":
+          description: Too many invalid token attempts.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error: { type: string, enum: [too_many_attempts] }
   /health:
     get:
       operationId: getHealth
@@ -521,7 +625,10 @@ paths:
                     type: string
                     enum: [not_found]
         "409":
-          description: already_officer or position_taken.
+          description: >
+            `already_officer`, `position_taken`, or `board_elected`: the latest published election
+            (an annulled one does not count) had a winner, whose list is the Board, so positions are
+            no longer assigned by hand; nothing changes.
           content:
             application/json:
               schema:
@@ -530,7 +637,7 @@ paths:
                 properties:
                   error:
                     type: string
-                    enum: [already_officer, position_taken]
+                    enum: [already_officer, position_taken, board_elected]
         "422":
           description: invalid_position.
           content:
@@ -563,6 +670,19 @@ paths:
                   error:
                     type: string
                     enum: [not_found]
+        "409":
+          description: >
+            `board_elected`: the latest published election (an annulled one does not count) had a
+            winner, whose list is the Board, so positions are no longer removed by hand; nothing changes.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [board_elected]
   /roster:
     get:
       operationId: getRoster
@@ -789,6 +909,17 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/Error"}
+        "409":
+          description: Budget has linked finance entries (`budget_has_entries`); archive it instead.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [budget_has_entries]
   /event-budgets/{id}/archive:
     post:
       operationId: postEventBudgetArchive
@@ -1456,11 +1587,11 @@ paths:
       operationId: getElectoralCommission
       summary: Read the active school's current Electoral commission
       description: >
-        Any member of the active school (student, officer or school admin); no second factor needed.
+        Any member of the active school (student, officer or school admin); a Veedor must prove a second factor.
         `commission` is null until one is designated. `isMember` says whether the caller's roster entry sits
         on it; `canDesignate` whether the caller may designate or replace it now by role (any officer when
-        the school has officers, otherwise the school admin), regardless of the second factor and of
-        `election_frozen`. Responses carry `Cache-Control: no-store`.
+        the school has officers, otherwise the school admin, or a Veedor when there are no officers or an
+        existing commission can be replaced before the election opens). Responses carry `Cache-Control: no-store`.
       responses:
         "200":
           description: The commission (or null) and the caller's relation to it.
@@ -1471,7 +1602,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthenticated"
         "403":
-          description: The account has no membership in the active school (`forbidden`).
+          description: The account has no membership (`forbidden`), or a Veedor has not proved MFA (`mfa_required`).
           content:
             application/json:
               schema:
@@ -1481,8 +1612,9 @@ paths:
       summary: Designate or replace the members of the current Electoral commission
       description: >
         Any officer when the school has officers (an officer position or the officer role); otherwise the
-        school admin. Checked on every request, so it applies to replacing too. The role is checked first
-        (`forbidden`), then the second factor (`mfa_required`); both before the body is read. Each id is a
+        school admin. A Veedor may designate when the school has no officers or replace the current commission
+        before the election opens. Checked on every request, so it applies to replacing too. The role is checked
+        first (`forbidden`), then the second factor (`mfa_required`); both before the body is read. Each id is a
         roster member of the active school with an account; a repeated id is stored once. The whole list
         replaces the current members; the commission is created when the school has none. Every error writes
         nothing. Responses carry `Cache-Control: no-store`.
@@ -1571,7 +1703,7 @@ paths:
       operationId: postElection
       summary: Create the draft of an election
       description: >
-        Members of the current Electoral commission only, with a verified second factor (`forbidden` first, then
+        Members of the current Electoral commission other than Veedors, with a verified second factor (`forbidden` first, then
         `mfa_required`, both before the body is read): students, officers (the Presidente included) and school
         admins who are not on it get `forbidden`. The election belongs to the current commission. Every error
         writes nothing; the validation codes are listed in the 422 response. Responses carry
@@ -1601,7 +1733,8 @@ paths:
                 $ref: "#/components/schemas/ForbiddenError"
         "409":
           description: >
-            The school already has an election neither published nor annulled (`election_in_progress`). Of two
+            The school already has an election neither published nor annulled (`election_in_progress`); an
+            election's result is published at its `endsAt`, so from then on it no longer blocks a new one. Of two
             simultaneous requests exactly one gets 201.
           content:
             application/json:
@@ -1618,7 +1751,7 @@ paths:
     get:
       operationId: getCurrentElection
       summary: Read the active school's election in progress (neither published nor annulled)
-      description: "Any member of the active school. Responses carry `Cache-Control: no-store`."
+      description: "Any member of the active school; a Veedor must prove MFA before election data is read. Responses carry `Cache-Control: no-store`."
       responses:
         "200":
           description: The election.
@@ -1645,7 +1778,7 @@ paths:
       operationId: getLatestElection
       summary: Read the active school's election in progress, or else its most recently created one
       description: >
-        Any member of the active school. The election in progress when there is one (the same as
+        Any member of the active school; a Veedor must prove MFA before election data is read. The election in progress when there is one (the same as
         `GET /elections/current`); otherwise the most recently created election, so everyone still sees an annulled
         election and its reason. Responses carry `Cache-Control: no-store`.
       responses:
@@ -1679,7 +1812,7 @@ paths:
     get:
       operationId: getElection
       summary: Read an election of the active school
-      description: "Any member of the active school. Responses carry `Cache-Control: no-store`."
+      description: "Any member of the active school; a Veedor must prove MFA before election data is read. Responses carry `Cache-Control: no-store`."
       responses:
         "200":
           description: The election.
@@ -1690,7 +1823,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthenticated"
         "403":
-          description: The account has no membership in the active school (`forbidden`).
+          description: The account has no membership (`forbidden`), or a Veedor has not proved MFA (`mfa_required`).
           content:
             application/json:
               schema:
@@ -1763,10 +1896,11 @@ paths:
       operationId: postElectionAnnulment
       summary: Annul an election before its result is published
       description: >
-        Members of the election's Electoral commission only, with a verified second factor. Checks, in order and
-        before the body is read: `forbidden` (no membership in the active school), `not_found` (no such election
+        Members of the election's Electoral commission, or a Veedor, with a verified second factor. Before the body
+        is read, a Veedor's role is checked and then MFA is required (`mfa_required`) before election data is read.
+        For other members, checks are `forbidden` (no membership in the active school), `not_found` (no such election
         in it, whether or not it exists in another), `forbidden` (not on the election's commission: students,
-        officers and school admins who are not on it), `mfa_required`. Then the reason (422) and the election's
+        officers and school admins who are not on it), then `mfa_required`. Then the reason (422) and the election's
         state (409). Annulling is irreversible: the election publishes no result, accepts no change and never
         reopens; the commission's mandate ends, so the school can organize another election once the officers
         designate a new commission. Of two simultaneous requests exactly one annuls. Every error writes nothing.
@@ -1789,7 +1923,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthenticated"
         "403":
-          description: "`forbidden` (not on the election's Electoral commission) or `mfa_required`."
+          description: "`forbidden` (not on the election's Electoral commission and not a Veedor) or `mfa_required`."
           content:
             application/json:
               schema:
@@ -1838,8 +1972,9 @@ paths:
       summary: Search roster members by name for an election list
       description: >
         List builders only (a student with a roster link, or an Electoral commission member with a
-        verified two-factor session). Searches roster members of the active school by name with at
-        least 3 letters and returns at most 20 results (names and ids only, never document numbers).
+        verified two-factor session). Veedores cannot search, even if they also hold either role.
+        Searches roster members of the active school by name with at least 3 letters and returns at
+        most 20 results (names and ids only, never document numbers).
         Responses carry `Cache-Control: no-store`.
       parameters:
         - name: q
@@ -1861,8 +1996,8 @@ paths:
           $ref: "#/components/responses/Unauthenticated"
         "403":
           description: >
-            Caller may not build a list (`forbidden` for school admins, officers without a roster
-            link, or accounts without membership) or is on the Electoral commission without a
+            Caller may not build a list (`forbidden` for Veedores, school admins, officers without
+            a roster link, or accounts without membership) or is on the Electoral commission without a
             verified second factor (`mfa_required`).
           content:
             application/json:
@@ -1896,7 +2031,8 @@ paths:
       operationId: getElectionLists
       summary: List election lists visible to the caller
       description: >
-        Any member of the active school. Returns approved lists to all members; pending and rejected lists
+        Any member of the active school; a Veedor must prove a second factor before list data is read. Returns
+        approved lists to all members; pending and rejected lists
         (with `rejectionReason`) are included only for the election's Electoral commission and each list's
         representative ("Apoderado"). Also returns `rosterMemberId` of the caller, if linked to the roster.
         Responses carry `Cache-Control: no-store`.
@@ -1910,7 +2046,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthenticated"
         "403":
-          description: The account has no membership in the active school (`forbidden`).
+          description: The account has no membership (`forbidden`), or a Veedor has not proved MFA (`mfa_required`).
           content:
             application/json:
               schema:
@@ -1925,7 +2061,7 @@ paths:
       operationId: postElectionList
       summary: Present a list as a student representative
       description: >
-        Any member of the active school linked to a roster entry presents a list during the submission period
+        Any member of the active school linked to a roster entry, except a Veedor, presents a list during the submission period
         and becomes its representative ("Apoderado"). School admins without a roster entry and accounts without
         membership receive `forbidden` before the body is read. Does not require a second factor beyond the
         session. Responses carry `Cache-Control: no-store`.
@@ -1947,7 +2083,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthenticated"
         "403":
-          description: Not a roster member of the active school (`forbidden`).
+          description: Not a roster member or a Veedor (`forbidden`).
           content:
             application/json:
               schema:
@@ -1973,7 +2109,7 @@ paths:
       operationId: postCommissionElectionList
       summary: Load a list as the Electoral commission on behalf of a representative
       description: >
-        Members of the current Electoral commission with a verified second factor (`forbidden` first, then
+        Members of the current Electoral commission other than Veedors, with a verified second factor (`forbidden` first, then
         `mfa_required`, both before the body is read). Names a roster member of the active school as the
         representative ("Apoderado"). Responses carry `Cache-Control: no-store`.
       requestBody:
@@ -2025,7 +2161,8 @@ paths:
       operationId: getElectionList
       summary: Read one election list
       description: >
-        Approved lists are visible to any member of the active school. Pending and rejected lists are visible
+        Approved lists are visible to any member of the active school; a Veedor must prove MFA before list data
+        is read. Pending and rejected lists are visible
         only to the election's Electoral commission and the list's representative; another student requesting a
         pending or rejected list receives `not_found`. Responses carry `Cache-Control: no-store`.
       responses:
@@ -2038,7 +2175,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthenticated"
         "403":
-          description: The account has no membership in the active school (`forbidden`).
+          description: The account has no membership (`forbidden`), or a Veedor has not proved MFA (`mfa_required`).
           content:
             application/json:
               schema:
@@ -2054,7 +2191,8 @@ paths:
       summary: Edit a pending election list
       description: >
         The list's representative (no second factor beyond the session) or a member of the current Electoral
-        commission (verified second factor required) during the submission period. Approved lists return
+        commission (verified second factor required) during the submission period. Veedors cannot edit lists.
+        Approved lists return
         `list_frozen`, rejected lists return `list_rejected`. Responses carry `Cache-Control: no-store`.
       requestBody:
         required: true
@@ -2105,7 +2243,7 @@ paths:
       operationId: postApproveElectionList
       summary: Approve a pending election list
       description: >
-        Members of the current Electoral commission with a verified second factor (`forbidden` first, then
+        Members of the current Electoral commission other than Veedors, with a verified second factor (`forbidden` first, then
         `mfa_required`), during the submission period. Responses carry `Cache-Control: no-store`.
       responses:
         "200":
@@ -2146,7 +2284,7 @@ paths:
       operationId: postRejectElectionList
       summary: Reject a pending election list with a reason
       description: >
-        Members of the current Electoral commission with a verified second factor (`forbidden` first, then
+        Members of the current Electoral commission other than Veedors, with a verified second factor (`forbidden` first, then
         `mfa_required`, both before the body is read), during the submission period. Requires a non-empty reason
         of up to 500 characters. Rejecting frees the list's candidates and name. Responses carry
         `Cache-Control: no-store`.
@@ -2297,7 +2435,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthenticated"
         "403":
-          description: The account has no membership in the active school (`forbidden`).
+          description: The account has no membership (`forbidden`), or a Veedor has not proved MFA (`mfa_required`).
           content:
             application/json:
               schema:
@@ -2330,16 +2468,24 @@ paths:
           type: string
     get:
       operationId: getElectionResults
-      summary: Votes per list of an election
+      summary: The result of an election, published at its close
       description: >
-        Any member of the active school. Not available yet: publishing the result is a later feature, so every
-        election answers `results_not_available`; while voting is open nobody sees votes per list. Responses carry
-        `Cache-Control: no-store`.
+        Any member of the active school, from `endsAt` on (inclusive): before it every election, annulled or not,
+        answers `results_not_available` with no count. An annulled election publishes no result: it answers
+        `status: annulled` with its reason. Otherwise the result is computed on read, from the Ballot box written
+        once at the close, so every read returns the same result; it carries no voter nor Ballot identifier.
+        Responses carry `Cache-Control: no-store`.
       responses:
+        "200":
+          description: The published result, or the annulment.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ElectionResult"
         "401":
           $ref: "#/components/responses/Unauthenticated"
         "403":
-          description: The account has no membership in the active school (`forbidden`).
+          description: The account has no membership (`forbidden`), or a Veedor has not proved MFA (`mfa_required`).
           content:
             application/json:
               schema:
@@ -2351,7 +2497,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/NotFoundError"
         "409":
-          description: The votes per list are not available (`results_not_available`).
+          description: >
+            `results_not_available`: before `endsAt` by the server clock, or while the database clock has not reached
+            it yet.
           content:
             application/json:
               schema:
@@ -2532,6 +2680,23 @@ paths:
                 $ref: "#/components/schemas/FinanceBalance"
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "403": { $ref: "#/components/responses/Forbidden" }
+  /finance/calculator-summary:
+    get:
+      operationId: getFinanceCalculatorSummary
+      summary: Officer-only totals for the financial calculators
+      description: |
+        Returns the active school's current roster headcount, Fund balance and total still owed
+        across all Dues (excluding exempt Roster members). Read-only; returns totals only, never
+        names or per-student data. Restricted to Officers with a verified second factor.
+      responses:
+        "200":
+          description: Current calculator totals in integer cents plus roster count.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FinanceCalculatorSummary"
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/DirectoryForbidden" }
   /finance/entries:
     get:
       operationId: getFinanceEntries
@@ -2567,15 +2732,33 @@ paths:
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404":
-          description: Category not found in the active school (`not_found`).
+          description: Category, event budget or heading not found in the active school (`not_found`).
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
         "422":
-          description: "Invalid input: invalid_amount, invalid_date, future_date, description_required, description_too_long, invalid_category, reserved_category."
+          description: >
+            Invalid input: `invalid_amount`, `invalid_date`, `future_date`, `description_required`,
+            `description_too_long`, `invalid_category`, `reserved_category`, `invalid_event_link`,
+            `heading_not_in_budget`.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/Error" }
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - invalid_amount
+                      - invalid_date
+                      - future_date
+                      - description_required
+                      - description_too_long
+                      - invalid_category
+                      - reserved_category
+                      - invalid_event_link
+                      - heading_not_in_budget
   /finance/report:
     get:
       operationId: getFinanceReport
@@ -2668,6 +2851,122 @@ paths:
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "403": { $ref: "#/components/responses/MemberForbidden" }
         "422": { $ref: "#/components/responses/InvalidRange" }
+  /finance/accountability-reports:
+    get:
+      operationId: getFinanceAccountabilityReports
+      summary: Published Financial accountability reports (Rendiciones de cuentas), newest first
+      description: >
+        Any member of the active school reads them (Officers, Students, School admins and, once it
+        exists, the Veedor). Lists period, Term and who published; the frozen copy is at
+        `/finance/accountability-reports/{id}`.
+      responses:
+        "200":
+          description: The school's reports, newest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AccountabilityReportSummary" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/MemberForbidden" }
+    post:
+      operationId: postFinanceAccountabilityReports
+      summary: Publish a frozen Financial accountability report as an Officer with MFA
+      description: >
+        Any current Officer publishes any period, also one of the previous Term, and may publish
+        overlapping periods more than once. The Fund report of the period, its totals per Category,
+        its balances and the totals per Due whose due date falls in the period are read in one
+        consistent snapshot and stored with the publisher's name; the copy never changes and never
+        names a Roster member. There is no PUT or DELETE.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NewAccountabilityReport" }
+      responses:
+        "201":
+          description: The published report with its frozen copy.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AccountabilityReport" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          description: >
+            The user is not an Officer of the active school (`forbidden`), or is one without a
+            verified two-factor session (`mfa_required`). Nothing is read or written.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "422":
+          description: >
+            `from` or `to` missing, malformed or reversed (`invalid_range`), `to` after today in
+            Argentina (`future_date`), or a blank Term (`term_required`). Nothing is written.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [invalid_range, future_date, term_required]
+  /finance/accountability-reports/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: >
+          The report id. The router also routes `/finance/accountability-reports/{id}.csv` here,
+          because a path wildcard must be a whole segment; see that path for the CSV.
+        schema: { type: string }
+    get:
+      operationId: getFinanceAccountabilityReport
+      summary: One published Financial accountability report with its frozen copy
+      description: >
+        Same readers as the list. Every read returns the same copy, whatever Reversals, Category
+        renames or payments came after publication.
+      responses:
+        "200":
+          description: The report.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AccountabilityReport" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/MemberForbidden" }
+        "404":
+          description: No such report in the active school (`not_found`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotFoundError" }
+  /finance/accountability-reports/{id}.csv:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getFinanceAccountabilityReportCsv
+      summary: One published Financial accountability report as a CSV download
+      description: >
+        Same readers as the list; served by the `{id}` route (excluded from code generation). Same
+        encoding and escaping as `/finance/report.csv`. A header section (`concepto;valor`: Gestión,
+        Período, Publicada por, Publicada el), an empty line, the summary of `/finance/report.csv`,
+        an empty line, the totals per Due (`cuota;vencimiento;pagaron;de`), an empty line and the
+        period's Entries with the columns of `/finance/entries.csv` without `alumno`, as published.
+      responses:
+        "200":
+          description: Attachment `rendicion-de-cuentas-<from>-a-<to>.csv`.
+          content:
+            text/csv:
+              schema: { type: string }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/MemberForbidden" }
+        "404":
+          description: No such report in the active school (`not_found`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotFoundError" }
   /finance/entries/{entryId}:
     parameters:
       - name: entryId
@@ -2700,9 +2999,10 @@ paths:
       operationId: postFinanceEntryReversal
       summary: Reverse an entry as any officer with MFA
       description: >
-        Records, in one transaction, a Reversal: an entry with the same amount and category, the
-        opposite direction, today's date in Argentina and the description "Reversión: " followed by
-        the original's. Old entries may be reversed; the Reversal falls in the current period.
+        Records, in one transaction, a Reversal: an entry with the same amount and category (and
+        optional event budget and heading link), the opposite direction, today's date in Argentina
+        and the description "Reversión: " followed by the original's. Old entries may be reversed;
+        the Reversal falls in the current period.
       responses:
         "201":
           description: Reversal recorded.
@@ -2905,6 +3205,7 @@ paths:
     get:
       operationId: getMyFinanceDues
       summary: List dues owed by the signed-in roster member
+      description: A Veedor must prove a second factor before this request reads membership or due data.
       responses:
         "200":
           description: Dues whose snapshot includes the caller's roster member.
@@ -3421,6 +3722,12 @@ components:
         date: { type: string }
         amountCents: { type: integer, format: int64 }
         description: { type: string }
+        eventBudgetId:
+          type: string
+          description: Optional active Event budget id; must be paired with headingId.
+        headingId:
+          type: string
+          description: Optional Heading id with at least one line in eventBudgetId; must be paired with eventBudgetId.
     FinanceEntry:
       type: object
       required: [id, categoryId, direction, date, amountCents, description, recordedBy, recordedAt, hasReceipt]
@@ -3436,6 +3743,18 @@ components:
         hasReceipt:
           type: boolean
           description: True when at least one Receipt backs this entry.
+        eventBudgetId:
+          type: string
+          description: Present when this entry is linked to an Event budget.
+        eventBudgetName:
+          type: string
+          description: Present when this entry is linked to an Event budget; visible to all school members in the ledger.
+        headingId:
+          type: string
+          description: Present when this entry is linked to an Event budget; the Heading id.
+        headingName:
+          type: string
+          description: Present when this entry is linked to an Event budget; the Heading name.
         reversesId:
           type: string
           description: Present when this entry is a Reversal; the id of the entry it reverses.
@@ -3498,11 +3817,80 @@ components:
           type: array
           description: Entries in the range, oldest first.
           items: { $ref: "#/components/schemas/FinanceEntry" }
+    NewAccountabilityReport:
+      type: object
+      additionalProperties: false
+      required: [from, to, term]
+      properties:
+        from: { type: string, description: "First day of the period, YYYY-MM-DD, inclusive." }
+        to: { type: string, description: "Last day of the period, YYYY-MM-DD, inclusive; not after today." }
+        term: { type: string, description: "The Term (Gestión) the report belongs to, such as \"Gestión 2026\"." }
+    AccountabilityReportSummary:
+      type: object
+      required: [id, from, to, term, publishedBy, publishedAt]
+      properties:
+        id: { type: string }
+        from: { type: string }
+        to: { type: string }
+        term: { type: string }
+        publishedBy: { type: string, description: The publishing Officer's Roster name. }
+        publishedAt: { type: string, format: date-time }
+    AccountabilityReport:
+      allOf:
+        - $ref: "#/components/schemas/AccountabilityReportSummary"
+        - type: object
+          required: [openingCents, closingCents, totals, dues, entries]
+          properties:
+            openingCents: { type: integer, format: int64 }
+            closingCents: { type: integer, format: int64 }
+            totals:
+              type: array
+              description: Categories with Entries in the period, with their names at publication.
+              items: { $ref: "#/components/schemas/FinanceCategoryTotal" }
+            dues:
+              type: array
+              description: Dues whose due date falls in the period, by due date.
+              items: { $ref: "#/components/schemas/AccountabilityDueTotal" }
+            entries:
+              type: array
+              description: Entries in the period as published, oldest first; never who paid.
+              items: { $ref: "#/components/schemas/AccountabilityEntry" }
+    AccountabilityDueTotal:
+      type: object
+      required: [dueId, name, dueDate, amountCents, paidCount, totalCount]
+      properties:
+        dueId: { type: string }
+        name: { type: string }
+        dueDate: { type: string }
+        amountCents: { type: integer, format: int64 }
+        paidCount: { type: integer, description: "Roster members who paid the Due in full by the period's `to`: payments dated up to `to` whose Entry has no Reversal dated up to `to`." }
+        totalCount: { type: integer, description: "Roster members who owe the Due, Exemptions excluded." }
+    AccountabilityEntry:
+      type: object
+      required: [id, date, direction, categoryId, category, description, amountCents, recordedBy, reversed]
+      properties:
+        id: { type: string }
+        date: { type: string }
+        direction: { type: string, enum: [income, expense] }
+        categoryId: { type: string }
+        category: { type: string, description: The Category's name at publication. }
+        description: { type: string }
+        amountCents: { type: integer, format: int64 }
+        recordedBy: { type: string }
+        reversesId: { type: string, description: Set on a Reversal. }
+        reversed: { type: boolean, description: Whether the Entry had a Reversal at publication. }
     FinanceBalance:
       type: object
       required: [balanceCents]
       properties:
         balanceCents: { type: integer, description: "The exact sum; may exceed int64." }
+    FinanceCalculatorSummary:
+      type: object
+      required: [rosterCount, balance, owedOnDues]
+      properties:
+        rosterCount: { type: integer, description: "Current number of Roster members in the active school." }
+        balance: { type: integer, description: "Current Fund balance in integer cents; exact sum, may exceed int64 and may be negative." }
+        owedOnDues: { type: integer, description: "Total in integer cents still owed across all Dues by non-exempt Roster members; exact sum, may exceed int64." }
     NewFinanceDue:
       type: object
       additionalProperties: false
@@ -3697,6 +4085,65 @@ components:
         hasVoted:
           type: boolean
           description: Whether the caller voted; nobody learns whether anyone else did.
+    ElectionResult:
+      type: object
+      required: [status]
+      description: >
+        With `status: annulled`, only `annulmentReason`. With `status: published`, every other property and
+        `winner` only when `outcome` is `winner`.
+      properties:
+        status:
+          type: string
+          enum: [published, annulled]
+        annulmentReason:
+          type: string
+          description: The public reason of the Annulment.
+        mode:
+          $ref: "#/components/schemas/ElectionMode"
+        lists:
+          type: array
+          description: Every approved list of the election, also those with 0 votes; most votes first, then by name.
+          items:
+            $ref: "#/components/schemas/ElectionResultList"
+        blankVotes:
+          type: integer
+          description: Blank votes; counted, they never win.
+        voted:
+          type: integer
+          description: How many students of the Electorate voted (X); the votes of the lists plus `blankVotes`.
+        electorate:
+          type: integer
+          description: >
+            The size of the Electorate (Y). When voting never opened (`no_lists`), the roster when the result was
+            first read.
+        outcome:
+          type: string
+          enum: [winner, tie, no_votes, no_lists]
+          description: >
+            `winner`: one list has the most votes (simple majority, no quorum). `tie`: two or more lists share the
+            most votes. `no_votes`: every list has 0 votes, even with Blank votes. `no_lists`: no approved list, so
+            voting never opened.
+        winner:
+          $ref: "#/components/schemas/ElectionResultWinner"
+    ElectionResultList:
+      type: object
+      required: [id, name, votes]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        votes:
+          type: integer
+    ElectionResultWinner:
+      type: object
+      required: [id, name]
+      description: The list with the most votes; only when `outcome` is `winner`.
+      properties:
+        id:
+          type: string
+        name:
+          type: string
     AnnulmentRequest:
       type: object
       additionalProperties: false
@@ -3711,6 +4158,10 @@ components:
       type: object
       required: [reason, annulledAt]
       properties:
+        annulledBy:
+          type: string
+          description: Present when a Veedor annulled the election.
+          enum: [veedor]
         reason:
           type: string
         annulledAt:
@@ -3981,7 +4432,7 @@ components:
           type: string
     Role:
       type: string
-      enum: [school_admin, officer, student]
+      enum: [school_admin, officer, student, veedor]
     MfaState:
       type: string
       enum: [not_required, enrollment_required, pending, satisfied]

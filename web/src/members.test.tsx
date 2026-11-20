@@ -178,9 +178,62 @@ test("role labels match PR #65 strings in session.tsx", () => {
     school_admin: "Administrador de la escuela",
     officer: "Integrante de la comisi\u00f3n directiva",
     student: "Alumno",
+    veedor: "Veedor",
   });
   expect(roleLabels(me({ role: "officer", roles: ["officer", "school_admin", "student"] }))).toBe(
     "Alumno, Integrante de la comisi\u00f3n directiva, Administrador de la escuela",
   );
   expect(roleLabels(me({ role: null }))).toBe("Sin escuela");
+});
+
+const boardElected = "La comisión directiva salió de la última elección; no se puede cambiar a mano";
+
+test("assigning after an elected Board shows board_elected in voseo (S11)", async () => {
+  mockApi({
+    "GET /auth/me": ok(me({ role: "school_admin", mfa: "satisfied" })),
+    "GET /members": ok([]),
+    "GET /roster": ok([{ id: "m2", fullName: "Beto Ficticio", documentNumber: "30111223", hasActiveCode: false, hasAccount: false }]),
+    "POST /members/m2/officer": fail(409, "board_elected"),
+  });
+  window.history.replaceState(null, "", "/miembros");
+  render(<App />);
+  await screen.findByRole("option", { name: "Beto Ficticio" });
+  fireEvent.change(screen.getByLabelText("Alumno del padrón"), { target: { value: "m2" } });
+  fireEvent.click(screen.getByRole("button", { name: "Asignar cargo" }));
+  const status = await screen.findByText(boardElected);
+  expect(status.closest("[role=alert]") ?? status.closest("[aria-live]")).toBeTruthy();
+});
+
+test("removing after an elected Board shows board_elected and keeps the officer (S11)", async () => {
+  const sent = mockApi({
+    "GET /auth/me": ok(me({ role: "school_admin", mfa: "satisfied" })),
+    "GET /members": ok([{ email: null, fullName: "Ana Ficticia", rosterMemberId: "m1", position: "Presidente", roles: ["student", "officer"] }]),
+    "GET /roster": ok([]),
+    "DELETE /members/m1/officer": fail(409, "board_elected"),
+  });
+  window.history.replaceState(null, "", "/miembros");
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Quitar cargo de Ana Ficticia" }));
+  await screen.findByText(boardElected);
+  expect(sentTo(sent, "DELETE /members/m1/officer")).toHaveLength(1);
+  expect(memberRoleTexts("Ana Ficticia")).toEqual(["Alumno", "Integrante de la comisión directiva — Presidente"]);
+});
+
+test("officers with positions from an election show them and can lose them (S10)", async () => {
+  const sent = mockApi({
+    "GET /auth/me": ok(me({ role: "school_admin", mfa: "satisfied" })),
+    "GET /members": ok([
+      { email: "lu@example.com", fullName: "Lu Ficticia", rosterMemberId: "m5", position: "Presidenta", roles: ["student", "officer"] },
+      { email: null, fullName: "Mo Inventado", rosterMemberId: "m6", position: "Vocal", roles: ["student", "officer"] },
+    ]),
+    "GET /roster": ok([]),
+    "DELETE /members/m6/officer": ok(undefined, 204),
+  });
+  window.history.replaceState(null, "", "/miembros");
+  render(<App />);
+  await screen.findByText("Mo Inventado");
+  expect(memberRoleTexts("Lu Ficticia")).toEqual(["Alumno", "Integrante de la comisión directiva — Presidenta"]);
+  expect(memberRoleTexts("Mo Inventado")).toEqual(["Alumno", "Integrante de la comisión directiva — Vocal"]);
+  fireEvent.click(screen.getByRole("button", { name: "Quitar cargo de Mo Inventado" }));
+  await waitFor(() => expect(sentTo(sent, "DELETE /members/m6/officer")).toHaveLength(1));
 });

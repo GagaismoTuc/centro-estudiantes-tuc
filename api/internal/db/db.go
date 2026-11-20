@@ -58,10 +58,16 @@ func Migrate(ctx context.Context, dsn string) error {
 // The transaction commits when fn returns nil and rolls back otherwise. tenantID is validated
 // as a UUID before any connection is used.
 func WithTenant(ctx context.Context, pool *pgxpool.Pool, tenantID string, fn func(pgx.Tx) error) error {
+	return WithTenantOptions(ctx, pool, tenantID, pgx.TxOptions{}, fn)
+}
+
+// WithTenantOptions is WithTenant with explicit transaction options, such as a REPEATABLE READ
+// isolation level so that every query of fn reads the same snapshot.
+func WithTenantOptions(ctx context.Context, pool *pgxpool.Pool, tenantID string, opts pgx.TxOptions, fn func(pgx.Tx) error) error {
 	if !uuidPattern.MatchString(tenantID) {
 		return ErrInvalidTenantID
 	}
-	return pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
+	return pgx.BeginTxFunc(ctx, pool, opts, func(tx pgx.Tx) error {
 		if err := SetTenant(ctx, tx, tenantID); err != nil {
 			return err
 		}
@@ -70,8 +76,8 @@ func WithTenant(ctx context.Context, pool *pgxpool.Pool, tenantID string, fn fun
 }
 
 // SetTenant declares tenantID in the transaction-local app.tenant_id of tx. Besides WithTenant, only
-// code running inside WithCodeHash may call it, and only with the tenant of the code row it just
-// found: that is how claiming a code may write the new membership.
+// code running inside WithCodeHash or WithInvitationHash may call it, and only with the tenant of
+// the row it just found: that is how claiming a code may write the new membership.
 func SetTenant(ctx context.Context, tx pgx.Tx, tenantID string) error {
 	if !uuidPattern.MatchString(tenantID) {
 		return ErrInvalidTenantID
@@ -93,6 +99,20 @@ func WithCodeHash(ctx context.Context, pool *pgxpool.Pool, hash []byte, fn func(
 	return pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
 		if _, err := tx.Exec(ctx, `SELECT set_config('app.code_hash', $1, true)`, hex.EncodeToString(hash)); err != nil {
 			return fmt.Errorf("db: set code hash: %w", err)
+		}
+		return fn(tx)
+	})
+}
+
+// WithInvitationHash exposes only the invitation matching hash before its school is known.
+// After finding that row, callers may set only its tenant with SetTenant in the same transaction.
+func WithInvitationHash(ctx context.Context, pool *pgxpool.Pool, hash []byte, fn func(pgx.Tx) error) error {
+	if len(hash) != 32 {
+		return ErrInvalidCodeHash
+	}
+	return pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `SELECT set_config('app.invitation_hash', $1, true)`, hex.EncodeToString(hash)); err != nil {
+			return fmt.Errorf("db: set invitation hash: %w", err)
 		}
 		return fn(tx)
 	})

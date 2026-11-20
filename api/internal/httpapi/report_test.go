@@ -359,11 +359,13 @@ func TestFinanceReportReaders(t *testing.T) {
 	rf.record(t, "income/Ventas", "2026-03-15", 200000, "Venta de tortas")
 	_, student := rf.signIn(t, ctx, "student")
 	_, admin := rf.signIn(t, ctx, "school_admin")
+	_, veedor, _, _ := rf.signInMFA(t, ctx, "veedor")
+	_, veedorNoMFA := rf.signIn(t, ctx, "veedor")
 	_, outsider := rf.signIn(t, ctx, "")
 	before := rf.ledgerState(t, student)
 	paths := []string{"/api/finance/report?from=2026-03-01&to=2026-11-30", "/api/finance/report.csv?from=2026-03-01&to=2026-11-30", "/api/finance/entries.csv"}
 	for _, path := range paths {
-		for name, token := range map[string]string{"officer": rf.officer, "student": student, "school admin": admin} {
+		for name, token := range map[string]string{"officer": rf.officer, "student": student, "school admin": admin, "Veedor with MFA": veedor} {
 			t.Run(name+" "+path, func(t *testing.T) {
 				r := rf.get(path, token)
 				if r.Code != 200 {
@@ -374,6 +376,9 @@ func TestFinanceReportReaders(t *testing.T) {
 				}
 			})
 		}
+		t.Run("Veedor without MFA "+path, func(t *testing.T) {
+			wantResponse(t, rf.get(path, veedorNoMFA), http.StatusForbidden, `{"error":"mfa_required"}`)
+		})
 		t.Run("no session "+path, func(t *testing.T) {
 			wantResponse(t, rf.get(path, ""), 401, unauthBody)
 		})
