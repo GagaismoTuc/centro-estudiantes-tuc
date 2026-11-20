@@ -106,7 +106,20 @@ func (s *server) GetEventBudget(w http.ResponseWriter, r *http.Request, id strin
 	for _, v := range b.Days {
 		days = append(days, oapi.EventBudgetDay{Day: v.Day, Totals: budgetTotalsDTO(v.Totals)})
 	}
-	writeJSON(w, 200, oapi.EventBudgetDetail{Id: b.ID, Name: b.Name, StartsOn: b.StartsOn, EndsOn: b.EndsOn, Archived: b.Archived, Lines: lines, Totals: budgetTotalsDTO(b.Totals), Days: days})
+	byHeading := make([]oapi.EventBudgetHeadingComparison, 0, len(b.ByHeading))
+	for _, h := range b.ByHeading {
+		byHeading = append(byHeading, oapi.EventBudgetHeadingComparison{
+			HeadingId:              h.HeadingID,
+			HeadingName:            h.HeadingName,
+			BudgetedExpenseCents:   h.BudgetedExpenseCents,
+			ActualExpenseCents:     h.ActualExpenseCents,
+			ExpenseDifferenceCents: h.ExpenseDifferenceCents,
+			BudgetedIncomeCents:    h.BudgetedIncomeCents,
+			ActualIncomeCents:      h.ActualIncomeCents,
+			IncomeDifferenceCents:  h.IncomeDifferenceCents,
+		})
+	}
+	writeJSON(w, 200, oapi.EventBudgetDetail{Id: b.ID, Name: b.Name, StartsOn: b.StartsOn, EndsOn: b.EndsOn, Archived: b.Archived, Lines: lines, Totals: budgetTotalsDTO(b.Totals), Days: days, ByHeading: byHeading})
 }
 
 func (s *server) DeleteEventBudget(w http.ResponseWriter, r *http.Request, id string) {

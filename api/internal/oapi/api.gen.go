@@ -1899,14 +1899,31 @@ type EventBudgetDay struct {
 
 // EventBudgetDetail defines model for EventBudgetDetail.
 type EventBudgetDetail struct {
-	Archived bool              `json:"archived"`
-	Days     []EventBudgetDay  `json:"days"`
-	EndsOn   string            `json:"endsOn"`
-	Id       string            `json:"id"`
-	Lines    []EventBudgetLine `json:"lines"`
-	Name     string            `json:"name"`
-	StartsOn string            `json:"startsOn"`
-	Totals   EventBudgetTotals `json:"totals"`
+	Archived  bool                           `json:"archived"`
+	ByHeading []EventBudgetHeadingComparison `json:"byHeading"`
+	Days      []EventBudgetDay               `json:"days"`
+	EndsOn    string                         `json:"endsOn"`
+	Id        string                         `json:"id"`
+	Lines     []EventBudgetLine              `json:"lines"`
+	Name      string                         `json:"name"`
+	StartsOn  string                         `json:"startsOn"`
+	Totals    EventBudgetTotals              `json:"totals"`
+}
+
+// EventBudgetHeadingComparison defines model for EventBudgetHeadingComparison.
+type EventBudgetHeadingComparison struct {
+	ActualExpenseCents   int64 `json:"actualExpenseCents"`
+	ActualIncomeCents    int64 `json:"actualIncomeCents"`
+	BudgetedExpenseCents int64 `json:"budgetedExpenseCents"`
+	BudgetedIncomeCents  int64 `json:"budgetedIncomeCents"`
+
+	// ExpenseDifferenceCents budgetedExpenseCents minus actualExpenseCents (negative means overspent).
+	ExpenseDifferenceCents int64  `json:"expenseDifferenceCents"`
+	HeadingId              string `json:"headingId"`
+	HeadingName            string `json:"headingName"`
+
+	// IncomeDifferenceCents actualIncomeCents minus budgetedIncomeCents (positive means more income than budgeted).
+	IncomeDifferenceCents int64 `json:"incomeDifferenceCents"`
 }
 
 // EventBudgetInput defines model for EventBudgetInput.
