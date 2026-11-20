@@ -45,12 +45,15 @@ test("student invited to privileged role can complete MFA despite not_required s
   const sent = mockApi({
     "GET /auth/me": [ok(me({ role: "student", mfa: "not_required" })), ok(me({ role: "student", mfa: "not_required" })), ok(me({ role: "veedor", mfa: "satisfied" }))],
     "POST /auth/invitations/accept": [fail(403, "mfa_required"), ok({}, 200)],
-    "POST /auth/mfa/verify": noContent(),
+    "POST /auth/mfa/verify": [fail(422, "invalid_code"), noContent()],
   });
   renderAt("/invitacion#token=student-invite");
   fireEvent.click(await screen.findByRole("button", { name: "Aceptar invitaci\u00f3n" }));
   fireEvent.click(await screen.findByRole("button", { name: "Ya tengo verificaci\u00f3n en dos pasos" }));
   fireEvent.change(await screen.findByLabelText("C\u00f3digo de 6 d\u00edgitos"), { target: { value: "123456" } });
+  fireEvent.click(screen.getByRole("button", { name: "Verificar" }));
+  await screen.findByText(/c\u00f3digo no es correcto/i);
+  expect(sentTo(sent, "POST /auth/invitations/accept")).toHaveLength(1);
   fireEvent.click(screen.getByRole("button", { name: "Verificar" }));
   fireEvent.click(await screen.findByRole("button", { name: "Aceptar invitaci\u00f3n" }));
   await waitFor(() => expect(sentTo(sent, "POST /auth/invitations/accept")).toHaveLength(2));
@@ -82,4 +85,19 @@ test("invitation fragment survives StrictMode and never reaches a request URL", 
   fireEvent.click(screen.getByRole("button", { name: "Aceptar invitaci\u00f3n" }));
   await waitFor(() => expect(sentTo(sent, "POST /auth/invitations/accept")[0]?.body).toEqual({ token: "strict-invite", password: "una-clave-segura" }));
   expect(sent.every((request) => !request.href.includes("strict-invite"))).toBe(true);
+});
+
+test("wrong password leaves the invitation unspent and permits retry", async () => {
+  const sent = mockApi({
+    "GET /auth/me": fail(401, "unauthenticated"),
+    "POST /auth/login": fail(401, "invalid_credentials"),
+  });
+  renderAt("/invitacion#token=wrong-password-invite");
+  fireEvent.click(await screen.findByRole("link", { name: /ya ten\u00e9s cuenta/i }));
+  fireEvent.change(await screen.findByLabelText("Mail"), { target: { value: "persona@example.test" } });
+  fireEvent.change(screen.getByLabelText("Contrase\u00f1a"), { target: { value: "contrase\u00f1a-equivocada" } });
+  fireEvent.click(screen.getByRole("button", { name: "Ingresar" }));
+  await waitFor(() => expect(sentTo(sent, "POST /auth/login")).toHaveLength(1));
+  expect(sentTo(sent, "POST /auth/invitations/accept")).toHaveLength(0);
+  expect(window.location.pathname).toBe("/ingresar");
 });

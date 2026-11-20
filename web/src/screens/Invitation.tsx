@@ -59,7 +59,7 @@ export function Invitation() {
   return <AuthLayout>
     <PageTitle>{"Acept\u00e1 la invitaci\u00f3n"}</PageTitle>
     {!token ? <p>{"Este enlace est\u00e1 incompleto. Abrilo de nuevo desde el mail."}</p> : <>
-      {mfa === "choose" ? <><p>{"Para aceptar la invitaci\u00f3n, complet\u00e1 la verificaci\u00f3n en dos pasos."}</p><button type="button" onClick={() => setMfa("verify")}>{"Ya tengo verificaci\u00f3n en dos pasos"}</button><button type="button" onClick={() => setMfa("enroll")}>{"Activar verificaci\u00f3n en dos pasos"}</button></> : <>
+      {mfa === "choose" ? <><p role="alert">{"Para aceptar la invitaci\u00f3n, complet\u00e1 la verificaci\u00f3n en dos pasos."}</p><div className="panel__actions"><button type="button" className="button button--primary" onClick={() => setMfa("verify")}>{"Ya tengo verificaci\u00f3n en dos pasos"}</button><button type="button" className="button button--secondary" onClick={() => setMfa("enroll")}>{"Activar verificaci\u00f3n en dos pasos"}</button></div></> : <>
       <p className="lead">{signedIn ? "Sum\u00e1 esta escuela a tu cuenta." : "Eleg\u00ed una contrase\u00f1a para crear tu cuenta."}</p>
       <form {...form.formProps} onSubmit={(event) => void submit(event)} aria-busy={busy || undefined}>
         {!signedIn && <PasswordField {...form.field("password")} label={"Eleg\u00ed tu contrase\u00f1a"} autoComplete="new-password" minLength={10} maxLength={128} required />}
