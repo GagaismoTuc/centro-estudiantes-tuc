@@ -886,3 +886,24 @@ func TestVeedorListReadsRequireMFA(t *testing.T) {
 		}
 	}
 }
+
+func TestVeedorCannotSearchElectionCandidates(t *testing.T) {
+	ctx := integration(t)
+	ls := newListSchool(t, ctx)
+	path := fmt.Sprintf("%s/%s/candidates?q=Beto", electionsPath, ls.electionID)
+	var user string
+	if err := tdb.Super.QueryRow(ctx, `SELECT user_id::text FROM memberships WHERE tenant_id=$1 AND roster_member_id=$2`, ls.tenant, ls.danaID).Scan(&user); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tdb.Super.Exec(ctx, `INSERT INTO memberships(tenant_id,user_id,role) VALUES($1,$2,'veedor')`, ls.tenant, user); err != nil {
+		t.Fatal(err)
+	}
+	wantResponse(t, ls.do(http.MethodGet, path, "", electionIP, ls.danaTok, nil), http.StatusForbidden, forbiddenBody)
+	secret := ls.enroll(t, ls.danaTok)
+	rec := ls.post("/api/auth/mfa/enrollment/confirm", codeBody(ls.code(secret, 0)), mfaIP, ls.danaTok)
+	if rec.Code != http.StatusOK || len(rec.Result().Cookies()) != 1 {
+		t.Fatalf("confirm status = %d, cookies = %d", rec.Code, len(rec.Result().Cookies()))
+	}
+	mfa := rec.Result().Cookies()[0].Value
+	wantResponse(t, ls.do(http.MethodGet, path, "", electionIP, mfa, nil), http.StatusForbidden, forbiddenBody)
+}

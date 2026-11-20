@@ -950,7 +950,7 @@ export interface paths {
         };
         /**
          * Search roster members by name for an election list
-         * @description List builders only (a student with a roster link, or an Electoral commission member with a verified two-factor session). Searches roster members of the active school by name with at least 3 letters and returns at most 20 results (names and ids only, never document numbers). Responses carry `Cache-Control: no-store`.
+         * @description List builders only (a student with a roster link, or an Electoral commission member with a verified two-factor session). Veedores cannot search, even if they also hold either role. Searches roster members of the active school by name with at least 3 letters and returns at most 20 results (names and ids only, never document numbers). Responses carry `Cache-Control: no-store`.
          */
         get: operations["getElectionCandidates"];
         put?: never;
@@ -4832,7 +4832,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
-            /** @description Caller may not build a list (`forbidden` for school admins, officers without a roster link, or accounts without membership) or is on the Electoral commission without a verified second factor (`mfa_required`). */
+            /** @description Caller may not build a list (`forbidden` for Veedores, school admins, officers without a roster link, or accounts without membership) or is on the Electoral commission without a verified second factor (`mfa_required`). */
             403: {
                 headers: {
                     [name: string]: unknown;

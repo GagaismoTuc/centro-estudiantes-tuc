@@ -447,6 +447,13 @@ func (s *Store) SearchRosterCandidates(ctx context.Context, sess auth.Session, e
 		return out, ErrForbidden
 	}
 	err := db.WithTenant(ctx, s.pool, sess.TenantID, func(tx pgx.Tx) error {
+		var veedor bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT FROM memberships WHERE tenant_id=$1 AND user_id=$2 AND role='veedor')`, sess.TenantID, sess.UserID).Scan(&veedor); err != nil {
+			return err
+		}
+		if veedor {
+			return ErrForbidden
+		}
 		a, err := readAccess(ctx, tx, sess.TenantID, sess.UserID)
 		if err != nil {
 			return err
