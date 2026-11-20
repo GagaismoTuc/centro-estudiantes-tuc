@@ -34,6 +34,10 @@
     "web/package.json",
     "web/pnpm-lock.yaml"
   ],
+  "migraciones": {
+    "glob": "api/migrations/*.sql",
+    "numero": "^(\\d+)_"
+  },
   "merge": "main mergea sola cuando se cumple la condición de merge",
   "despliegue": {
     "despues": false
