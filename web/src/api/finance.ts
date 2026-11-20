@@ -5,9 +5,14 @@ import type { components } from "./schema.gen.ts";
 
 type Entry = Omit<components["schemas"]["FinanceEntry"], "amountCents"> & { amountCents: string };
 export type FinanceReceipt = components["schemas"]["FinanceReceipt"];
+export type FinanceCalculatorSummary = Omit<components["schemas"]["FinanceCalculatorSummary"], "balance" | "owedOnDues"> & {
+  balance: string;
+  owedOnDues: string;
+};
 
 export const financeEntries = () => moneyRequest<Entry[]>("/finance/entries");
 export const financeBalance = () => moneyRequest<{ balanceCents: string }>("/finance/balance");
+export const financeCalculatorSummary = () => moneyRequest<FinanceCalculatorSummary>("/finance/calculator-summary");
 
 export function createFinanceEntry(input: { categoryId: string; direction: string; date: string; description: string; amountCents: string }) {
   const { amountCents, ...rest } = input;

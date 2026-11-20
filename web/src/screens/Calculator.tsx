@@ -1,10 +1,34 @@
-import { useId, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { hasRole, useMe } from "../auth/session.tsx";
-import { Field } from "../components/Form.tsx";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
+import { createDue } from "../api/dues.ts";
+import { errorMessage } from "../api/errors.ts";
+import { financeCalculatorSummary, type FinanceCalculatorSummary } from "../api/finance.ts";
+import { hasRole, useMe, useSession } from "../auth/session.tsx";
+import { Field, FormStatus, useFormErrors, type Status } from "../components/Form.tsx";
 import { Icon } from "../components/Icon.tsx";
 import { PageTitle, useDocumentTitle } from "../components/Page.tsx";
-import { calculatePricePerPerson, calculateRaffle } from "../lib/calculator.ts";
+import {
+  calculateDueAmount,
+  calculatePricePerPerson,
+  calculateRaffle,
+  calculateSpendable,
+} from "../lib/calculator.ts";
+import { pesosInput } from "../lib/money.ts";
 import { Link } from "../lib/router.tsx";
+import { DueForm } from "./Dues.tsx";
+
+type SummaryState =
+  | { status: "loading" }
+  | { status: "error"; text: string }
+  | { status: "ready"; data: FinanceCalculatorSummary };
 
 type CalculatorPanelProps = {
   title: string;
@@ -16,6 +40,8 @@ type CalculatorPanelProps = {
   hasResult: boolean;
   tone?: "ok" | undefined;
   emptyPrompt: string;
+  loading?: string | undefined;
+  loadError?: { text: string; onRetry: () => void } | undefined;
   onReset: () => void;
   onSubmitInvalid: () => void;
   children: ReactNode;
@@ -60,6 +86,8 @@ function CalculatorPanel({
   hasResult,
   tone,
   emptyPrompt,
+  loading,
+  loadError,
   onReset,
   onSubmitInvalid,
   children,
@@ -70,7 +98,8 @@ function CalculatorPanel({
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (hasResult) return;
+    const hasRawError = fieldOrder.some((name) => Boolean(rawErrors[name]));
+    if (hasResult && !hasRawError) return;
     onSubmitInvalid();
     const form = formRef.current;
     if (!form) return;
@@ -98,18 +127,34 @@ function CalculatorPanel({
         <p className="muted small">{description}</p>
       </div>
 
-      <form ref={formRef} noValidate aria-labelledby={titleId} onSubmit={handleSubmit}>
-        {children}
-        <div className="calc-actions">
-          <button type="button" className="button button--secondary button--small" onClick={onReset}>
-            Limpiar
+      {loading ? (
+        <p className="muted small" aria-busy="true">{loading}</p>
+      ) : loadError ? (
+        <div className="form-status" data-tone="error" role="alert">
+          <p>
+            <Icon name="alert" />
+            <span>{loadError.text}</span>
+          </p>
+          <button type="button" className="button button--secondary button--small" onClick={loadError.onRetry}>
+            Reintentar
           </button>
         </div>
-      </form>
+      ) : (
+        <>
+          <form ref={formRef} noValidate aria-labelledby={titleId} onSubmit={handleSubmit}>
+            {children}
+            <div className="calc-actions">
+              <button type="button" className="button button--secondary button--small" onClick={onReset}>
+                Limpiar
+              </button>
+            </div>
+          </form>
 
-      <div className="calc-result" data-tone={tone} aria-live="polite" aria-atomic="true">
-        {hasResult ? resultContent : <p className="muted small">{activeError ?? emptyPrompt}</p>}
-      </div>
+          <div className="calc-result" data-tone={tone} aria-live="polite" aria-atomic="true">
+            {hasResult ? resultContent : <p className="muted small">{activeError ?? emptyPrompt}</p>}
+          </div>
+        </>
+      )}
     </section>
   );
 }
@@ -335,12 +380,344 @@ function RaffleCard() {
   );
 }
 
-/** Officer-only quick calculators; state lives in memory only and never writes to the API. */
+type DueCreateDialogProps = {
+  amountCents: number;
+  onCreated: () => void;
+  onCancel: () => void;
+};
+
+/** Native modal <dialog> (Modern Web Guidance `dialog`) reusing #74's DueForm with a prefilled amount. */
+function DueCreateDialog({ amountCents, onCreated, onCancel }: DueCreateDialogProps) {
+  const { refresh } = useSession();
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
+  const createForm = useFormErrors();
+  const [status, setStatus] = useState<Status>(null);
+  const [busy, setBusy] = useState(false);
+  const pending = useRef(false);
+
+  useLayoutEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog || dialog.open) return;
+    if (typeof dialog.showModal === "function") dialog.showModal();
+    else dialog.setAttribute("open", "");
+    dialog.querySelector<HTMLInputElement>('input[name="name"]')?.focus();
+    return () => {
+      if (dialog.open && typeof dialog.close === "function") dialog.close();
+    };
+  }, []);
+
+  async function handleSubmit(values: { name: string; amountCents: string; dueDate: string }) {
+    if (pending.current) return;
+    pending.current = true;
+    setBusy(true);
+    setStatus(null);
+    const result = await createDue(values);
+    if (result.ok) {
+      pending.current = false;
+      setBusy(false);
+      onCreated();
+      return;
+    }
+    if (result.code === "mfa_required" || result.code === "unauthenticated") void refresh();
+    setStatus({ tone: "error", text: errorMessage(result.code) });
+    createForm.failed(result.code);
+    pending.current = false;
+    setBusy(false);
+  }
+
+  return (
+    <dialog
+      ref={dialogRef}
+      className="confirm"
+      aria-labelledby={titleId}
+      onCancel={(event) => {
+        event.preventDefault();
+        if (!busy) onCancel();
+      }}
+    >
+      <FormStatus status={status} {...createForm.statusProps} />
+      <DueForm
+        plain
+        headingId={titleId}
+        heading="Nueva cuota"
+        submitLabel="Guardar"
+        busy={busy}
+        initial={{ name: "", amount: pesosInput(String(amountCents)), dueDate: "" }}
+        form={createForm}
+        onSubmit={(values) => void handleSubmit(values)}
+        onCancel={() => {
+          if (!busy) onCancel();
+        }}
+      />
+    </dialog>
+  );
+}
+
+function DueAmountCard({
+  summaryState,
+  onRetry,
+  onDueCreated,
+}: {
+  summaryState: SummaryState;
+  onRetry: () => void;
+  onDueCreated: () => void;
+}) {
+  const [goal, setGoal] = useState("");
+  const [expectedExempt, setExpectedExempt] = useState("0");
+  const [dialogAmountCents, setDialogAmountCents] = useState<number | null>(null);
+  const [createdStatus, setCreatedStatus] = useState<Status>(null);
+  const createdStatusRef = useRef<HTMLDivElement>(null);
+  const openButtonRef = useRef<HTMLButtonElement>(null);
+  const focusNext = useRef<"status" | "button" | null>(null);
+  const fields = useFieldInteraction();
+
+  useEffect(() => {
+    if (!focusNext.current) return;
+    const target = focusNext.current;
+    focusNext.current = null;
+    if (target === "status") createdStatusRef.current?.focus();
+    else openButtonRef.current?.focus();
+  });
+
+  const ready = summaryState.status === "ready";
+  const rosterCount = ready ? summaryState.data.rosterCount : 0;
+  const outcome = ready ? calculateDueAmount({ goal, rosterCount, expectedExempt }) : null;
+  const outcomeErrors = outcome && !outcome.ok ? outcome.errors : {};
+  const rawErrors: Record<string, string | undefined> = {
+    dueGoal: outcomeErrors.goal,
+    expectedExempt: outcomeErrors.expectedExempt,
+  };
+  const visibleErrors: Record<string, string | undefined> = {
+    dueGoal: fields.isVisible("dueGoal") ? rawErrors.dueGoal : undefined,
+    expectedExempt: fields.isVisible("expectedExempt") ? rawErrors.expectedExempt : undefined,
+  };
+
+  function reset() {
+    setGoal("");
+    setExpectedExempt("0");
+    setCreatedStatus(null);
+    fields.reset();
+  }
+
+  return (
+    <>
+      <CalculatorPanel
+        title="Monto de cuota"
+        description={
+          ready
+            ? `Dividí la meta de recaudación entre los alumnos del padrón que van a pagar. Padrón actual: ${rosterCount} ${rosterCount === 1 ? "alumno" : "alumnos"}.`
+            : "Dividí la meta de recaudación entre los alumnos del padrón que van a pagar. Se redondea hacia arriba a múltiplos de $ 100."
+        }
+        fieldOrder={["dueGoal", "expectedExempt"]}
+        rawErrors={rawErrors}
+        visibleErrors={visibleErrors}
+        activeField={fields.activeField}
+        hasResult={Boolean(outcome?.ok)}
+        tone={outcome?.ok ? "ok" : undefined}
+        emptyPrompt="Ingresá la meta de recaudación para calcular el monto por alumno."
+        loading={summaryState.status === "loading" ? "Cargando datos del padrón…" : undefined}
+        loadError={summaryState.status === "error" ? { text: summaryState.text, onRetry } : undefined}
+        onReset={reset}
+        onSubmitInvalid={fields.submit}
+        resultContent={
+          outcome?.ok && (
+            <>
+              <p className="calc-result__label">Monto por alumno</p>
+              <p className="calc-result__value">{outcome.result.formattedAmountPerStudent}</p>
+              <ul className="calc-result__details muted">
+                <li>Sin redondeo: {outcome.result.formattedExactPerStudent}</li>
+                <li>
+                  Alumnos que pagan: {outcome.result.payingCount} de {rosterCount}
+                </li>
+              </ul>
+              <div className="calc-actions">
+                <button
+                  ref={openButtonRef}
+                  type="button"
+                  className="button button--primary"
+                  onClick={() => {
+                    setCreatedStatus(null);
+                    setDialogAmountCents(outcome.result.amountPerStudentCents);
+                  }}
+                >
+                  Crear Cuota con este monto
+                </button>
+              </div>
+            </>
+          )
+        }
+      >
+        <FormStatus status={createdStatus} ref={createdStatusRef} />
+        <Field
+          label="Meta de recaudación ($)"
+          name="dueGoal"
+          type="text"
+          inputMode="decimal"
+          autoComplete="off"
+          enterKeyHint="next"
+          hint="Ej.: 600000 o 600.000"
+          value={goal}
+          error={visibleErrors.dueGoal}
+          onBlur={() => fields.touch("dueGoal")}
+          onChange={(event) => {
+            fields.touch("dueGoal");
+            setGoal(event.target.value);
+          }}
+        />
+        <Field
+          label="Exentos previstos"
+          name="expectedExempt"
+          type="text"
+          inputMode="numeric"
+          autoComplete="off"
+          enterKeyHint="done"
+          hint="Alumnos que estimás eximir en esta cuota (por defecto 0)."
+          value={expectedExempt}
+          error={visibleErrors.expectedExempt}
+          onBlur={() => fields.touch("expectedExempt")}
+          onChange={(event) => {
+            fields.touch("expectedExempt");
+            setExpectedExempt(event.target.value);
+          }}
+        />
+      </CalculatorPanel>
+
+      {dialogAmountCents !== null && (
+        <DueCreateDialog
+          amountCents={dialogAmountCents}
+          onCancel={() => {
+            focusNext.current = "button";
+            setDialogAmountCents(null);
+          }}
+          onCreated={() => {
+            focusNext.current = "status";
+            setDialogAmountCents(null);
+            setCreatedStatus({ tone: "ok", text: "Se creó la cuota." });
+            onDueCreated();
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+function SpendableCard({ summaryState, onRetry }: { summaryState: SummaryState; onRetry: () => void }) {
+  const [plannedCost, setPlannedCost] = useState("");
+  const fields = useFieldInteraction();
+
+  const ready = summaryState.status === "ready";
+  const spendable = ready
+    ? calculateSpendable({
+        balanceCents: summaryState.data.balance,
+        owedOnDuesCents: summaryState.data.owedOnDues,
+        plannedCost,
+      })
+    : null;
+  const rawErrors: Record<string, string | undefined> = {
+    plannedCost: spendable?.plannedCostError,
+  };
+  const visibleErrors: Record<string, string | undefined> = {
+    plannedCost: fields.isVisible("plannedCost") ? rawErrors.plannedCost : undefined,
+  };
+  const hasResult = Boolean(spendable);
+
+  function reset() {
+    setPlannedCost("");
+    fields.reset();
+  }
+
+  return (
+    <CalculatorPanel
+      title="Cuánto podemos gastar"
+      description="Suma el saldo actual de la caja y lo que todavía se debe en cuotas. Podés comparar contra un costo planeado."
+      fieldOrder={["plannedCost"]}
+      rawErrors={rawErrors}
+      visibleErrors={visibleErrors}
+      activeField={fields.activeField}
+      hasResult={hasResult}
+      tone={hasResult && !spendable?.plannedCostError && spendable?.comparison?.status === "covered_today" ? "ok" : undefined}
+      emptyPrompt="Ingresá un costo planeado válido para comparar contra lo disponible."
+      loading={summaryState.status === "loading" ? "Cargando saldo y cuotas pendientes…" : undefined}
+      loadError={summaryState.status === "error" ? { text: summaryState.text, onRetry } : undefined}
+      onReset={reset}
+      onSubmitInvalid={fields.submit}
+      resultContent={
+        spendable && (
+          <>
+            <p className="calc-result__label">Disponible</p>
+            <p className="calc-result__value">{spendable.summaryMessage}</p>
+            <ul className="calc-result__details muted">
+              <li>Saldo actual de la caja: {spendable.formattedBalance}</li>
+              <li>Pendiente de cuotas: {spendable.formattedOwedOnDues}</li>
+            </ul>
+            {visibleErrors.plannedCost && <p className="muted small">{visibleErrors.plannedCost}</p>}
+            {spendable.comparison && (
+              <div
+                className="form-status"
+                data-tone={
+                  spendable.comparison.status === "short"
+                    ? "error"
+                    : spendable.comparison.status === "covered_today"
+                      ? "ok"
+                      : "info"
+                }
+              >
+                <p>
+                  <Icon name={spendable.comparison.status === "short" ? "alert" : "check"} />
+                  <span>{spendable.comparison.message}</span>
+                </p>
+              </div>
+            )}
+          </>
+        )
+      }
+    >
+      <Field
+        label="Costo planeado opcional ($)"
+        name="plannedCost"
+        type="text"
+        inputMode="decimal"
+        autoComplete="off"
+        enterKeyHint="done"
+        hint="Dejalo vacío para ver solo cuánto tenés disponible."
+        value={plannedCost}
+        error={visibleErrors.plannedCost}
+        onBlur={() => fields.touch("plannedCost")}
+        onChange={(event) => {
+          fields.touch("plannedCost");
+          setPlannedCost(event.target.value);
+        }}
+      />
+    </CalculatorPanel>
+  );
+}
+
+/** Officer-only quick calculators; calculations live in memory only and never write to the API unless a Due is confirmed. */
 export function Calculator() {
   useDocumentTitle("Calculadora");
   const me = useMe();
+  const { refresh } = useSession();
+  const isOfficer = hasRole(me, "officer");
+  const [summaryState, setSummaryState] = useState<SummaryState>({ status: "loading" });
 
-  if (!hasRole(me, "officer")) {
+  const loadSummary = useCallback(async (background = false) => {
+    if (!background) setSummaryState({ status: "loading" });
+    const result = await financeCalculatorSummary();
+    if (result.ok) {
+      setSummaryState({ status: "ready", data: result.data });
+      return;
+    }
+    if (result.code === "mfa_required" || result.code === "unauthenticated") void refresh();
+    if (!background) setSummaryState({ status: "error", text: errorMessage(result.code) });
+  }, [refresh]);
+
+  useEffect(() => {
+    if (!isOfficer) return;
+    void loadSummary();
+  }, [isOfficer, loadSummary]);
+
+  if (!isOfficer) {
     return (
       <>
         <header className="page-header">
@@ -373,7 +750,13 @@ export function Calculator() {
       <p><Link to="/presupuestos">Presupuestos de evento</Link></p>
       <div className="calc-grid">
         <PricePerPersonCard />
+        <DueAmountCard
+          summaryState={summaryState}
+          onRetry={() => void loadSummary()}
+          onDueCreated={() => void loadSummary(true)}
+        />
         <RaffleCard />
+        <SpendableCard summaryState={summaryState} onRetry={() => void loadSummary()} />
       </div>
     </>
   );
