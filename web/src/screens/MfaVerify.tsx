@@ -32,7 +32,7 @@ export function SignOutLink() {
 }
 
 /** /seguridad/verificar: second step of sign-in for sessions with a confirmed TOTP. */
-export function MfaVerify({ onComplete }: { onComplete?: () => Promise<void> } = {}) {
+export function MfaVerify({ onComplete, onBack }: { onComplete?: () => Promise<void>; onBack?: () => void } = {}) {
   useDocumentTitle("Verificación en dos pasos");
   const { afterSignIn } = useSession();
   const [useRecovery, setUseRecovery] = useState(false);
@@ -87,6 +87,7 @@ export function MfaVerify({ onComplete }: { onComplete?: () => Promise<void> } =
         <SubmitButton pending={pending}>Verificar</SubmitButton>
       </form>
       <div className="auth__links">
+        {onBack && <button type="button" className="text-button" onClick={onBack}>{"Volver a las opciones"}</button>}
         <button
           type="button"
           className="text-button"

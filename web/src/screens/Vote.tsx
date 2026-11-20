@@ -41,12 +41,13 @@ export function VotePanel({ election, lists, canVote = true }: { election: Elect
   const [choiceError, setChoiceError] = useState<string | null>(null);
   // Where focus goes after the step that held it disappears. A new object on every request, so
   // focus moves after the render that shows what it points at (Form.tsx does the same).
-  const [focusTarget, setFocus] = useState<{ to: "confirm" | "done" | "status" | "choice" } | null>(null);
-  const setFocusTarget = (to: "confirm" | "done" | "status" | "choice" | null) => setFocus(to ? { to } : null);
+  const [focusTarget, setFocus] = useState<{ to: "confirm" | "done" | "status" | "choice" | "turnout" } | null>(null);
+  const setFocusTarget = (to: "confirm" | "done" | "status" | "choice" | "turnout" | null) => setFocus(to ? { to } : null);
   const statusRef = useRef<HTMLDivElement>(null);
   const confirmRef = useRef<HTMLHeadingElement>(null);
   const doneRef = useRef<HTMLParagraphElement>(null);
   const choiceRef = useRef<HTMLInputElement>(null);
+  const turnoutRef = useRef<HTMLParagraphElement>(null);
 
   const failed = useCallback(
     (code: string) => {
@@ -72,7 +73,7 @@ export function VotePanel({ election, lists, canVote = true }: { election: Elect
     const loaded = await loadTurnout();
     setBusy(false);
     // The button that held focus is gone.
-    if (loaded) setFocusTarget(loaded.hasVoted ? "done" : "choice");
+    if (loaded) setFocusTarget(!canVote ? "turnout" : loaded.hasVoted ? "done" : "choice");
   }
 
   useEffect(() => {
@@ -81,7 +82,7 @@ export function VotePanel({ election, lists, canVote = true }: { election: Elect
 
   useEffect(() => {
     if (!focusTarget) return;
-    const refs = { confirm: confirmRef, done: doneRef, status: statusRef, choice: choiceRef };
+    const refs = { confirm: confirmRef, done: doneRef, status: statusRef, choice: choiceRef, turnout: turnoutRef };
     refs[focusTarget.to].current?.focus();
   }, [focusTarget, turnout, confirming, choiceError]);
 
@@ -111,7 +112,7 @@ export function VotePanel({ election, lists, canVote = true }: { election: Elect
     <section className="panel" aria-labelledby={`${id}-title`}>
       <h2 id={`${id}-title`}>Votación</h2>
       {turnout && (
-        <p>
+        <p ref={turnoutRef} tabIndex={-1}>
           {turnout.voted} de {turnout.electorate} votaron
         </p>
       )}

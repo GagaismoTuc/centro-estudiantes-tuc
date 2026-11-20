@@ -33,6 +33,7 @@ export function Election() {
   const [listsData, setListsData] = useState<ElectionListsResponse | null>(null);
   const [editingList, setEditingList] = useState<ElectionList | null>(null);
   const [status, setStatus] = useState<Status>(null);
+  const statusRef = useRef<HTMLDivElement>(null);
 
   const failed = useCallback(
     (code: string) => {
@@ -80,7 +81,7 @@ export function Election() {
       <header className="page-header">
         <PageTitle eyebrow="Centro">Elección</PageTitle>
       </header>
-      <FormStatus status={status} />
+      <FormStatus status={status} ref={statusRef} />
       {election === null && (
         <section className="panel">
           <p>Todavía no hay una elección en curso.</p>
@@ -139,7 +140,7 @@ export function Election() {
         </section>
       )}
       {isVeedor && election && ["draft", "submission", "scheduled", "open"].includes(election.state) && (
-        <Annulment isVeedor election={election} onDone={async (next) => { setStatus(next); await load(); }} />
+        <Annulment isVeedor election={election} onDone={async (next) => { setStatus(next); await load(); statusRef.current?.focus(); }} />
       )}
       {commission?.canDesignate && (
         <Designation current={commission.commission?.members ?? []} onSaved={load} onFailed={failed} />

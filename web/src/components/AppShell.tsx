@@ -57,7 +57,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
               </Link>
             </li>
           )}
-          {commission?.isMember && (
+          {commission?.isMember && !hasRole(me, "veedor") && (
             <li>
               <Link to="/centro-de-estudiantes" className="nav__item" onClick={onNavigate}>
                 <Icon name="shield" />

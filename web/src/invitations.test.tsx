@@ -101,3 +101,45 @@ test("wrong password leaves the invitation unspent and permits retry", async () 
   expect(sentTo(sent, "POST /auth/invitations/accept")).toHaveLength(0);
   expect(window.location.pathname).toBe("/ingresar");
 });
+
+
+test("MFA choice receives focus and both paths permit returning", async () => {
+  mockApi({ "GET /auth/me": ok(me({ role: "student", mfa: "not_required" })), "POST /auth/invitations/accept": fail(403, "mfa_required"), "POST /auth/mfa/enrollment": fail(409, "already_enrolled") });
+  renderAt("/invitacion#token=choice-invite");
+  fireEvent.click(await screen.findByRole("button", { name: "Aceptar invitaci\u00f3n" }));
+  const alert = await screen.findByRole("alert");
+  await waitFor(() => expect(document.activeElement).toBe(alert));
+  fireEvent.click(screen.getByRole("button", { name: "Activar verificaci\u00f3n en dos pasos" }));
+  await screen.findByText(/ya est\u00e1 activada/i);
+  fireEvent.click(screen.getByRole("button", { name: /volver/i }));
+  fireEvent.click(await screen.findByRole("button", { name: "Ya tengo verificaci\u00f3n en dos pasos" }));
+  fireEvent.click(await screen.findByRole("button", { name: /volver/i }));
+  expect(await screen.findByRole("button", { name: "Activar verificaci\u00f3n en dos pasos" })).toBeTruthy();
+});
+
+test("invalid or abandoned invitation is not reused", async () => {
+  mockApi({ "GET /auth/me": fail(401, "unauthenticated"), "POST /auth/invitations/accept": fail(422, "invalid_token") });
+  const first = renderAt("/invitacion#token=expired-invite");
+  fireEvent.change(await screen.findByLabelText("Eleg\u00ed tu contrase\u00f1a"), { target: { value: "una-clave-segura" } });
+  fireEvent.click(screen.getByRole("button", { name: "Aceptar invitaci\u00f3n" }));
+  await screen.findByText(/no es v\u00e1lido o ya venci\u00f3/i);
+  first.unmount();
+  const second = renderAt("/invitacion");
+  expect(await screen.findByText(/Este enlace est\u00e1 incompleto/i)).toBeTruthy();
+  second.unmount();
+  const third = renderAt("/invitacion#token=abandoned-invite");
+  await screen.findByLabelText("Eleg\u00ed tu contrase\u00f1a");
+  third.unmount();
+  renderAt("/invitacion");
+  expect(await screen.findByText(/Este enlace est\u00e1 incompleto/i)).toBeTruthy();
+});
+
+
+test("pending MFA session returns to the same invitation", async () => {
+  const sent = mockApi({ "GET /auth/me": [ok(me({ role: "student", mfa: "pending" })), ok(me({ role: "student", mfa: "satisfied" })), ok(me({ role: "veedor", mfa: "satisfied" }))], "POST /auth/mfa/verify": noContent(), "POST /auth/invitations/accept": ok({}, 200) });
+  renderAt("/invitacion#token=pending-mfa-invite");
+  fireEvent.change(await screen.findByLabelText("C\u00f3digo de 6 d\u00edgitos"), { target: { value: "123456" } });
+  fireEvent.click(screen.getByRole("button", { name: "Verificar" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Aceptar invitaci\u00f3n" }));
+  await waitFor(() => expect(sentTo(sent, "POST /auth/invitations/accept")[0]?.body).toEqual({ token: "pending-mfa-invite" }));
+});

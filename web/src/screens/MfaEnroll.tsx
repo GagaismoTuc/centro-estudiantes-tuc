@@ -16,12 +16,12 @@ import { OtpField, SignOutLink } from "./MfaVerify.tsx";
 type Enrollment = components["schemas"]["MfaEnrollment"];
 
 /** /seguridad/activar: TOTP enrollment for school admins and officers. */
-export function MfaEnroll({ onComplete }: { onComplete?: () => Promise<void> } = {}) {
+export function MfaEnroll({ onComplete, onBack }: { onComplete?: () => Promise<void>; onBack?: () => void } = {}) {
   const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null);
-  return recoveryCodes ? <RecoveryCodes codes={recoveryCodes} onComplete={onComplete} /> : <Setup onConfirmed={setRecoveryCodes} />;
+  return recoveryCodes ? <RecoveryCodes codes={recoveryCodes} onComplete={onComplete} /> : <Setup onConfirmed={setRecoveryCodes} onBack={onBack} />;
 }
 
-function Setup({ onConfirmed }: { onConfirmed: (codes: string[]) => void }) {
+function Setup({ onConfirmed, onBack }: { onConfirmed: (codes: string[]) => void; onBack: (() => void) | undefined }) {
   useDocumentTitle("Activar verificación en dos pasos");
   const [enrollment, setEnrollment] = useState<Enrollment | null>(null);
   const [status, setStatus] = useState<Status>(null);
@@ -98,6 +98,7 @@ function Setup({ onConfirmed }: { onConfirmed: (codes: string[]) => void }) {
         </ol>
       )}
       {!enrollment && <FormStatus status={status} />}
+      {onBack && <button type="button" className="text-button" onClick={onBack}>{"Volver a las opciones"}</button>}
       {failed && (
         <button type="button" className="button button--primary button--block" onClick={start}>
           Reintentar
