@@ -119,3 +119,33 @@ test("S9 a range without movements shows zero totals and says so", async () => {
   expect(within(summary).getByText("Total de gastos").nextElementSibling?.textContent).toBe("$ 0,00");
   expect(within(summary).getByText("Saldo final").nextElementSibling?.textContent).toBe("$ 10.000,00");
 });
+
+test.each([["student", "not_required"], ["officer", "satisfied"], ["school_admin", "satisfied"]] as const)("R2 %s downloads the selected fund report PDF", async (role, mfa) => {
+  const sent = mockApi({ "GET /auth/me": ok(me({ role, mfa })), "GET /finance/report": ok(report), "GET /finance/report.pdf": ok("pdf") });
+  const queries: string[] = [];
+  const handler = vi.mocked(fetch).getMockImplementation()!;
+  vi.mocked(fetch).mockImplementation(async (input, init) => { queries.push(new URL((input as Request).url).search); return handler(input, init); });
+  const create = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:report");
+  const revoke = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+  const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+  window.history.replaceState(null, "", "/caja/informe"); render(<App />);
+  await screen.findByRole("region", { name: "Saldos" });
+  chooseRange("2026-03-01", "2026-11-30");
+  fireEvent.click(screen.getByRole("button", { name: "Descargar PDF" }));
+  await waitFor(() => expect(sentTo(sent, "GET /finance/report.pdf")).toHaveLength(1));
+  expect(queries).toContain("?from=2026-03-01&to=2026-11-30");
+  await waitFor(() => expect(click).toHaveBeenCalled());
+  expect(create).toHaveBeenCalled();
+  expect(revoke).toHaveBeenCalledWith("blob:report");
+  create.mockRestore(); revoke.mockRestore(); click.mockRestore();
+});
+
+test("R3 an unavailable PDF shows the localized error and focuses it", async () => {
+  mockApi({ "GET /auth/me": ok(me()), "GET /finance/report": ok(report), "GET /finance/report.pdf": fail(503, "pdf_unavailable") });
+  window.history.replaceState(null, "", "/caja/informe"); render(<App />);
+  await screen.findByRole("region", { name: "Saldos" });
+  fireEvent.click(screen.getByRole("button", { name: "Descargar PDF" }));
+  const message = await screen.findByText("No pudimos generar el PDF. Prob\u00e1 de nuevo en unos minutos.");
+  expect(message.closest("[aria-live]")).toBeTruthy();
+  await waitFor(() => expect(document.activeElement).toBe(message.closest("[aria-live]")));
+});
