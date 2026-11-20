@@ -486,9 +486,9 @@ type headingComparisonDTO struct {
 }
 
 type budgetDetailWithActualDTO struct {
-	ID        string                 `json:"id"`
-	Archived  bool                   `json:"archived"`
-	Totals    struct {
+	ID       string `json:"id"`
+	Archived bool   `json:"archived"`
+	Totals   struct {
 		CostCents   int64 `json:"costCents"`
 		IncomeCents int64 `json:"incomeCents"`
 		ResultCents int64 `json:"resultCents"`
