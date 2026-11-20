@@ -29,7 +29,7 @@ const BLANK = "blank";
  * confirmation step. Retrying after a dropped signal is safe: a vote already stored
  * answers `already_voted`, which reads as "Ya votaste".
  */
-export function VotePanel({ election, lists }: { election: Election; lists: ElectionList[] }) {
+export function VotePanel({ election, lists, canVote = true }: { election: Election; lists: ElectionList[]; canVote?: boolean }) {
   const id = useId();
   const { refresh } = useSession();
   const [turnout, setTurnout] = useState<Turnout | null>(null);
@@ -41,12 +41,13 @@ export function VotePanel({ election, lists }: { election: Election; lists: Elec
   const [choiceError, setChoiceError] = useState<string | null>(null);
   // Where focus goes after the step that held it disappears. A new object on every request, so
   // focus moves after the render that shows what it points at (Form.tsx does the same).
-  const [focusTarget, setFocus] = useState<{ to: "confirm" | "done" | "status" | "choice" } | null>(null);
-  const setFocusTarget = (to: "confirm" | "done" | "status" | "choice" | null) => setFocus(to ? { to } : null);
+  const [focusTarget, setFocus] = useState<{ to: "confirm" | "done" | "status" | "choice" | "turnout" } | null>(null);
+  const setFocusTarget = (to: "confirm" | "done" | "status" | "choice" | "turnout" | null) => setFocus(to ? { to } : null);
   const statusRef = useRef<HTMLDivElement>(null);
   const confirmRef = useRef<HTMLHeadingElement>(null);
   const doneRef = useRef<HTMLParagraphElement>(null);
   const choiceRef = useRef<HTMLInputElement>(null);
+  const turnoutRef = useRef<HTMLParagraphElement>(null);
 
   const failed = useCallback(
     (code: string) => {
@@ -72,7 +73,7 @@ export function VotePanel({ election, lists }: { election: Election; lists: Elec
     const loaded = await loadTurnout();
     setBusy(false);
     // The button that held focus is gone.
-    if (loaded) setFocusTarget(loaded.hasVoted ? "done" : "choice");
+    if (loaded) setFocusTarget(!canVote ? "turnout" : loaded.hasVoted ? "done" : "choice");
   }
 
   useEffect(() => {
@@ -81,7 +82,7 @@ export function VotePanel({ election, lists }: { election: Election; lists: Elec
 
   useEffect(() => {
     if (!focusTarget) return;
-    const refs = { confirm: confirmRef, done: doneRef, status: statusRef, choice: choiceRef };
+    const refs = { confirm: confirmRef, done: doneRef, status: statusRef, choice: choiceRef, turnout: turnoutRef };
     refs[focusTarget.to].current?.focus();
   }, [focusTarget, turnout, confirming, choiceError]);
 
@@ -111,7 +112,7 @@ export function VotePanel({ election, lists }: { election: Election; lists: Elec
     <section className="panel" aria-labelledby={`${id}-title`}>
       <h2 id={`${id}-title`}>Votación</h2>
       {turnout && (
-        <p>
+        <p ref={turnoutRef} tabIndex={-1}>
           {turnout.voted} de {turnout.electorate} votaron
         </p>
       )}
@@ -123,12 +124,12 @@ export function VotePanel({ election, lists }: { election: Election; lists: Elec
           </button>
         </div>
       )}
-      {turnout?.hasVoted && (
+      {canVote && turnout?.hasVoted && (
         <p ref={doneRef} tabIndex={-1}>
           Ya votaste
         </p>
       )}
-      {turnout && !turnout.hasVoted && !confirming && (
+      {canVote && turnout && !turnout.hasVoted && !confirming && (
         <form
           noValidate
           onSubmit={(event) => {
@@ -174,7 +175,7 @@ export function VotePanel({ election, lists }: { election: Election; lists: Elec
           </div>
         </form>
       )}
-      {turnout && !turnout.hasVoted && confirming && (
+      {canVote && turnout && !turnout.hasVoted && confirming && (
         <section>
           <h3 ref={confirmRef} tabIndex={-1}>
             Confirmá tu voto

@@ -4,7 +4,7 @@ import { apiClient } from "../api/client.ts";
 import { errorMessage } from "../api/errors.ts";
 import type { components } from "../api/schema.gen.ts";
 import { roleLabel, sortRoles, useSession } from "../auth/session.tsx";
-import { FormStatus, type Status } from "../components/Form.tsx";
+import { checks, Field, FormStatus, useFormErrors, type Status } from "../components/Form.tsx";
 import { PageTitle, useDocumentTitle } from "../components/Page.tsx";
 
 type Member = components["schemas"]["SchoolMember"];
@@ -14,6 +14,8 @@ const positions = ["Presidente", "Vicepresidente", "Secretario", "Tesorero"];
 export function Members() {
   useDocumentTitle("Miembros");
   const { refresh } = useSession();
+  const invitationForm = useFormErrors();
+  const [invitationStatus, setInvitationStatus] = useState<Status>(null);
   const [members, setMembers] = useState<Member[]>([]);
   const [roster, setRoster] = useState<RosterMember[]>([]);
   const [member, setMember] = useState("");
@@ -39,6 +41,19 @@ export function Members() {
   }, [failed]);
   useEffect(() => { void load(); }, [load]);
 
+  async function invite(role: "veedor" | "school_admin") {
+    setInvitationStatus(null);
+    if (!invitationForm.validate({ email: checks.email })) return;
+    setBusy(true);
+    const result = await call(apiClient.POST("/members/invitations", { body: { email: invitationForm.value("email").trim(), role } }));
+    if (result.ok) setInvitationStatus({ tone: "ok", text: "Se gener\u00f3 la invitaci\u00f3n. Si no llega, pod\u00e9s reenviarla." });
+    else {
+      if (result.code === "mfa_required" || result.code === "unauthenticated") void refresh();
+      setInvitationStatus({ tone: "error", text: errorMessage(result.code) });
+      invitationForm.failed(result.code);
+    }
+    setBusy(false);
+  }
   async function assign() {
     if (!member) return;
     setBusy(true); setStatus(null); setFieldError(null);
@@ -59,6 +74,14 @@ export function Members() {
   return <>
     <header className="page-header"><PageTitle eyebrow="Escuela">Miembros</PageTitle></header>
     <FormStatus status={status} ref={statusRef} />
+    <section className="panel"><h2>Invitar autoridades</h2>
+      <form {...invitationForm.formProps} onSubmit={(e) => { e.preventDefault(); void invite("veedor"); }}>
+        <FormStatus status={invitationStatus} {...invitationForm.statusProps} />
+        <Field {...invitationForm.field("email")} label={"Correo electr\u00f3nico"} type="email" autoComplete="email" maxLength={254} />
+        <button className="button button--primary" disabled={busy}>Invitar Veedor</button>{" "}
+        <button type="button" className="button button--secondary" disabled={busy} onClick={() => void invite("school_admin")}>Invitar administrador</button>
+      </form>
+    </section>
     <section className="panel"><h2>Asignar cargo</h2>
       <form noValidate onSubmit={(e) => { e.preventDefault(); void assign(); }}>
         <div className="field"><label htmlFor="member">{"Alumno del padr\u00f3n"}</label>

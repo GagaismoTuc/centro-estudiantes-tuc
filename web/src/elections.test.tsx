@@ -269,3 +269,81 @@ test("R11: every member sees the election as Anulada with its reason", async () 
   const lists = screen.getAllByRole("list", { name: "Integrantes del Centro de estudiantes" });
   expect(lists.map((l) => within(l).getAllByRole("listitem").map((li) => li.textContent))).toEqual([["Ana Ficticia", "Beto Ficticio"], ["Beto Ficticio"]]);
 });
+
+test("R7: every member sees when the Veedor annulled the election", async () => {
+  mockApi({
+    "GET /auth/me": ok(me({ role: "student", mfa: "not_required" })),
+    "GET /electoral-commission": status({ members: [beto] }),
+    "GET /elections/latest": ok({ ...annulled, annulment: { ...annulled.annulment, annulledBy: "veedor" } }),
+  });
+  renderAt("/eleccion");
+  expect(await screen.findByText("Anulada por el Veedor:")).toBeTruthy();
+});
+
+test("R12: Veedor sees turnout and can annul but cannot vote or build lists", async () => {
+  const sent = mockApi({
+    "GET /auth/me": ok(me({ role: "student", roles: ["student", "veedor"], mfa: "satisfied" })),
+    "GET /electoral-commission": status(),
+    "GET /elections/latest": ok({ ...election, state: "open" }),
+    "GET /elections/e1/lists": ok({ lists: [], rosterMemberId: "r2" }),
+    "GET /elections/e1/turnout": ok({ voted: 3, electorate: 10, hasVoted: false }),
+    "POST /elections/e1/annulment": ok(annulled),
+  });
+  renderAt("/eleccion");
+  expect(await screen.findByText("3 de 10 votaron")).toBeTruthy();
+  expect(screen.queryByRole("group", { name: /eleg\u00ed una lista/i })).toBeNull();
+  expect(screen.queryByRole("button", { name: /presentar lista/i })).toBeNull();
+  expect(screen.getByText("Anul\u00e1 la elecci\u00f3n solo si hace falta; el motivo lo van a ver todos.")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Anular elecci\u00f3n" }));
+  fireEvent.change(screen.getByLabelText("Motivo"), { target: { value: "Irregularidades" } });
+  fireEvent.click(screen.getByRole("button", { name: "Anular definitivamente" }));
+  await waitFor(() => expect(sentTo(sent, "POST /elections/e1/annulment")[0]?.body).toEqual({ reason: "Irregularidades" }));
+});
+
+test("R12: a mixed-role Veedor cannot open commission management", async () => {
+  mockApi({
+    "GET /auth/me": ok(me({ role: "student", roles: ["student", "veedor"], mfa: "satisfied" })),
+    "GET /electoral-commission": status({ isMember: true }),
+    "GET /elections/latest": fail(404, "not_found"),
+  });
+  renderAt("/centro-de-estudiantes");
+  await waitFor(() => expect(window.location.pathname).toBe("/eleccion"));
+  expect(screen.queryByRole("button", { name: /crear elecci\u00f3n/i })).toBeNull();
+});
+
+
+test("mixed-role Veedor commission member has no management navigation link", async () => {
+  mockApi({ "GET /auth/me": ok(me({ role: "student", roles: ["student", "veedor"], mfa: "satisfied" })), "GET /electoral-commission": status({ isMember: true }), "GET /elections/latest": fail(404, "not_found") });
+  renderAt("/eleccion");
+  await screen.findByText("Todav\u00eda no hay una elecci\u00f3n en curso.");
+  expect(within(mainNav()).queryByRole("link", { name: "Centro de estudiantes" })).toBeNull();
+});
+
+test("Veedor annulment moves focus to its outcome", async () => {
+  mockApi({ "GET /auth/me": ok(me({ role: "veedor", mfa: "satisfied" })), "GET /electoral-commission": status(), "GET /elections/latest": [ok({ ...election, state: "open" }), ok(annulled)], "GET /elections/e1/lists": ok({ lists: [], rosterMemberId: null }), "GET /elections/e1/turnout": ok({ voted: 5, electorate: 12, hasVoted: false }), "POST /elections/e1/annulment": ok(annulled) });
+  renderAt("/eleccion");
+  fireEvent.click(await screen.findByRole("button", { name: "Anular elecci\u00f3n" }));
+  fireEvent.change(screen.getByLabelText("Motivo"), { target: { value: "Irregularidades" } });
+  fireEvent.click(screen.getByRole("button", { name: "Anular definitivamente" }));
+  const message = await screen.findByText(/Se anul\u00f3 la elecci\u00f3n/);
+  await waitFor(() => expect(document.activeElement?.textContent).toContain(message.textContent));
+});
+
+test("Veedor retrying turnout focuses its summary", async () => {
+  mockApi({ "GET /auth/me": ok(me({ role: "veedor", mfa: "satisfied" })), "GET /electoral-commission": status(), "GET /elections/latest": ok({ ...election, state: "open" }), "GET /elections/e1/lists": ok({ lists: [], rosterMemberId: null }), "GET /elections/e1/turnout": [fail(503, "unavailable"), ok({ voted: 5, electorate: 12, hasVoted: false })] });
+  renderAt("/eleccion");
+  const retry = await screen.findByRole("button", { name: "Reintentar" });
+  retry.focus(); fireEvent.click(retry);
+  const summary = await screen.findByText("5 de 12 votaron");
+  await waitFor(() => expect(document.activeElement).toBe(summary));
+});
+
+
+test("Veedor annulment error moves focus to its message", async () => {
+  mockApi({ "GET /auth/me": ok(me({ role: "veedor", mfa: "satisfied" })), "GET /electoral-commission": status(), "GET /elections/latest": ok({ ...election, state: "open" }), "GET /elections/e1/lists": ok({ lists: [], rosterMemberId: null }), "GET /elections/e1/turnout": ok({ voted: 5, electorate: 12, hasVoted: false }), "POST /elections/e1/annulment": fail(503, "unavailable") });
+  renderAt("/eleccion");
+  fireEvent.click(await screen.findByRole("button", { name: "Anular elecci\u00f3n" }));
+  fireEvent.change(screen.getByLabelText("Motivo"), { target: { value: "Irregularidades" } });
+  fireEvent.click(screen.getByRole("button", { name: "Anular definitivamente" }));
+  await waitFor(() => expect(document.activeElement?.getAttribute("data-tone")).toBe("error"));
+});

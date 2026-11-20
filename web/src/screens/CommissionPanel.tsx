@@ -183,7 +183,7 @@ export function CommissionPanel() {
 const annullable: Election["state"][] = ["draft", "submission", "scheduled", "open"];
 
 /** "Anular elección": a confirmation that asks for the public reason. */
-function Annulment({ election, onDone }: { election: Election; onDone: (status: Status) => Promise<void> }) {
+export function Annulment({ election, onDone, isVeedor = false }: { election: Election; onDone: (status: Status) => Promise<void>; isVeedor?: boolean }) {
   const id = useId();
   const { refresh } = useSession();
   const [asking, setAsking] = useState(false);
@@ -218,6 +218,7 @@ function Annulment({ election, onDone }: { election: Election; onDone: (status: 
   return (
     <section className="panel" aria-labelledby={`${id}-title`}>
       <h2 id={`${id}-title`}>Anular la elección</h2>
+      {isVeedor && <p>{"Anul\u00e1 la elecci\u00f3n solo si hace falta; el motivo lo van a ver todos."}</p>}
       <p className="muted small">
         Es definitivo: la elección no publica resultado, no acepta votos y no se vuelve a abrir. El Centro de estudiantes
         termina su mandato.
