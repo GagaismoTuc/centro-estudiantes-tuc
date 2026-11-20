@@ -1411,6 +1411,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/finance/accountability-reports/{id}.pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Download a published Financial accountability report as PDF
+         * @description Same readers as the frozen report; served by the `{id}` route.
+         */
+        get: operations["getFinanceAccountabilityReportPdf"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/finance/entries/{entryId}": {
         parameters: {
             query?: never;
@@ -6006,6 +6028,51 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NotFoundError"];
+                };
+            };
+        };
+    };
+    getFinanceAccountabilityReportPdf: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Attachment `rendicion-de-cuentas-<term>-<from>-a-<to>.pdf`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": string;
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["MemberForbidden"];
+            /** @description No such report in the active school. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotFoundError"];
+                };
+            };
+            /** @description PDF conversion unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "pdf_unavailable";
+                    };
                 };
             };
         };
