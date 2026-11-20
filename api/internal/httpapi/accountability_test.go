@@ -309,13 +309,15 @@ func TestAccountabilityDueTotalsWithoutNames(t *testing.T) {
 	if len(rep.Dues) != 1 || rep.Dues[0] != (acctDue{DueID: due, Name: "Cuota de noviembre", DueDate: "2026-11-15", AmountCents: 200000, PaidCount: 312, TotalCount: 470}) {
 		t.Fatalf("dues=%+v, want 312 of 470", rep.Dues)
 	}
-	converter, documents := accountabilityConverter(t)
-	pdfRouter(rf.fixture, converter.URL)
+	pdfRouter(rf.fixture, accountabilityGotenberg(t))
 	pdf := rf.get(acctPath+"/"+rep.ID+".pdf", student)
 	if pdf.Code != http.StatusOK {
 		t.Fatalf("PDF: %d %s", pdf.Code, pdf.Body)
 	}
-	pdfText := wordText(t, <-documents)
+	pdfText, err := converterText(pdf.Body.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !strings.Contains(pdfText, "Cuota de noviembre") || !strings.Contains(pdfText, "312 de 470 pagaron") || strings.Contains(pdfText, "Beto Ficticio") {
 		t.Fatalf("PDF total or privacy: %s", pdfText)
 	}
