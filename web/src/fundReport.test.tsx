@@ -124,10 +124,17 @@ test.each([["student", "not_required"], ["officer", "satisfied"], ["school_admin
   const sent = mockApi({ "GET /auth/me": ok(me({ role, mfa })), "GET /finance/report": ok(report), "GET /finance/report.pdf": ok("pdf") });
   const queries: string[] = [];
   const handler = vi.mocked(fetch).getMockImplementation()!;
-  vi.mocked(fetch).mockImplementation(async (input, init) => { queries.push(new URL((input as Request).url).search); return handler(input, init); });
+  vi.mocked(fetch).mockImplementation(async (input, init) => {
+    const url = new URL((input as Request).url);
+    const response = await handler(input, init);
+    if (url.pathname !== "/api/finance/report.pdf") return response;
+    queries.push(url.search);
+    return new Response("%PDF-1.4", { headers: { "Content-Type": "application/pdf" } });
+  });
   const create = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:report");
   const revoke = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
-  const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+  let downloaded: HTMLAnchorElement | undefined;
+  const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) { downloaded = this; });
   window.history.replaceState(null, "", "/caja/informe"); render(<App />);
   await screen.findByRole("region", { name: "Saldos" });
   chooseRange("2026-03-01", "2026-11-30");
@@ -135,7 +142,17 @@ test.each([["student", "not_required"], ["officer", "satisfied"], ["school_admin
   await waitFor(() => expect(sentTo(sent, "GET /finance/report.pdf")).toHaveLength(1));
   expect(queries).toContain("?from=2026-03-01&to=2026-11-30");
   await waitFor(() => expect(click).toHaveBeenCalled());
-  expect(create).toHaveBeenCalled();
+  expect(create).toHaveBeenCalledWith(expect.objectContaining({ type: "application/pdf" }));
+  const blob = create.mock.calls[0]?.[0] as Blob;
+  const contents = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsText(blob);
+  });
+  expect(contents).toBe("%PDF-1.4");
+  expect(downloaded?.getAttribute("href")).toBe("blob:report");
+  expect(downloaded?.download).toBe("informe-de-caja-2026-03-01-a-2026-11-30.pdf");
   expect(revoke).toHaveBeenCalledWith("blob:report");
   create.mockRestore(); revoke.mockRestore(); click.mockRestore();
 });
