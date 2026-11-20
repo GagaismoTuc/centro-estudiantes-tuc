@@ -59,11 +59,17 @@ func TestFinanceReportPDFWithGotenberg(t *testing.T) {
 	rf.record(t, "income/Ventas", "2026-03-01", 200000, "Venta ficticia")
 	rf.record(t, "expense/Alquileres", "2026-11-30", 1500000, "Alquiler ficticio")
 	other := newTenant(t, ctx)
-	if _, err := tdb.Super.Exec(ctx, `SELECT seed_finance_categories($1)`, other); err != nil { t.Fatal(err) }
+	if _, err := tdb.Super.Exec(ctx, `SELECT seed_finance_categories($1)`, other); err != nil {
+		t.Fatal(err)
+	}
 	var user string
-	if err := tdb.Super.QueryRow(ctx, `SELECT recorded_by::text FROM finance_entries WHERE tenant_id=$1 LIMIT 1`, rf.tenant).Scan(&user); err != nil { t.Fatal(err) }
+	if err := tdb.Super.QueryRow(ctx, `SELECT recorded_by::text FROM finance_entries WHERE tenant_id=$1 LIMIT 1`, rf.tenant).Scan(&user); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := tdb.Super.Exec(ctx, `INSERT INTO finance_entries(tenant_id,category_id,direction,entry_date,amount_cents,description,recorded_by,recorded_by_name)
-		SELECT $1,id,'income','2026-03-20',987654,'Other school only',$2,'Fictitious' FROM finance_categories WHERE tenant_id=$1 AND name='Ventas' AND direction='income'`, other, user); err != nil { t.Fatal(err) }
+		SELECT $1,id,'income','2026-03-20',987654,'Other school only',$2,'Fictitious' FROM finance_categories WHERE tenant_id=$1 AND name='Ventas' AND direction='income'`, other, user); err != nil {
+		t.Fatal(err)
+	}
 	pdfRouter(rf.fixture, fmt.Sprintf("http://%s:%s", host, port.Port()))
 	path := "/api/finance/report.pdf?from=2026-03-01&to=2026-11-30"
 	before := rf.ledgerState(t, rf.officer)
@@ -80,7 +86,9 @@ func TestFinanceReportPDFWithGotenberg(t *testing.T) {
 			t.Errorf("PDF missing %q in %q", want, text)
 		}
 	}
-	if strings.Contains(text, "Other school only") || strings.Contains(text, "9.876,54") { t.Fatalf("PDF contains another school's data: %q", text) }
+	if strings.Contains(text, "Other school only") || strings.Contains(text, "9.876,54") {
+		t.Fatalf("PDF contains another school's data: %q", text)
+	}
 	pay := newPayFixture(t)
 	pay.payOK(t, 100000)
 	pdfRouter(pay.fixture, fmt.Sprintf("http://%s:%s", host, port.Port()))
