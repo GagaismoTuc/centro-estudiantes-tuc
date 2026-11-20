@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -20,7 +21,7 @@ type span struct {
 	text       string
 }
 
-// Fill replaces {{name}} fields and repeats a table row delimited by
+// Fill replaces {{name}} fields and repeats a table row or paragraph delimited by
 // {{#name}} and {{/name}} for each value in rows[name]. Missing values are empty.
 func Fill(template []byte, fields map[string]string, rows map[string][]map[string]string) ([]byte, error) {
 	archive, err := zip.NewReader(bytes.NewReader(template), int64(len(template)))
@@ -43,14 +44,7 @@ func Fill(template []byte, fields map[string]string, rows map[string][]map[strin
 			return nil, closeErr
 		}
 		if isStory(file.Name) {
-			var repeated []span
-			repeated, err = repeatedRows(data)
-			if err == nil {
-				data, err = fillParagraphs(data, fields, repeated)
-			}
-			if err == nil {
-				data, err = repeatRows(data, fields, rows)
-			}
+			data, err = fillStory(data, fields, rows)
 			if err != nil {
 				return nil, fmt.Errorf("%s: %w", file.Name, err)
 			}
@@ -139,6 +133,22 @@ func repeatedRows(data []byte) ([]span, error) {
 	if err != nil {
 		return nil, err
 	}
+	paragraphs, err := elements(data, "p")
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range paragraphs {
+		inside := false
+		for _, r := range ranges {
+			if p.start >= r.start && p.end <= r.end {
+				inside = true
+				break
+			}
+		}
+		if !inside {
+			ranges = append(ranges, p)
+		}
+	}
 	var result []span
 	for _, r := range ranges {
 		texts, err := textSpans(wrap(data[r.start:r.end]))
@@ -169,15 +179,41 @@ func repeatedRows(data []byte) ([]span, error) {
 	return result, nil
 }
 
-func repeatRows(data []byte, fields map[string]string, rows map[string][]map[string]string) ([]byte, error) {
+func fillStory(data []byte, fields map[string]string, rows map[string][]map[string]string) ([]byte, error) {
 	ranges, err := repeatedRows(data)
 	if err != nil {
 		return nil, err
 	}
+	paragraphs, err := elements(data, "p")
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range paragraphs {
+		inside := false
+		for _, r := range ranges {
+			if p.start >= r.start && p.end <= r.end {
+				inside = true
+				break
+			}
+		}
+		if !inside {
+			ranges = append(ranges, p)
+		}
+	}
+	sort.Slice(ranges, func(i, j int) bool { return ranges[i].start < ranges[j].start })
 	for i := len(ranges) - 1; i >= 0; i-- {
 		r := ranges[i]
 		wrapped := wrap(data[r.start:r.end])
 		var expanded bytes.Buffer
+		if r.text == "" {
+			filled, err := fillParagraphs(wrapped, fields, nil)
+			if err != nil {
+				return nil, err
+			}
+			expanded.Write(unwrap(filled))
+			data = append(append(append([]byte{}, data[:r.start]...), expanded.Bytes()...), data[r.end:]...)
+			continue
+		}
 		for _, values := range rows[r.text] {
 			merged := make(map[string]string, len(fields)+len(values))
 			for k, v := range fields {

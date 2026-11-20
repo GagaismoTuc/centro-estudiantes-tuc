@@ -87,3 +87,90 @@ func TestFillSplitFieldsAndRepeatedRows(t *testing.T) {
 		t.Fatalf("description not escaped: %s", raw)
 	}
 }
+
+func TestFillLiteralRowMarkersInFields(t *testing.T) {
+	for _, value := range []string{"Nota {{#anexo}}", "Ver {{#anexo}}ok{{/anexo}}"} {
+		var b bytes.Buffer
+		z := zip.NewWriter(&b)
+		w, _ := z.Create("word/document.xml")
+		_, _ = io.WriteString(w, `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:tbl><w:tr><w:tc><w:p><w:r><w:t>{{asunto}}</w:t></w:r></w:p></w:tc></w:tr></w:tbl></w:body></w:document>`)
+		_ = z.Close()
+		out, err := docx.Fill(b.Bytes(), map[string]string{"asunto": value}, nil)
+		if err != nil {
+			t.Errorf("%q: %v", value, err)
+			continue
+		}
+		zr, err := zip.NewReader(bytes.NewReader(out), int64(len(out)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		r, err := zr.File[0].Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw, err := io.ReadAll(r)
+		_ = r.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(raw), value) || strings.Count(string(raw), "<w:tr>") != 1 {
+			t.Errorf("%q: %s", value, raw)
+		}
+	}
+}
+
+func TestFillRepeatedParagraphs(t *testing.T) {
+	var b bytes.Buffer
+	z := zip.NewWriter(&b)
+	w, _ := z.Create("word/document.xml")
+	_, _ = io.WriteString(w, `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>{{#entries}}{{description}}{{/entries}}</w:t></w:r></w:p></w:body></w:document>`)
+	_ = z.Close()
+	out, err := docx.Fill(b.Bytes(), nil, map[string][]map[string]string{"entries": {{"description": "One"}, {"description": "Two"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	zr, err := zip.NewReader(bytes.NewReader(out), int64(len(out)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := zr.File[0].Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := io.ReadAll(r)
+	_ = r.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(string(raw), "<w:p>") != 2 || !strings.Contains(string(raw), "One") || !strings.Contains(string(raw), "Two") {
+		t.Fatalf("unexpected output: %s", raw)
+	}
+}
+
+func TestFillIgnoresEmptyRowName(t *testing.T) {
+	var b bytes.Buffer
+	z := zip.NewWriter(&b)
+	w, _ := z.Create("word/document.xml")
+	_, _ = io.WriteString(w, `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>{{name}}</w:t></w:r></w:p></w:body></w:document>`)
+	_ = z.Close()
+	out, err := docx.Fill(b.Bytes(), map[string]string{"name": "original"}, map[string][]map[string]string{"": {{"name": "wrong"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	zr, err := zip.NewReader(bytes.NewReader(out), int64(len(out)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := zr.File[0].Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := io.ReadAll(r)
+	_ = r.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(string(raw), "<w:p>") != 1 || !strings.Contains(string(raw), "original") || strings.Contains(string(raw), "wrong") {
+		t.Fatalf("unexpected output: %s", raw)
+	}
+}

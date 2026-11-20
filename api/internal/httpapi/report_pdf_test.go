@@ -107,7 +107,9 @@ func TestFinanceReportPDFExample(t *testing.T) {
 func TestFinanceReportPDFReadersAndPrivacy(t *testing.T) {
 	p := newPayFixture(t)
 	p.payOK(t, 100000)
-	documents := make(chan []byte, 3)
+	_, veedor, _, _ := p.signInMFA(t, p.ctx, "veedor")
+	_, veedorNoMFA := p.signIn(t, p.ctx, "veedor")
+	documents := make(chan []byte, 4)
 	converter := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		file, _, err := r.FormFile("files")
 		if err != nil {
@@ -129,7 +131,7 @@ func TestFinanceReportPDFReadersAndPrivacy(t *testing.T) {
 	for _, reader := range []struct {
 		token     string
 		seesPayer bool
-	}{{p.beto, false}, {p.officer, true}, {p.adminMFA, true}} {
+	}{{p.beto, false}, {p.officer, true}, {p.adminMFA, true}, {veedor, true}} {
 		r := p.do(http.MethodGet, path, "", reportIP, reader.token, nil)
 		if r.Code != http.StatusOK {
 			t.Fatalf("status %d: %s", r.Code, r.Body)
@@ -139,6 +141,7 @@ func TestFinanceReportPDFReadersAndPrivacy(t *testing.T) {
 			t.Fatalf("payer visibility incorrect: %q", text)
 		}
 	}
+	wantResponse(t, p.do(http.MethodGet, path, "", reportIP, veedorNoMFA, nil), 403, `{"error":"mfa_required"}`)
 	wantResponse(t, p.do(http.MethodGet, path, "", reportIP, "", nil), 401, unauthBody)
 	wantResponse(t, p.do(http.MethodGet, "/api/finance/report.pdf?from=2026-11-30&to=2026-11-01", "", reportIP, p.beto, nil), 422, `{"error":"invalid_range"}`)
 }

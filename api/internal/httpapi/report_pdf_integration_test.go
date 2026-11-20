@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"log/slog"
+	"io"
 	"net/http"
+	"net/http/httptest"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -39,7 +41,7 @@ func TestFinanceReportPDFWithGotenberg(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
 	defer cancel()
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{Started: true,
-		ContainerRequest: testcontainers.ContainerRequest{Image: image, Env: map[string]string{"API_TIMEOUT": "60s"}, ExposedPorts: []string{"3000/tcp"}, WaitingFor: wait.ForHTTP("/health").WithPort("3000/tcp").WithStartupTimeout(2 * time.Minute)}})
+		ContainerRequest: testcontainers.ContainerRequest{Image: image, ExposedPorts: []string{"3000/tcp"}, WaitingFor: wait.ForHTTP("/health").WithPort("3000/tcp").WithStartupTimeout(2 * time.Minute)}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,26 +116,47 @@ func TestFinanceReportPDFWithGotenberg(t *testing.T) {
 		FROM finance_entries e CROSS JOIN generate_series(1,4998) n WHERE e.tenant_id=$1 AND e.description='Venta ficticia'`, rf.tenant); err != nil {
 		t.Fatal(err)
 	}
-	var logs bytes.Buffer
-	old := slog.Default()
-	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
-	large := rf.get(path, rf.officer)
-	slog.SetDefault(old)
-	if large.Code == http.StatusServiceUnavailable {
-		if !strings.Contains(logs.String(), "converter timeout") {
-			t.Fatalf("large report failed for a reason other than timeout: %s %s", large.Body, logs.String())
-		}
-	} else if large.Code == http.StatusOK {
-		text, err := converterText(large.Body.Bytes())
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !strings.Contains(text, "Large entry 4998") {
-			t.Fatal("large PDF omitted the last entry")
-		}
-	} else {
-		t.Fatalf("large report: %d %s", large.Code, large.Body)
+	api := httptest.NewUnstartedServer(rf.h)
+	api.Config.ReadHeaderTimeout, api.Config.ReadTimeout, api.Config.WriteTimeout = 5*time.Second, 15*time.Second, 15*time.Second
+	api.Start()
+	defer api.Close()
+	req, err := http.NewRequest(http.MethodGet, api.URL+path, nil)
+	if err != nil {
+		t.Fatal(err)
 	}
+	req.AddCookie(&http.Cookie{Name: cookieName, Value: rf.officer})
+	started := time.Now()
+	large, err := (&http.Client{Timeout: 90 * time.Second}).Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := io.ReadAll(large.Body)
+	_ = large.Body.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if large.StatusCode != http.StatusOK || !bytes.HasPrefix(body, []byte("%PDF-")) {
+		t.Fatalf("large report: %d %s after %s", large.StatusCode, body, time.Since(started))
+	}
+	t.Logf("5000 movement report returned in %s", time.Since(started))
+	text, err = converterText(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	matches := regexp.MustCompile(`Large entry \d+`).FindAllString(text, -1)
+	unique := make(map[string]bool, len(matches))
+	for _, match := range matches {
+		unique[match] = true
+	}
+	if len(matches) != 4998 || len(unique) != 4998 || !unique["Large entry 1"] || !unique["Large entry 4998"] {
+		t.Fatalf("large PDF contains %d entries (%d unique), want 4998", len(matches), len(unique))
+	}
+	for _, entry := range []string{"Venta ficticia", "Alquiler ficticio"} {
+		if !strings.Contains(text, entry) {
+			t.Fatalf("large PDF omitted %q", entry)
+		}
+	}
+
 	before = rf.ledgerState(t, rf.officer)
 	if err := container.Stop(ctx, nil); err != nil {
 		t.Fatal(err)
