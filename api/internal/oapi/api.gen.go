@@ -1568,6 +1568,36 @@ func (e GetFinanceReportCsv422JSONResponseBodyError) Valid() bool {
 	}
 }
 
+// Defines values for GetFinanceReportPdf422JSONResponseBodyError.
+const (
+	GetFinanceReportPdf422JSONResponseBodyErrorInvalidRange GetFinanceReportPdf422JSONResponseBodyError = "invalid_range"
+)
+
+// Valid indicates whether the value is a known member of the GetFinanceReportPdf422JSONResponseBodyError enum.
+func (e GetFinanceReportPdf422JSONResponseBodyError) Valid() bool {
+	switch e {
+	case GetFinanceReportPdf422JSONResponseBodyErrorInvalidRange:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetFinanceReportPdf503JSONResponseBodyError.
+const (
+	PdfUnavailable GetFinanceReportPdf503JSONResponseBodyError = "pdf_unavailable"
+)
+
+// Valid indicates whether the value is a known member of the GetFinanceReportPdf503JSONResponseBodyError enum.
+func (e GetFinanceReportPdf503JSONResponseBodyError) Valid() bool {
+	switch e {
+	case PdfUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PostMemberInvitation422JSONResponseBodyError.
 const (
 	InvalidEmail PostMemberInvitation422JSONResponseBodyError = "invalid_email"
@@ -2901,6 +2931,21 @@ type GetFinanceReportCsvParams struct {
 // GetFinanceReportCsv422JSONResponseBodyError defines parameters for GetFinanceReportCsv.
 type GetFinanceReportCsv422JSONResponseBodyError string
 
+// GetFinanceReportPdfParams defines parameters for GetFinanceReportPdf.
+type GetFinanceReportPdfParams struct {
+	// From First day of the range (YYYY-MM-DD, inclusive). Missing or invalid answers `invalid_range`.
+	From *ReportFrom `form:"from,omitempty" json:"from,omitempty"`
+
+	// To Last day of the range (YYYY-MM-DD, inclusive). Missing or invalid answers `invalid_range`.
+	To *ReportTo `form:"to,omitempty" json:"to,omitempty"`
+}
+
+// GetFinanceReportPdf422JSONResponseBodyError defines parameters for GetFinanceReportPdf.
+type GetFinanceReportPdf422JSONResponseBodyError string
+
+// GetFinanceReportPdf503JSONResponseBodyError defines parameters for GetFinanceReportPdf.
+type GetFinanceReportPdf503JSONResponseBodyError string
+
 // PostMemberInvitationJSONBody defines parameters for PostMemberInvitation.
 type PostMemberInvitationJSONBody struct {
 	Email string `json:"email"`
@@ -3320,6 +3365,9 @@ type ServerInterface interface {
 	// GetFinanceReportCsv Fund report as a CSV download
 	// (GET /finance/report.csv)
 	GetFinanceReportCsv(w http.ResponseWriter, r *http.Request, params GetFinanceReportCsvParams)
+	// GetFinanceReportPdf Fund report as a PDF download
+	// (GET /finance/report.pdf)
+	GetFinanceReportPdf(w http.ResponseWriter, r *http.Request, params GetFinanceReportPdfParams)
 	// GetHealth Liveness check
 	// (GET /health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
@@ -5338,6 +5386,52 @@ func (siw *ServerInterfaceWrapper) GetFinanceReportCsv(w http.ResponseWriter, r 
 	handler.ServeHTTP(w, r)
 }
 
+// GetFinanceReportPdf operation middleware
+func (siw *ServerInterfaceWrapper) GetFinanceReportPdf(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetFinanceReportPdfParams
+
+	// ------------- Optional query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetFinanceReportPdf(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetHealth operation middleware
 func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Request) {
 
@@ -5784,6 +5878,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/entries", wrapper.GetFinanceEntries)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/finance/entries", wrapper.PostFinanceEntries)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/report", wrapper.GetFinanceReport)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/report.pdf", wrapper.GetFinanceReportPdf)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/report.csv", wrapper.GetFinanceReportCsv)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/entries.csv", wrapper.GetFinanceEntriesCsv)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/finance/accountability-reports", wrapper.GetFinanceAccountabilityReports)

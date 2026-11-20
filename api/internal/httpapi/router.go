@@ -15,6 +15,7 @@ import (
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/contacts"
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/elections"
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/finance"
+	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/gotenberg"
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/mail"
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/oapi"
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/roster"
@@ -40,6 +41,8 @@ type Deps struct {
 	// TrustedProxies are the reverse proxies (TRUSTED_PROXIES) whose X-Forwarded-For is believed when
 	// they are the TCP peer. Empty: the peer address is always the client.
 	TrustedProxies []netip.Prefix
+	// GotenbergURL is the internal PDF converter origin.
+	GotenbergURL string
 }
 
 // server implements oapi.ServerInterface.
@@ -52,6 +55,7 @@ type server struct {
 	claimLimiter *auth.Limiter
 	roster       *roster.Store
 	finance      *finance.Store
+	pdf          *gotenberg.Client
 	contacts     *contacts.Store
 	budgets      *budgets.Store
 	elections    *elections.Store
@@ -96,6 +100,9 @@ func NewRouter(d Deps) http.Handler {
 	if d.Background == nil {
 		d.Background = mail.NewQueue(4, 256).Go
 	}
+	if d.GotenbergURL == "" {
+		d.GotenbergURL = "http://gotenberg:3000"
+	}
 	s := &server{
 		now:      d.Now,
 		trusted:  d.TrustedProxies,
@@ -105,6 +112,7 @@ func NewRouter(d Deps) http.Handler {
 		contacts: contacts.NewStore(d.Pool, d.Now),
 		budgets:  budgets.NewStore(d.Pool),
 		finance:  finance.NewStore(d.Pool, d.Now),
+		pdf:      gotenberg.New(d.GotenbergURL),
 		// The same clock decides election states, so tests move time by moving Deps.Now.
 		elections: elections.NewStore(d.Pool, d.Now),
 

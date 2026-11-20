@@ -2,8 +2,24 @@ package main
 
 import (
 	"encoding/base64"
+	"os"
+	"os/exec"
+	"strings"
 	"testing"
 )
+
+func TestServerCommandPreservesMissingDatabaseError(t *testing.T) {
+	if os.Getenv("TEST_SERVER_COMMAND_CHILD") == "1" {
+		main()
+		return
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=^TestServerCommandPreservesMissingDatabaseError$")
+	cmd.Env = []string{"TEST_SERVER_COMMAND_CHILD=1", "GOTENBERG_URL=http://127.0.0.1:3000", "SYSTEMROOT=" + os.Getenv("SYSTEMROOT")}
+	out, err := cmd.CombinedOutput()
+	if err == nil || !strings.Contains(string(out), "DATABASE_URL and MIGRATE_DATABASE_URL must be set") {
+		t.Fatalf("command error=%v output=%s", err, out)
+	}
+}
 
 func TestRunRefusesToStartWithoutValidAccessCodeKey(t *testing.T) {
 	const want = "ACCESS_CODE_KEY must be base64 of at least 32 random bytes (generate it with: openssl rand -base64 32)"

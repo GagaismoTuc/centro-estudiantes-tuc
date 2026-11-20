@@ -1282,6 +1282,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/finance/report.pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Fund report as a PDF download
+         * @description Same readers and inclusive range rules as `/finance/report`; nothing is written.
+         */
+        get: operations["getFinanceReportPdf"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/finance/report.csv": {
         parameters: {
             query?: never;
@@ -5756,6 +5776,46 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["MemberForbidden"];
             422: components["responses"]["InvalidRange"];
+        };
+    };
+    getFinanceReportPdf: {
+        parameters: {
+            query?: {
+                /** @description First day of the range (YYYY-MM-DD, inclusive). Missing or invalid answers `invalid_range`. */
+                from?: components["parameters"]["ReportFrom"];
+                /** @description Last day of the range (YYYY-MM-DD, inclusive). Missing or invalid answers `invalid_range`. */
+                to?: components["parameters"]["ReportTo"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Attachment `informe-de-caja-<from>-a-<to>.pdf`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": string;
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["MemberForbidden"];
+            422: components["responses"]["InvalidRange"];
+            /** @description The PDF converter is unavailable or timed out. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        error: "pdf_unavailable";
+                    };
+                };
+            };
         };
     };
     getFinanceReportCsv: {

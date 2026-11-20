@@ -1,5 +1,8 @@
 # Development services. Copy the example env file to .env and set POSTGRES_PASSWORD first.
 services:
+  gotenberg:
+    image: gotenberg/gotenberg:9.9.0@sha256:2f4945f698c3d02f691a27d56bb8e7ba4585e6ab50bd233329a36eb0423ae587
+
   postgres:
     image: postgres:18-alpine
     environment:

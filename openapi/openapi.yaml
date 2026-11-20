@@ -2779,6 +2779,32 @@ paths:
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "403": { $ref: "#/components/responses/MemberForbidden" }
         "422": { $ref: "#/components/responses/InvalidRange" }
+  /finance/report.pdf:
+    get:
+      operationId: getFinanceReportPdf
+      summary: Fund report as a PDF download
+      description: Same readers and inclusive range rules as `/finance/report`; nothing is written.
+      parameters:
+        - $ref: "#/components/parameters/ReportFrom"
+        - $ref: "#/components/parameters/ReportTo"
+      responses:
+        "200":
+          description: Attachment `informe-de-caja-<from>-a-<to>.pdf`.
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/MemberForbidden" }
+        "422": { $ref: "#/components/responses/InvalidRange" }
+        "503":
+          description: The PDF converter is unavailable or timed out.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error: { type: string, enum: [pdf_unavailable] }
   /finance/report.csv:
     get:
       operationId: getFinanceReportCsv
