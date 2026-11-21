@@ -56,6 +56,21 @@ func TestAccountabilityPDFFrozen(t *testing.T) {
 	}
 }
 
+func TestAccountabilityPDFArgentineDates(t *testing.T) {
+	rf := newAcctFixture(t)
+	rf.record(t, "income/Ventas", "2026-03-01", 50000, "Kiosco de marzo")
+	rep, _ := rf.publishOK(t, rf.officer, "2026-03-01", "2026-11-30", "Gestión 2026")
+	converter, docs := accountabilityConverter(t)
+	pdfRouter(rf.fixture, converter.URL)
+	if r := rf.get(acctPath+"/"+rep.ID+".pdf", rf.officer); r.Code != 200 {
+		t.Fatalf("status %d %s", r.Code, r.Body)
+	}
+	text := strings.ReplaceAll(wordText(t, <-docs), "\n", "")
+	if !strings.Contains(text, "del 01/03/2026 al 30/11/2026") || !strings.Contains(text, "01/03/2026 - Ventas - Kiosco de marzo") || strings.Contains(text, "2026-03-01") || strings.Contains(text, "2026-11-30") {
+		t.Fatalf("dates not dd/mm/aaaa: %s", text)
+	}
+}
+
 func TestAccountabilityPDFReaders(t *testing.T) {
 	rf := newAcctFixture(t)
 	rep, _ := rf.publishOK(t, rf.officer, "2026-03-01", "2026-11-30", "Gesti\u00f3n 2026")
