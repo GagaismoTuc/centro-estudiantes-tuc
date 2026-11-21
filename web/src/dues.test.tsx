@@ -185,6 +185,42 @@ test("R3 due_frozen error and R6 mfa_required refresh on Dues", async () => {
   await waitFor(() => expect(screen.getByRole("heading", { name: /Verificá/i })).toBeTruthy());
 });
 
+test("R5 a due with payments shows Monto and Vencimiento disabled with the note, and only the name changes", async () => {
+  const paidDue = { ...dueSummary, id: "d2", name: "Cuota de octubre", owingCount: 1, totalCount: 2 };
+  const partial = { ...dueDetail, members: [dueDetail.members[0], { ...dueDetail.members[1], paidCents: 50000 }] };
+  const sent = mockApi({
+    "GET /auth/me": ok(officerMe()),
+    "GET /finance/dues": ok([paidDue, dueSummary]),
+    "GET /finance/dues/mine": ok([]),
+    "GET /finance/dues/d1": ok(partial),
+    "PATCH /finance/dues/d2": ok({ ...paidDue, name: "Cuota de octubre (2)", members: [] }),
+  });
+  window.history.replaceState(null, "", "/cuotas");
+  render(<App />);
+  const note = "Ya tiene pagos: solo podés cambiar el nombre.";
+
+  fireEvent.click(await screen.findByRole("button", { name: "Editar Cuota de octubre" }));
+  const amount = screen.getByLabelText("Monto en pesos") as HTMLInputElement;
+  const dueDate = screen.getByLabelText("Vencimiento") as HTMLInputElement;
+  expect(amount.disabled).toBe(true);
+  expect(dueDate.disabled).toBe(true);
+  expect((screen.getByLabelText("Nombre") as HTMLInputElement).disabled).toBe(false);
+  expect(document.getElementById(amount.getAttribute("aria-describedby") ?? "")?.textContent).toBe(note);
+  expect(document.getElementById(dueDate.getAttribute("aria-describedby") ?? "")?.textContent).toBe(note);
+  fireEvent.change(screen.getByLabelText("Nombre"), { target: { value: "Cuota de octubre (2)" } });
+  fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
+  await waitFor(() => expect(sentTo(sent, "PATCH /finance/dues/d2")).toHaveLength(1));
+  expect(sentTo(sent, "PATCH /finance/dues/d2")[0]?.body).toEqual({ name: "Cuota de octubre (2)", amountCents: 200000, dueDate: "2026-11-30" });
+
+  // A partial payment does not show in the list count: the open detail reveals it.
+  fireEvent.click(await screen.findByRole("button", { name: "Ver detalle de Cuota de noviembre" }));
+  await screen.findByText("Pagó $ 500,00 de $ 2.000,00");
+  fireEvent.click(screen.getByRole("button", { name: "Editar Cuota de noviembre" }));
+  expect((screen.getByLabelText("Monto en pesos") as HTMLInputElement).disabled).toBe(true);
+  expect((screen.getByLabelText("Vencimiento") as HTMLInputElement).disabled).toBe(true);
+  expect(screen.getByText(note)).toBeTruthy();
+});
+
 test("CS-9 invalid_date server error marks Vencimiento invalid and moves focus to it", async () => {
   mockApi({
     "GET /auth/me": ok(me({ role: "officer", mfa: "satisfied" })),

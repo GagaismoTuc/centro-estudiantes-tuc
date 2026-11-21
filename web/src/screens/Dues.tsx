@@ -27,6 +27,15 @@ const memberStatusLabel: Record<string, string> = {
   exempt: "Exento",
 };
 
+/**
+ * Whether the due already has payments, from what the screen holds: someone paid in full in the
+ * list count, or the open detail shows a partial payment.
+ * shortcut: a partial payment with the detail closed, or only reversed payments, go unseen and the
+ * API answers due_frozen on save; add an activity flag to FinanceDueSummary if that confuses Officers.
+ */
+const hasPayments = (due: DueSummary, detail: DueDetail | null) =>
+  due.totalCount - due.owingCount > 0 || (detail?.id === due.id && detail.members.some((m) => m.paidCents !== "0"));
+
 /** What a member still owes of a due, in centavos. */
 const owedCents = (amountCents: string, paidCents: string) => String(BigInt(amountCents) - BigInt(paidCents));
 
@@ -106,13 +115,17 @@ export type DueFormProps = {
   submitLabel: string;
   busy: boolean;
   initial?: { name: string; amount: string; dueDate: string };
+  /** The due already has payments: amount and due date are locked, only the name changes. */
+  locked?: boolean | undefined;
   form: ReturnType<typeof useFormErrors>;
   onSubmit: (values: { name: string; amountCents: string; dueDate: string }) => void;
   onCancel: () => void;
 };
 
-export function DueForm({ heading, headingId: providedHeadingId, plain, submitLabel, busy, initial, form, onSubmit, onCancel }: DueFormProps) {
+export function DueForm({ heading, headingId: providedHeadingId, plain, submitLabel, busy, initial, locked, form, onSubmit, onCancel }: DueFormProps) {
   const generatedHeadingId = useId();
+  const lockedNoteId = useId();
+  const lockedProps = locked ? { disabled: true, "aria-describedby": lockedNoteId } : {};
   const headingId = providedHeadingId ?? generatedHeadingId;
   const [name, setName] = useState(initial?.name ?? "");
   const [amount, setAmount] = useState(initial?.amount ?? "");
@@ -141,8 +154,13 @@ export function DueForm({ heading, headingId: providedHeadingId, plain, submitLa
         }}
       >
         <Field label="Nombre" {...form.field("name")} value={name} onChange={(e) => setName(e.target.value)} />
-        <Field label="Monto en pesos" inputMode="decimal" {...form.field("amount")} value={amount} onChange={(e) => setAmount(e.target.value)} />
-        <Field label="Vencimiento" type="date" {...form.field("dueDate")} value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+        {locked && (
+          <p className="field__hint" id={lockedNoteId}>
+            Ya tiene pagos: solo podés cambiar el nombre.
+          </p>
+        )}
+        <Field label="Monto en pesos" inputMode="decimal" {...form.field("amount")} value={amount} onChange={(e) => setAmount(e.target.value)} {...lockedProps} />
+        <Field label="Vencimiento" type="date" {...form.field("dueDate")} value={dueDate} onChange={(e) => setDueDate(e.target.value)} {...lockedProps} />
         <div className="panel__actions">
           <button type="submit" className="button button--primary" disabled={busy}>
             {submitLabel}
@@ -446,6 +464,7 @@ export function Dues() {
           submitLabel="Guardar cambios"
           busy={busy}
           initial={{ name: editing.name, amount: pesosInput(editing.amountCents), dueDate: editing.dueDate }}
+          locked={hasPayments(editing, detail)}
           form={editForm}
           onSubmit={(values) => void handleEdit(values)}
           onCancel={() => {
