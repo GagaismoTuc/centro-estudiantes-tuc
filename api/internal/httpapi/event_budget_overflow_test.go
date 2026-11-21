@@ -3,6 +3,7 @@ package httpapi_test
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -100,9 +101,16 @@ func TestEventBudgetParallelLinesThatOverflowTogether(t *testing.T) {
 	if _, err := lock.Exec(ctx, `SELECT id FROM event_budgets WHERE id=$1 FOR UPDATE`, id); err != nil {
 		t.Fatal(err)
 	}
-	results := make(chan int, 2)
+	type reply struct {
+		code int
+		body string
+	}
+	results := make(chan reply, 2)
 	for _, token := range []string{officer, other} {
-		go func(token string) { results <- f.do("POST", path+"/lines", body, ip, token, nil).Code }(token)
+		go func(token string) {
+			rec := f.do("POST", path+"/lines", body, ip, token, nil)
+			results <- reply{rec.Code, strings.TrimSpace(rec.Body.String())}
+		}(token)
 	}
 	waitForLockedQueries(t, ctx, "%SELECT starts_on::text,ends_on::text,archived_at IS NOT NULL FROM event_budgets%FOR UPDATE%", 2)
 	if err := lock.Commit(ctx); err != nil {
@@ -110,7 +118,11 @@ func TestEventBudgetParallelLinesThatOverflowTogether(t *testing.T) {
 	}
 	got := map[int]int{}
 	for i := 0; i < 2; i++ {
-		got[<-results]++
+		r := <-results
+		got[r.code]++
+		if r.code == 422 && r.body != `{"error":"invalid_amount"}` {
+			t.Fatalf("422 body %s, want invalid_amount", r.body)
+		}
 	}
 	if got[201] != 1 || got[422] != 1 {
 		t.Fatalf("parallel statuses %v, want one 201 and one 422", got)
