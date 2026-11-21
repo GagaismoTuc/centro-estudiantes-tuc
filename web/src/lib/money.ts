@@ -29,6 +29,16 @@ export function todayArgentina(): string {
   }).format(new Date());
 }
 
+/** Formats an ISO date-time as its `DD/MM/YYYY` day in Argentina time. */
+export function dayMonthYearArgentina(instant: string): string {
+  return dayMonthYear(new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Argentina/Buenos_Aires",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(instant)));
+}
+
 /** Parses a positive peso decimal input (`2000` or `2000,50`) into a positive int64 centavos string. */
 export function centsOf(value: string): string | null {
   const match = /^(\d+)(?:[,.](\d{1,2}))?$/.exec(value.trim());
