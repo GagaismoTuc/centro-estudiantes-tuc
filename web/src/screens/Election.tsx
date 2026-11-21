@@ -8,8 +8,8 @@ import { Annulment } from "./CommissionPanel.tsx";
 import { FieldError, FormStatus, type Status } from "../components/Form.tsx";
 import { PageTitle, useDocumentTitle } from "../components/Page.tsx";
 import { ListCard, ListForm } from "./ElectionLists.tsx";
+import { formatLongDateTime } from "../lib/datetime.ts";
 import {
-  formatArgentina,
   loadCommissionStatus,
   stateLabel,
   type CommissionStatus,
@@ -185,19 +185,19 @@ function ElectionDetails({ election }: { election: ElectionData }) {
         </div>
         <div>
           <dt>Inicio de la presentación de listas</dt>
-          <dd>{formatArgentina(election.submissionStartsAt)}</dd>
+          <dd>{formatLongDateTime(election.submissionStartsAt)}</dd>
         </div>
         <div>
           <dt>Fin de la presentación de listas</dt>
-          <dd>{formatArgentina(election.submissionEndsAt)}</dd>
+          <dd>{formatLongDateTime(election.submissionEndsAt)}</dd>
         </div>
         <div>
           <dt>Inicio de la votación</dt>
-          <dd>{formatArgentina(election.startsAt)}</dd>
+          <dd>{formatLongDateTime(election.startsAt)}</dd>
         </div>
         <div>
           <dt>Fin de la votación</dt>
-          <dd>{formatArgentina(election.endsAt)}</dd>
+          <dd>{formatLongDateTime(election.endsAt)}</dd>
         </div>
       </dl>
       <p className="muted small">Los horarios son de Argentina.</p>

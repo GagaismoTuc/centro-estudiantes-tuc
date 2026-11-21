@@ -53,6 +53,24 @@ test("a line that would overflow the budget totals marks the price and moves foc
   expect(describedBy).toContain("El total del presupuesto sería demasiado grande.");
 });
 
+test("R3 the budget detail shows its dates as dd/mm/aaaa", async () => {
+  const budget = { id: "b1", name: "Week", startsOn: "2026-11-20", endsOn: "2026-11-21", archived: false };
+  const zero = { costCents: 0, incomeCents: 0, resultCents: 0, breakEvenCents: null };
+  mockApi({
+    "GET /auth/me": ok(me({ role: "officer", mfa: "satisfied" })),
+    "GET /event-budgets": ok([budget]),
+    "GET /event-budgets/b1": ok({ ...budget, totals: zero, days: [{ day: "2026-11-20", totals: zero }], lines: [] }),
+    "GET /contacts/headings": ok([]),
+    "GET /contacts": ok([]),
+  });
+  window.history.replaceState(null, "", "/presupuestos");
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Week" }));
+  expect(await screen.findByText("20/11/2026 - 21/11/2026")).toBeTruthy();
+  expect(screen.getByText(/^20\/11\/2026: costo/)).toBeTruthy();
+  expect(screen.queryByText(/2026-11-2/)).toBeNull();
+});
+
 test("invalid budget form focuses the first invalid field and blocks students", async () => {
   mockApi({
     "GET /auth/me": ok(me({ role: "officer", mfa: "satisfied" })),
@@ -74,6 +92,37 @@ test("invalid budget form focuses the first invalid field and blocks students", 
   });
   render(<App />);
   expect((await screen.findByRole("alert")).textContent).toContain("No ten\u00e9s acceso");
+});
+
+test("#130 R1 R2 R3 Presupuestos accepts 1.234,56, rejects ambiguous amounts without posting, and shows a negative result as -$ 195.269,88", async () => {
+  const budget = { id: "b1", name: "Week", startsOn: "2026-09-21", endsOn: "2026-09-25", archived: false };
+  const totals = { costCents: 19526988, incomeCents: 0, resultCents: -19526988, breakEvenCents: null };
+  const sent = mockApi({
+    "GET /auth/me": ok(me({ role: "officer", mfa: "satisfied" })),
+    "GET /event-budgets": ok([budget]),
+    "GET /event-budgets/b1": ok({ ...budget, totals, days: [], lines: [] }),
+    "GET /contacts/headings": ok([{ id: "h1", name: "gazebos", archived: false, reserved: false }]),
+    "GET /contacts": ok([]),
+    "POST /event-budgets/b1/lines": ok({ id: "l1", kind: "cost", description: "Gazebo", quantity: 1, unitAmountCents: 123456 }, 201),
+  });
+  window.history.replaceState(null, "", "/presupuestos");
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Week" }));
+  expect((await screen.findByText(/^Costo:/)).textContent).toContain("resultado: -$ 195.269,88.");
+  fireEvent.change(screen.getByLabelText("Descripción"), { target: { value: "Gazebo" } });
+  fireEvent.change(screen.getByLabelText("Cantidad"), { target: { value: "1" } });
+  const amount = screen.getByLabelText("Precio unitario ($)");
+  for (const raw of ["1.2345", "12,345", "1.23.4", "1,234", "-5", "0", "abc", ""]) {
+    fireEvent.change(amount, { target: { value: raw } });
+    fireEvent.click(screen.getByRole("button", { name: "Agregar línea" }));
+    await waitFor(() => expect(amount.getAttribute("aria-invalid")).toBe("true"));
+    expect(document.getElementById(amount.getAttribute("aria-describedby") ?? "")?.textContent).toBe("Ingresá un monto positivo con hasta dos decimales.");
+  }
+  expect(sent.filter((r) => r.method === "POST")).toHaveLength(0);
+  fireEvent.change(amount, { target: { value: "1.234,56" } });
+  fireEvent.click(screen.getByRole("button", { name: "Agregar línea" }));
+  await waitFor(() => expect(sent.filter((r) => r.method === "POST" && r.path === "/event-budgets/b1/lines")).toHaveLength(1));
+  expect(sent.find((r) => r.method === "POST")?.body).toMatchObject({ unitAmountCents: 123456 });
 });
 
 async function submitBudget(startsOn: string, endsOn: string) {

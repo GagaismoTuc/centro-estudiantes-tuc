@@ -377,3 +377,39 @@ test("CS-9 when deleting a due fails, focus moves to the error message and never
   const status = (await screen.findByText(/ya tiene pagos o exenciones/i)).closest(".form-status") as HTMLElement;
   await waitFor(() => expect(document.activeElement).toBe(status));
 });
+
+test("#130 R1 R2 Cuotas accepts 1.234,56 in Nueva cuota and Registrar pago and rejects ambiguous amounts without posting", async () => {
+  const sent = mockApi({
+    "GET /auth/me": ok(officerMe()),
+    "GET /finance/dues": ok([dueSummary]),
+    "GET /finance/dues/mine": ok([]),
+    "GET /finance/dues/d1": ok(dueDetail),
+    "POST /finance/dues": ok(dueDetail, 201),
+    "POST /finance/dues/d1/payments": ok({ id: "p1", dueId: "d1", rosterMemberId: "r2", entryId: "e1", amountCents: 123456, date: "2026-11-13" }, 201),
+  });
+  window.history.replaceState(null, "", "/cuotas");
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Nueva cuota" }));
+  fireEvent.change(screen.getByLabelText("Nombre"), { target: { value: "Cuota de noviembre" } });
+  fireEvent.change(screen.getByLabelText("Vencimiento"), { target: { value: "2026-11-30" } });
+  const amount = screen.getByLabelText("Monto en pesos");
+  for (const raw of ["1.2345", "12,345", "1.23.4", "1,234", "-5", "0", "abc", ""]) {
+    fireEvent.change(amount, { target: { value: raw } });
+    fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+    await waitFor(() => expect(amount.getAttribute("aria-invalid")).toBe("true"));
+    expect(document.getElementById(amount.getAttribute("aria-describedby") ?? "")?.textContent).toBe("Ingresá un monto positivo con hasta dos decimales.");
+  }
+  expect(sentTo(sent, "POST /finance/dues")).toHaveLength(0);
+  fireEvent.change(amount, { target: { value: "1.234,56" } });
+  fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+  await waitFor(() => expect(sentTo(sent, "POST /finance/dues")).toHaveLength(1));
+  expect(sentTo(sent, "POST /finance/dues")[0]?.body).toEqual({ name: "Cuota de noviembre", amountCents: 123456, dueDate: "2026-11-30" });
+
+  fireEvent.click(await screen.findByRole("button", { name: "Ver detalle de Cuota de noviembre" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Registrar pago de Beto Ficticio" }));
+  fireEvent.change(screen.getByLabelText("Monto en pesos"), { target: { value: "1.234,56" } });
+  fireEvent.change(screen.getByLabelText("Fecha del pago"), { target: { value: "2026-11-13" } });
+  fireEvent.click(screen.getByRole("button", { name: "Guardar pago" }));
+  await waitFor(() => expect(sentTo(sent, "POST /finance/dues/d1/payments")).toHaveLength(1));
+  expect(sentTo(sent, "POST /finance/dues/d1/payments")[0]?.body).toEqual({ rosterMemberId: "r2", date: "2026-11-13", amountCents: 123456 });
+});

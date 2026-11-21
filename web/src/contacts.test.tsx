@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { App } from "./App.tsx";
 import css from "./styles.css?raw";
 import { emulateDialog, fail, me, mockApi, noContent, ok, pressEscape, sentTo, settle } from "./test/api.ts";
@@ -56,6 +56,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   cleanup();
   window.history.replaceState(null, "", "/");
 });
@@ -89,6 +90,8 @@ describe("Contacts and Headings screens", () => {
 
     expect(await screen.findByText("Gazebos Ficticios SRL")).toBeTruthy();
     expect(screen.getByText("Banda Ficticia")).toBeTruthy();
+    expect(screen.getByText("01/09/2026")).toBeTruthy();
+    expect(screen.queryByText("2026-09-01")).toBeNull();
     expect(screen.queryByRole("button", { name: /Nuevo contacto/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /Editar/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /Borrar/i })).toBeNull();
@@ -184,8 +187,13 @@ describe("Contacts and Headings screens", () => {
 
     // Add reference price to c-1 ($12.500 -> 1250000 cents).
     const card1 = screen.getByTestId("contact-c-1");
+    // 23:00 in Argentina is already the next day in UTC: the default date is Argentina's.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-06T02:00:00Z"));
     fireEvent.click(within(card1).getByRole("button", { name: /Agregar precio de referencia/i }));
     const priceForm = within(card1).getByRole("form", { name: /Nuevo precio de referencia/i });
+    expect((within(priceForm).getByLabelText("Fecha") as HTMLInputElement).value).toBe("2026-09-05");
+    vi.useRealTimers();
     fireEvent.change(within(priceForm).getByLabelText("Descripción"), { target: { value: "Gazebo 6×3" } });
     fireEvent.change(within(priceForm).getByLabelText("Monto ($)"), { target: { value: "12500" } });
     fireEvent.change(within(priceForm).getByLabelText("Fecha"), { target: { value: "2026-09-05" } });

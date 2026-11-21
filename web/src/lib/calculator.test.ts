@@ -4,11 +4,11 @@ import {
   calculatePricePerPerson,
   calculateRaffle,
   calculateSpendable,
-  formatPesos,
   multiplyCents,
   parsePesosToCents,
   roundUpTo100Pesos,
 } from "./calculator.ts";
+import { formatPesos } from "./money.ts";
 
 describe("R1 — Precio por persona", () => {
   test("computes base example, margin, ceiling to $100, and rejects empty or negative inputs", () => {
@@ -19,24 +19,24 @@ describe("R1 — Precio por persona", () => {
         pricePerPersonCents: 400_000,
         exactPerPersonCents: 400_000,
         totalWithMarginCents: 18_000_000,
-        formattedPricePerPerson: "$ 4.000",
-        formattedExactPerPerson: "$ 4.000",
-        formattedTotalWithMargin: "$ 180.000",
+        formattedPricePerPerson: "$ 4.000,00",
+        formattedExactPerPerson: "$ 4.000,00",
+        formattedTotalWithMargin: "$ 180.000,00",
       },
     });
 
     const withMargin = calculatePricePerPerson({ totalCost: "180.000", peopleCount: "45", marginPercent: "10" });
     expect(withMargin.ok).toBe(true);
     if (withMargin.ok) {
-      expect(withMargin.result.formattedPricePerPerson).toBe("$ 4.400");
-      expect(withMargin.result.formattedTotalWithMargin).toBe("$ 198.000");
+      expect(withMargin.result.formattedPricePerPerson).toBe("$ 4.400,00");
+      expect(withMargin.result.formattedTotalWithMargin).toBe("$ 198.000,00");
     }
 
     const rounded = calculatePricePerPerson({ totalCost: "100000", peopleCount: "30" });
     expect(rounded.ok).toBe(true);
     if (rounded.ok) {
       expect(rounded.result.formattedExactPerPerson).toBe("$ 3.333,33");
-      expect(rounded.result.formattedPricePerPerson).toBe("$ 3.400");
+      expect(rounded.result.formattedPricePerPerson).toBe("$ 3.400,00");
     }
 
     expect(calculatePricePerPerson({ totalCost: "180000", peopleCount: "0" })).toEqual({
@@ -76,8 +76,8 @@ describe("R2 — Rifa o venta", () => {
         maxRevenueCents: 30_000_000,
         profitIfAllSoldCents: 24_000_000,
         coversCost: true,
-        formattedMaxRevenue: "$ 300.000",
-        formattedProfitOrLoss: "$ 240.000",
+        formattedMaxRevenue: "$ 300.000,00",
+        formattedProfitOrLoss: "$ 240.000,00",
         lossMessage: null,
       },
     });
@@ -88,7 +88,7 @@ describe("R2 — Rifa o venta", () => {
       expect(loss.result.coversCost).toBe(false);
       expect(loss.result.breakEvenUnits).toBe(267);
       expect(loss.result.profitIfAllSoldCents).toBe(-10_000_000);
-      expect(loss.result.lossMessage).toBe("Ni vendiendo todo cubrís el costo: perdés $ 100.000");
+      expect(loss.result.lossMessage).toBe("Ni vendiendo todo cubrís el costo: perdés $ 100.000,00");
     }
 
     const ceiled = calculateRaffle({ totalCost: "50000", unitPrice: "1500", availableUnits: "100" });
@@ -119,15 +119,15 @@ describe("R2 — Rifa o venta", () => {
 describe("R3 — Redondeo y centavos enteros", () => {
   test("rounds up to $100 leaving exact multiples unchanged and avoids floating-point error on 0,10 x 3", () => {
     expect(roundUpTo100Pesos(400_000)).toBe(400_000);
-    expect(formatPesos(roundUpTo100Pesos(400_000))).toBe("$ 4.000");
+    expect(formatPesos(roundUpTo100Pesos(400_000))).toBe("$ 4.000,00");
     expect(roundUpTo100Pesos(400_001)).toBe(410_000);
     expect(roundUpTo100Pesos(0)).toBe(0);
 
-    // 3000 * 1.10 in IEEE-754 float is 3300.0000000000005; exact cents stay $ 3.300.
+    // 3000 * 1.10 in IEEE-754 float is 3300.0000000000005; exact cents stay $ 3.300,00.
     const exactMargin = calculatePricePerPerson({ totalCost: "3000", peopleCount: "1", marginPercent: "10" });
     expect(exactMargin.ok).toBe(true);
     if (exactMargin.ok) {
-      expect(exactMargin.result.formattedPricePerPerson).toBe("$ 3.300");
+      expect(exactMargin.result.formattedPricePerPerson).toBe("$ 3.300,00");
     }
 
     const parsed = parsePesosToCents("0,10");
@@ -157,8 +157,8 @@ describe("R2 (#84) — Monto de Cuota", () => {
         exemptCount: 0,
         amountPerStudentCents: 130_000,
         exactPerStudentCents: 125_000,
-        formattedAmountPerStudent: "$ 1.300",
-        formattedExactPerStudent: "$ 1.250",
+        formattedAmountPerStudent: "$ 1.300,00",
+        formattedExactPerStudent: "$ 1.250,00",
       },
     });
 
@@ -169,14 +169,14 @@ describe("R2 (#84) — Monto de Cuota", () => {
       expect(withExempt.result.payingCount).toBe(450);
       expect(withExempt.result.exemptCount).toBe(30);
       expect(withExempt.result.formattedExactPerStudent).toBe("$ 1.333,33");
-      expect(withExempt.result.formattedAmountPerStudent).toBe("$ 1.400");
+      expect(withExempt.result.formattedAmountPerStudent).toBe("$ 1.400,00");
     }
 
     // Exact multiple of $100 stays unchanged ($480.000 / 480 = $1.000).
     const exactMultiple = calculateDueAmount({ goal: "480000", rosterCount: 480, expectedExempt: "0" });
     expect(exactMultiple.ok).toBe(true);
     if (exactMultiple.ok) {
-      expect(exactMultiple.result.formattedAmountPerStudent).toBe("$ 1.000");
+      expect(exactMultiple.result.formattedAmountPerStudent).toBe("$ 1.000,00");
     }
 
     // Negative cases: empty/0 goal, negative exempt, empty roster.
@@ -201,10 +201,10 @@ describe("R4 (#84) — Cuánto podemos gastar", () => {
   test("computes spendable totals, planned cost shortfall/surplus, and negative balance", () => {
     // Balance $150.000 + owed $316.000 (158 * $2.000) = $466.000.
     const base = calculateSpendable({ balanceCents: "15000000", owedOnDuesCents: "31600000" });
-    expect(base.formattedBalance).toBe("$ 150.000");
-    expect(base.formattedOwedOnDues).toBe("$ 316.000");
-    expect(base.formattedTotalWithOwed).toBe("$ 466.000");
-    expect(base.summaryMessage).toBe("Hoy tenés $ 150.000; si cobrás lo que falta, $ 466.000");
+    expect(base.formattedBalance).toBe("$ 150.000,00");
+    expect(base.formattedOwedOnDues).toBe("$ 316.000,00");
+    expect(base.formattedTotalWithOwed).toBe("$ 466.000,00");
+    expect(base.summaryMessage).toBe("Hoy tenés $ 150.000,00; si cobrás lo que falta, $ 466.000,00");
     expect(base.comparison).toBeNull();
     expect(base.plannedCostError).toBeUndefined();
 
@@ -217,7 +217,7 @@ describe("R4 (#84) — Cuánto podemos gastar", () => {
     expect(short.comparison).toEqual({
       status: "short",
       differenceCents: "-3400000",
-      message: "Aunque cobres todo, te faltan $ 34.000",
+      message: "Aunque cobres todo, te faltan $ 34.000,00",
     });
 
     // Planned cost covered today ($100.000 -> surplus today $50.000).
@@ -227,7 +227,7 @@ describe("R4 (#84) — Cuánto podemos gastar", () => {
       plannedCost: "100000",
     });
     expect(coveredToday.comparison?.status).toBe("covered_today");
-    expect(coveredToday.comparison?.message).toBe("Te alcanza hoy y te sobran $ 50.000");
+    expect(coveredToday.comparison?.message).toBe("Te alcanza hoy y te sobran $ 50.000,00");
 
     // Planned cost covered only if dues are collected ($300.000 -> short today $150.000, surplus with dues $166.000).
     const coveredIfCollected = calculateSpendable({
@@ -237,14 +237,14 @@ describe("R4 (#84) — Cuánto podemos gastar", () => {
     });
     expect(coveredIfCollected.comparison?.status).toBe("covered_if_collected");
     expect(coveredIfCollected.comparison?.message).toBe(
-      "Hoy te faltan $ 150.000, pero si cobrás lo que falta te sobran $ 166.000",
+      "Hoy te faltan $ 150.000,00, pero si cobrás lo que falta te sobran $ 166.000,00",
     );
 
     // Negative balance is displayed in negative.
     const negative = calculateSpendable({ balanceCents: "-2000000", owedOnDuesCents: "1000000" });
-    expect(negative.formattedBalance).toBe("-$ 20.000");
-    expect(negative.formattedTotalWithOwed).toBe("-$ 10.000");
-    expect(negative.summaryMessage).toBe("Hoy tenés -$ 20.000; si cobrás lo que falta, -$ 10.000");
+    expect(negative.formattedBalance).toBe("-$ 20.000,00");
+    expect(negative.formattedTotalWithOwed).toBe("-$ 10.000,00");
+    expect(negative.summaryMessage).toBe("Hoy tenés -$ 20.000,00; si cobrás lo que falta, -$ 10.000,00");
 
     // Values above Number.MAX_SAFE_INTEGER keep exact BigInt precision.
     const huge = calculateSpendable({

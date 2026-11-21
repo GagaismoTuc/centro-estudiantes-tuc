@@ -42,7 +42,7 @@ test("S9 a Student picks a range and reads the report with its CSV link", async 
   expect(queries).toContain("?from=2026-03-01&to=2026-11-30");
   const summary = await screen.findByRole("region", { name: "Saldos" });
   expect(within(summary).getByText("Saldo inicial").nextElementSibling?.textContent).toBe("$ 10.000,00");
-  expect(within(summary).getByText("Saldo final").nextElementSibling?.textContent).toBe("$ -3.000,00");
+  expect(within(summary).getByText("Saldo final").nextElementSibling?.textContent).toBe("-$ 3.000,00");
   const movements = screen.getByRole("region", { name: "Movimientos del rango" });
   expect(within(movements).getByText("Venta de tortas")).toBeTruthy();
   expect(within(movements).getByText(/Ventas.*10\/03\/2026/)).toBeTruthy();
@@ -50,7 +50,7 @@ test("S9 a Student picks a range and reads the report with its CSV link", async 
   const income = within(totals).getByRole("list", { name: "Ingresos" });
   const expense = within(totals).getByRole("list", { name: "Gastos" });
   expect(within(income).getByText("Ventas").nextElementSibling?.textContent).toBe("$ 2.000,00");
-  expect(within(expense).getByText("Alquileres").nextElementSibling?.textContent).toBe("$ -15.000,00");
+  expect(within(expense).getByText("Alquileres").nextElementSibling?.textContent).toBe("-$ 15.000,00");
   const csv = screen.getByRole("link", { name: "Descargar CSV" });
   expect(csv.getAttribute("href")).toBe("/api/finance/report.csv?from=2026-03-01&to=2026-11-30");
   expect(csv.hasAttribute("download")).toBe(true);
@@ -103,10 +103,10 @@ test("S9 report amounts beyond 2^53 cents render exactly", async () => {
   expect(within(summary).getByText("Saldo inicial").nextElementSibling?.textContent).toBe("$ 90.071.992.547.409,93");
   expect(within(summary).getByText("Saldo final").nextElementSibling?.textContent).toBe("$ 90.071.992.547.409,95");
   expect(within(summary).getByText("Total de ingresos").nextElementSibling?.textContent).toBe("$ 90.071.992.547.409,97");
-  expect(within(summary).getByText("Total de gastos").nextElementSibling?.textContent).toBe("$ -90.071.992.547.409,99");
+  expect(within(summary).getByText("Total de gastos").nextElementSibling?.textContent).toBe("-$ 90.071.992.547.409,99");
   const totals = screen.getByRole("region", { name: "Totales por categoría" });
   expect(within(within(totals).getByRole("list", { name: "Ingresos" })).getByText("Ventas").nextElementSibling?.textContent).toBe("$ 90.071.992.547.409,97");
-  expect(within(within(totals).getByRole("list", { name: "Gastos" })).getByText("Alquileres").nextElementSibling?.textContent).toBe("$ -90.071.992.547.409,99");
+  expect(within(within(totals).getByRole("list", { name: "Gastos" })).getByText("Alquileres").nextElementSibling?.textContent).toBe("-$ 90.071.992.547.409,99");
 });
 
 test("S9 a range without movements shows zero totals and says so", async () => {
