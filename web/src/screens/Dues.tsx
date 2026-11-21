@@ -536,7 +536,8 @@ export function Dues() {
             <div>
               <h2 id="due-detail-title">{detail.name}</h2>
               <p className="muted small">
-                {formatPesos(detail.amountCents)} — vence el {formatDate(detail.dueDate)} ·{" "}
+                {formatPesos(detail.amountCents)} —{" "}
+                {detail.owingCount > 0 ? dueDateText(detail.dueDate) : `vence el ${formatDate(detail.dueDate)}`} ·{" "}
                 {detail.totalCount - detail.owingCount} de {detail.totalCount} pagaron
               </p>
             </div>

@@ -426,12 +426,16 @@ test("#135 R4 an unpaid due past its date says Vencida — venció el 10/03/2026
     mockApi({
       "GET /auth/me": ok(officerMe()),
       "GET /finance/dues": ok([march]),
-      "GET /finance/dues/mine": ok([myMarch]),
+      "GET /finance/dues/d1": ok({ ...dueDetail, name: "Cuota de marzo", dueDate: "2026-03-10" }),
+      "GET /finance/dues/mine": ok([myMarch, { ...myMarch, id: "d2", name: "Cuota de abril", paidCents: 50000 }]),
     });
     window.history.replaceState(null, "", "/cuotas");
     render(<App />);
     expect(await screen.findByText("Debés $ 2.000,00 — Vencida — venció el 10/03/2026")).toBeTruthy();
+    expect(screen.getByText("Pagaste $ 500,00 de $ 2.000,00, te falta $ 1.500,00 — Vencida — venció el 10/03/2026")).toBeTruthy();
     await waitFor(() => expect(sectionOf("Listado de cuotas").textContent).toContain("Cuota de marzo — $ 2.000,00 — Vencida — venció el 10/03/2026"));
+    fireEvent.click(screen.getByRole("button", { name: "Ver detalle de Cuota de marzo" }));
+    expect(await screen.findByText(/\$ 2\.000,00 — Vencida — venció el 10\/03\/2026 · 0 de 2 pagaron/)).toBeTruthy();
   } finally {
     vi.useRealTimers();
   }

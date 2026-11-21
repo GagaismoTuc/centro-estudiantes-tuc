@@ -192,6 +192,7 @@ export function Finance() {
     }
     if (!overdraftConfirmed && direction === "expense" && balance !== null) {
       // #135: an expense may still overdraw the fund, but only after the officer confirms it.
+      // shortcut: no warning while the balance is unknown (not loaded or failed); the server allows it anyway.
       const after = BigInt(balance) - parsePesos(amount)!;
       if (after < 0n) {
         setConfirmOverdraft(String(after));
