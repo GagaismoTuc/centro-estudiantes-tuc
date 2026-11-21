@@ -115,6 +115,7 @@ test("R1 Quitar cargo asks first: Cancelar changes nothing and returns focus, co
   await waitFor(() => expect(document.activeElement).toBe(remove));
   expect(sentTo(sent, "DELETE /members/m1/officer")).toHaveLength(0);
   expect(screen.getByText("Ana Ficticia")).toBeTruthy();
+  expect(screen.getByText("Ese cargo ya está ocupado.")).toBeTruthy();
 
   fireEvent.click(remove);
   dialog = await screen.findByRole("dialog", { name: "Quitar cargo" });
