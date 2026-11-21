@@ -37,6 +37,13 @@ function memberStatusText(member: DueMember, amountCents: string): string {
   return memberStatusLabel[member.status] ?? member.status;
 }
 
+/** #135: a due is overdue from the day after its due date, by the date in Argentina. */
+const isOverdue = (dueDate: string) => dueDate < todayArgentina();
+
+/** "vence el 30/11/2026", or "Vencida — venció el 10/03/2026" once the date has passed. */
+const dueDateText = (dueDate: string) =>
+  isOverdue(dueDate) ? `Vencida — venció el ${formatDate(dueDate)}` : `vence el ${formatDate(dueDate)}`;
+
 function myDueText(due: MyDue): string {
   const formatted = formatPesos(due.amountCents);
   const formattedDate = formatDate(due.dueDate);
@@ -44,9 +51,9 @@ function myDueText(due: MyDue): string {
   // S6: the exempt student sees only "Exento", never the reason.
   if (due.status === "exempt") return "Exento";
   if (due.paidCents !== "0") {
-    return `Pagaste ${formatPesos(due.paidCents)} de ${formatted}, te falta ${formatPesos(owedCents(due.amountCents, due.paidCents))} — vence el ${formattedDate}`;
+    return `Pagaste ${formatPesos(due.paidCents)} de ${formatted}, te falta ${formatPesos(owedCents(due.amountCents, due.paidCents))} — ${dueDateText(due.dueDate)}`;
   }
-  return `Debés ${formatted} — vence el ${formattedDate}`;
+  return `Debés ${formatted} — ${dueDateText(due.dueDate)}`;
 }
 
 type PaymentFormProps = {
@@ -468,7 +475,8 @@ export function Dues() {
               {dues.map((due) => (
                 <li key={due.id}>
                   <div>
-                    <strong>{due.name}</strong> — {formatPesos(due.amountCents)} — vence el {formatDate(due.dueDate)}
+                    <strong>{due.name}</strong> — {formatPesos(due.amountCents)} —{" "}
+                    {due.owingCount > 0 ? dueDateText(due.dueDate) : `vence el ${formatDate(due.dueDate)}`}
                     <br />
                     <span className="muted small">
                       {due.totalCount - due.owingCount} de {due.totalCount} pagaron
