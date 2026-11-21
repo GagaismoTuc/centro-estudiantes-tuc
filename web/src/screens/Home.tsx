@@ -10,7 +10,7 @@ import { Link } from "../lib/router.tsx";
 
 type Module = { title: string; text: string; icon: IconName };
 
-// Finance and elections are for anyone in a school, like their links in the menu.
+// Finance and elections are for anyone in a school (/eleccion sends users without one home).
 const schoolModules: (Module & { to: string })[] = [
   { title: "Finanzas", text: "Ingresos y gastos del centro, con comprobantes.", icon: "wallet", to: "/caja" },
   { title: "Elecciones", text: "Votación desde el celular, con voto secreto.", icon: "ballot", to: "/eleccion" },
