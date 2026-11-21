@@ -29,7 +29,10 @@ export function ContactMeta({ phone, email, zone }: { phone: string; email: stri
         <div>
           <dt>Teléfono / WhatsApp</dt>
           <dd>
-            <bdi>{phone}</bdi>
+            {/* tel: takes only digits and +; the text keeps how it was written. */}
+            <a href={`tel:${phone.replace(/[^\d+]/g, "")}`}>
+              <bdi>{phone}</bdi>
+            </a>
           </dd>
         </div>
       )}

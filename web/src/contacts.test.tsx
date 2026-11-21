@@ -272,4 +272,17 @@ describe("Contacts and Headings screens", () => {
     expect(css).toContain(".contacts-grid");
     expect(css).not.toMatch(/\.(contacts|heading)-[a-z-]+\s*\{[^}]*grid-template-columns:\s*1fr\b/);
   });
+
+  test("R8 (#134) contact phones are tel: links", async () => {
+    mockApi({
+      "GET /auth/me": ok(me({ role: "school_admin", roles: ["school_admin"], mfa: "satisfied" })),
+      "GET /contacts/headings": ok(sampleHeadings),
+      "GET /contacts": ok(sampleContacts),
+    });
+    window.history.replaceState(null, "", "/contactos");
+    render(<App />);
+    const gazebos = await screen.findByRole("link", { name: "381 555-0000" });
+    expect(gazebos.getAttribute("href")).toBe("tel:3815550000");
+    expect(screen.getByRole("link", { name: "381 555-0199" }).getAttribute("href")).toBe("tel:3815550199");
+  });
 });

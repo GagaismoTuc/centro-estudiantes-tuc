@@ -134,7 +134,7 @@ func (s *server) getAccountabilityReport(w http.ResponseWriter, r *http.Request,
 		entries = append(entries, finance.Entry{ID: e.ID, CategoryID: e.CategoryID, Direction: e.Direction, Date: e.Date, Description: e.Description,
 			RecordedBy: e.RecordedBy, AmountCents: e.AmountCents, ReversesID: e.ReversesID, ReversalID: reversal})
 	}
-	writeCSV(w, "rendicion-de-cuentas-"+rep.From+"-a-"+rep.To+".csv", func(cw *csv.Writer) {
+	writeCSV(w, "rendicion-de-cuentas-"+accountabilitySlug(rep.Term)+"-"+rep.From+"-a-"+rep.To+".csv", func(cw *csv.Writer) {
 		_ = cw.Write([]string{"concepto", "valor"})
 		_ = cw.Write([]string{"Gestión", csvText(rep.Term)})
 		_ = cw.Write([]string{"Período", rep.From + " a " + rep.To})

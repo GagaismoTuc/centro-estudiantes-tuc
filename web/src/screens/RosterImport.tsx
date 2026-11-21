@@ -68,6 +68,11 @@ function rowCount(rows: RowError[], dataLines: number | null): string | null {
 }
 
 function summary({ inserted, skipped }: { inserted: number; skipped: number }): string {
+  if (inserted === 0 && skipped > 0) {
+    return skipped === 1
+      ? "No había alumnos nuevos: el alumno ya estaba en el padrón."
+      : `No había alumnos nuevos: los ${skipped} ya estaban en el padrón.`;
+  }
   const added = inserted === 1 ? "Se cargó 1 alumno nuevo." : `Se cargaron ${inserted} alumnos nuevos.`;
   if (skipped === 0) return added;
   return skipped === 1
@@ -109,6 +114,11 @@ export function RosterImport({ onStart, onImported, describeFailure }: Props) {
     // The raw bytes, whatever MIME type the browser guessed: decoding here would hide a
     // non-UTF-8 file that the API must reject.
     const bytes = new Uint8Array(await file.arrayBuffer());
+    // Only a BOM or blank lines is as empty as zero bytes; the API would call it a bad header.
+    if (new TextDecoder().decode(bytes).trim() === "") {
+      setPending(false);
+      return setStatus({ tone: "error", text: "El archivo está vacío." });
+    }
     const result = await call(
       apiClient.POST("/roster/import", {
         body: "",

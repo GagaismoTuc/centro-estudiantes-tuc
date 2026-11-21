@@ -331,7 +331,7 @@ func TestAccountabilityDueTotalsWithoutNames(t *testing.T) {
 		t.Fatalf("payment entries in the copy=%d, want 312", payments)
 	}
 	csvRec := rf.get(acctPath+"/"+rep.ID+".csv", student)
-	records := readCSV(t, csvRec, "rendicion-de-cuentas-2026-03-01-a-2026-11-30.csv")
+	records := readCSV(t, csvRec, "rendicion-de-cuentas-gestion-2026-2026-03-01-a-2026-11-30.csv")
 	found := false
 	for _, rec := range records {
 		found = found || strings.Join(rec, ";") == "Cuota de noviembre;2026-11-15;312;470"
@@ -437,7 +437,7 @@ func TestAccountabilityRoles(t *testing.T) {
 			if got := decodeAcct(t, rf.get(acctPath+"/"+rep.ID, token), http.StatusOK); got.ID != rep.ID {
 				t.Fatalf("report id=%s", got.ID)
 			}
-			readCSV(t, rf.get(acctPath+"/"+rep.ID+".csv", token), "rendicion-de-cuentas-2026-03-01-a-2026-11-30.csv")
+			readCSV(t, rf.get(acctPath+"/"+rep.ID+".csv", token), "rendicion-de-cuentas-gestion-2026-2026-03-01-a-2026-11-30.csv")
 		})
 	}
 	for _, path := range []string{acctPath, acctPath + "/" + rep.ID, acctPath + "/" + rep.ID + ".csv"} {
@@ -481,7 +481,7 @@ func TestAccountabilityCSV(t *testing.T) {
 	if !strings.Contains(rec.Body.String(), "\r\n\r\n") {
 		t.Fatalf("sections are not separated by an empty line: %q", rec.Body)
 	}
-	got := readCSV(t, rec, "rendicion-de-cuentas-2026-03-01-a-2026-11-30.csv")
+	got := readCSV(t, rec, "rendicion-de-cuentas-gestion-2026-2026-03-01-a-2026-11-30.csv")
 	want := [][]string{
 		{"concepto", "valor"},
 		{"Gestión", "Gestión 2026"},
