@@ -1,13 +1,10 @@
-const PESO_CENTS = 100n;
+import { formatPesos, parseHundredths } from "./money.ts";
+
 const ROUND_STEP_CENTS = 10_000n; // $100 in integer cents
 const BPS_SCALE = 10_000n; // 100.00% = 10_000 basis points
 
 export type ParseCentsOutcome =
   | { ok: true; cents: number }
-  | { ok: false; reason: "empty" | "negative" | "invalid" };
-
-type ParseHundredthsOutcome =
-  | { ok: true; hundredths: number }
   | { ok: false; reason: "empty" | "negative" | "invalid" };
 
 export type PricePerPersonErrors = {
@@ -85,70 +82,14 @@ export type SpendableResult = {
   plannedCostError?: string | undefined;
 };
 
-/**
- * Parses a decimal string (supporting Argentine `,` decimals and `.` thousand separators)
- * into integer hundredths without floating-point arithmetic.
- */
-function parseDecimalHundredths(raw: string): ParseHundredthsOutcome {
+/** Parses typed peso text into integer centavos for the calculator's safe-integer math. */
+export function parsePesosToCents(raw: string): ParseCentsOutcome {
   const trimmed = raw.trim();
   if (!trimmed) return { ok: false, reason: "empty" };
-
-  const isNegative = trimmed.startsWith("-");
-  const unsigned = isNegative ? trimmed.slice(1).trim() : trimmed;
-  if (!unsigned || /[^0-9.,]/.test(unsigned)) return { ok: false, reason: "invalid" };
-
-  const hasDot = unsigned.includes(".");
-  const hasComma = unsigned.includes(",");
-  let normalized: string;
-
-  if (hasDot && hasComma) {
-    if (unsigned.lastIndexOf(",") > unsigned.lastIndexOf(".")) {
-      if ((unsigned.match(/,/g) ?? []).length > 1) return { ok: false, reason: "invalid" };
-      normalized = unsigned.replaceAll(".", "").replace(",", ".");
-    } else {
-      if ((unsigned.match(/\./g) ?? []).length > 1) return { ok: false, reason: "invalid" };
-      normalized = unsigned.replaceAll(",", "");
-    }
-  } else if (hasComma) {
-    const commaCount = (unsigned.match(/,/g) ?? []).length;
-    if (commaCount > 1) {
-      if (!/^\d{1,3}(,\d{3})+$/.test(unsigned)) return { ok: false, reason: "invalid" };
-      normalized = unsigned.replaceAll(",", "");
-    } else {
-      normalized = unsigned.replace(",", ".");
-    }
-  } else if (hasDot) {
-    const dotCount = (unsigned.match(/\./g) ?? []).length;
-    if (dotCount > 1) {
-      if (!/^\d{1,3}(\.\d{3})+$/.test(unsigned)) return { ok: false, reason: "invalid" };
-      normalized = unsigned.replaceAll(".", "");
-    } else if (/^[1-9]\d{0,2}\.\d{3}$/.test(unsigned)) {
-      normalized = unsigned.replace(".", "");
-    } else {
-      normalized = unsigned;
-    }
-  } else {
-    normalized = unsigned;
-  }
-
-  if (!/^\d+(\.\d+)?$/.test(normalized)) return { ok: false, reason: "invalid" };
-  if (isNegative) return { ok: false, reason: "negative" };
-
-  const [wholeStr, fracStr = ""] = normalized.split(".");
-  const whole = BigInt(wholeStr ?? "0");
-  const fracTwo = BigInt(fracStr.slice(0, 2).padEnd(2, "0"));
-  const roundUp = Number(fracStr[2] ?? "0") >= 5 ? 1n : 0n;
-  const hundredths = whole * PESO_CENTS + fracTwo + roundUp;
-  if (hundredths > BigInt(Number.MAX_SAFE_INTEGER)) return { ok: false, reason: "invalid" };
-
-  return { ok: true, hundredths: Number(hundredths) };
-}
-
-/** Parses a monetary peso string into integer centavos. */
-export function parsePesosToCents(raw: string): ParseCentsOutcome {
-  const withoutCurrency = raw.trim().replace(/^\$\s*/, "");
-  const parsed = parseDecimalHundredths(withoutCurrency);
-  return parsed.ok ? { ok: true, cents: parsed.hundredths } : parsed;
+  if (trimmed.startsWith("-")) return { ok: false, reason: "negative" };
+  const cents = parseHundredths(trimmed);
+  if (cents === null || cents > BigInt(Number.MAX_SAFE_INTEGER)) return { ok: false, reason: "invalid" };
+  return { ok: true, cents: Number(cents) };
 }
 
 function parseInteger(raw: string, min: number): number | null {
@@ -181,18 +122,6 @@ export function roundUpTo100Pesos(cents: number): number {
   return Number(((c + ROUND_STEP_CENTS - 1n) / ROUND_STEP_CENTS) * ROUND_STEP_CENTS);
 }
 
-/** Formats integer centavos as `$ 4.400` (omitting `,00` for whole pesos, keeping `,cc` otherwise). */
-export function formatPesos(cents: number | bigint): string {
-  const value = typeof cents === "bigint" ? cents : BigInt(Math.trunc(cents));
-  const sign = value < 0n ? "-" : "";
-  const abs = value < 0n ? -value : value;
-  const whole = abs / PESO_CENTS;
-  const frac = abs % PESO_CENTS;
-  const wholeFormatted = whole.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-  const fracFormatted = frac === 0n ? "" : `,${frac.toString().padStart(2, "0")}`;
-  return `${sign}$ ${wholeFormatted}${fracFormatted}`;
-}
-
 /** Calculates price per person rounded up to $100, with optional percentage margin. */
 export function calculatePricePerPerson(input: {
   totalCost: string;
@@ -210,12 +139,13 @@ export function calculatePricePerPerson(input: {
   let marginBps = 0n;
   const rawMargin = (input.marginPercent ?? "").trim().replace(/\s*%$/, "");
   if (rawMargin !== "") {
-    const parsedMargin = parseDecimalHundredths(rawMargin);
+    // A percentage with two decimals reads like pesos: its hundredths are basis points.
+    const parsedMargin = parsePesosToCents(rawMargin);
     if (!parsedMargin.ok) {
       errors.marginPercent =
         parsedMargin.reason === "negative" ? "El margen no puede ser negativo" : "Ingresá un margen válido";
     } else {
-      marginBps = BigInt(parsedMargin.hundredths);
+      marginBps = BigInt(parsedMargin.cents);
     }
   }
 

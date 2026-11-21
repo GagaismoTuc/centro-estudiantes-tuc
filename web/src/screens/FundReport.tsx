@@ -6,7 +6,7 @@ import { useSession } from "../auth/session.tsx";
 import { Field, FormStatus, useFormErrors, type Status } from "../components/Form.tsx";
 import { PageTitle, useDocumentTitle } from "../components/Page.tsx";
 import { Link } from "../lib/router.tsx";
-import { dayMonthYear, pesos, todayArgentina } from "../lib/money.ts";
+import { dayMonthYear, formatPesos, todayArgentina } from "../lib/money.ts";
 
 type Entry = Omit<components["schemas"]["FinanceEntry"], "amountCents"> & { amountCents: string };
 type Total = Omit<components["schemas"]["FinanceCategoryTotal"], "totalCents"> & { totalCents: string };
@@ -87,7 +87,7 @@ export function FundReport() {
     return <>
       <h3 id={`${ids}-${direction}`}>{title}</h3>
       {rows.length === 0 ? <p>{none}</p> : <ul className="report-list" aria-labelledby={`${ids}-${direction}`}>
-        {rows.map((t) => <li key={t.categoryId}><span>{t.name}</span><span>{pesos(t.totalCents)}</span></li>)}
+        {rows.map((t) => <li key={t.categoryId}><span>{t.name}</span><span>{formatPesos(t.totalCents)}</span></li>)}
       </ul>}
     </>;
   };
@@ -113,10 +113,10 @@ export function FundReport() {
         <h2 id={`${ids}-summary`}>Saldos</h2>
         <p>Del {dayMonthYear(report.from)} al {dayMonthYear(report.to)}</p>
         <dl className="report-summary">
-          <div><dt>Saldo inicial</dt><dd>{pesos(report.openingCents)}</dd></div>
-          <div><dt>Total de ingresos</dt><dd>{pesos(report.incomeCents)}</dd></div>
-          <div><dt>Total de gastos</dt><dd>{pesos(report.expenseCents)}</dd></div>
-          <div><dt>Saldo final</dt><dd>{pesos(report.closingCents)}</dd></div>
+          <div><dt>Saldo inicial</dt><dd>{formatPesos(report.openingCents)}</dd></div>
+          <div><dt>Total de ingresos</dt><dd>{formatPesos(report.incomeCents)}</dd></div>
+          <div><dt>Total de gastos</dt><dd>{formatPesos(report.expenseCents)}</dd></div>
+          <div><dt>Saldo final</dt><dd>{formatPesos(report.closingCents)}</dd></div>
         </dl>
       </section>
       <section className="panel" aria-labelledby={`${ids}-totals`}>
@@ -127,7 +127,7 @@ export function FundReport() {
       <section className="panel" aria-labelledby={`${ids}-entries`}>
         <h2 id={`${ids}-entries`}>Movimientos del rango</h2>
         {report.entries.length === 0 ? <p>No hay movimientos entre esas fechas.</p> : <ul>{report.entries.map((entry) => <li key={entry.id}>
-          <strong>{entry.description}</strong> {"—"} {pesos(entry.amountCents)} ({entry.direction === "income" ? "Ingreso" : "Gasto"})<br />
+          <strong>{entry.description}</strong> {"—"} {formatPesos(entry.amountCents)} ({entry.direction === "income" ? "Ingreso" : "Gasto"})<br />
           <span>{names.get(entry.categoryId)} {"—"} {dayMonthYear(entry.date)}</span><br />
           Registrado por {entry.recordedBy}
         </li>)}</ul>}

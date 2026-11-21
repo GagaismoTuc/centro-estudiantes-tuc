@@ -395,3 +395,26 @@ test("R2 and R3 detail upload shows Spanish error and moves focus to invalid inp
   expect(input.getAttribute("aria-invalid")).toBe("true");
   await waitFor(() => expect(document.activeElement).toBe(input));
 });
+
+test("#130 R1 R2 R3 Caja accepts 1.234,56, rejects ambiguous amounts without posting, and shows a negative balance as -$ 195.269,88", async () => {
+  const sent = mockApi({ "GET /auth/me": ok(me({ role: "officer", mfa: "satisfied" })), ...reads, "GET /finance/balance": ok({ balanceCents: -19526988 }), "POST /finance/entries": ok(entry, 201) });
+  window.history.replaceState(null, "", "/caja"); render(<App />);
+  expect(await screen.findByText("-$ 195.269,88")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Nuevo movimiento" }));
+  await screen.findByRole("option", { name: "Ventas" });
+  fireEvent.change(screen.getByLabelText("Categoría"), { target: { value: "c1" } });
+  fireEvent.change(screen.getByLabelText("Fecha"), { target: { value: "2026-11-10" } });
+  fireEvent.change(screen.getByLabelText("Descripción"), { target: { value: "Venta de tortas" } });
+  const amount = screen.getByLabelText("Monto en pesos");
+  for (const raw of ["1.2345", "12,345", "1.23.4", "1,234", "-5", "0", "abc", ""]) {
+    fireEvent.change(amount, { target: { value: raw } });
+    fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+    await waitFor(() => expect(amount.getAttribute("aria-invalid")).toBe("true"));
+    expect(document.getElementById(amount.getAttribute("aria-describedby") ?? "")?.textContent).toBe("Ingresá un monto positivo con hasta dos decimales.");
+  }
+  expect(sentTo(sent, "POST /finance/entries")).toHaveLength(0);
+  fireEvent.change(amount, { target: { value: "1.234,56" } });
+  fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+  await waitFor(() => expect(sentTo(sent, "POST /finance/entries")).toHaveLength(1));
+  expect(sentTo(sent, "POST /finance/entries")[0]?.body).toMatchObject({ amountCents: 123456 });
+});

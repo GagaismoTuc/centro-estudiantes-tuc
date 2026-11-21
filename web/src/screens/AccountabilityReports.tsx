@@ -6,7 +6,7 @@ import { hasRole, useMe, useSession } from "../auth/session.tsx";
 import { Field, FormStatus, useFormErrors, type Status } from "../components/Form.tsx";
 import { PageTitle, useDocumentTitle } from "../components/Page.tsx";
 import { Link } from "../lib/router.tsx";
-import { dayMonthYear, pesos, todayArgentina } from "../lib/money.ts";
+import { dayMonthYear, formatPesos, todayArgentina } from "../lib/money.ts";
 
 type Summary = components["schemas"]["AccountabilityReportSummary"];
 type Total = Omit<components["schemas"]["FinanceCategoryTotal"], "totalCents"> & { totalCents: string };
@@ -142,10 +142,10 @@ function PublishPanel({ onPublished, authError }: { onPublished: (report: Report
       <h3 id={`${ids}-preview`}>Vista previa</h3>
       <p><strong>{preview.term}</strong> {"—"} {period(preview)}</p>
       <dl className="report-summary">
-        <div><dt>Saldo inicial</dt><dd>{pesos(preview.openingCents)}</dd></div>
-        <div><dt>Total de ingresos</dt><dd>{pesos(preview.incomeCents)}</dd></div>
-        <div><dt>Total de gastos</dt><dd>{pesos(preview.expenseCents)}</dd></div>
-        <div><dt>Saldo final</dt><dd>{pesos(preview.closingCents)}</dd></div>
+        <div><dt>Saldo inicial</dt><dd>{formatPesos(preview.openingCents)}</dd></div>
+        <div><dt>Total de ingresos</dt><dd>{formatPesos(preview.incomeCents)}</dd></div>
+        <div><dt>Total de gastos</dt><dd>{formatPesos(preview.expenseCents)}</dd></div>
+        <div><dt>Saldo final</dt><dd>{formatPesos(preview.closingCents)}</dd></div>
       </dl>
       <p>{preview.entries.length === 1 ? "1 movimiento" : `${preview.entries.length} movimientos`} en el período.</p>
       <p role="note"><strong>{NOTICE}</strong></p>
@@ -197,7 +197,7 @@ function ReportView({ report }: { report: Report }) {
     return <>
       <h3 id={`${ids}-${direction}`}>{title}</h3>
       <ul className="report-list" aria-labelledby={`${ids}-${direction}`}>
-        {rows.map((t) => <li key={t.categoryId}><span>{t.name}</span><span>{pesos(t.totalCents)}</span></li>)}
+        {rows.map((t) => <li key={t.categoryId}><span>{t.name}</span><span>{formatPesos(t.totalCents)}</span></li>)}
       </ul>
     </>;
   };
@@ -205,8 +205,8 @@ function ReportView({ report }: { report: Report }) {
     <h2 id={`${ids}-title`}>{report.term}</h2>
     <p>{period(report)}. Publicada por {report.publishedBy}.</p>
     <dl className="report-summary">
-      <div><dt>Saldo inicial</dt><dd>{pesos(report.openingCents)}</dd></div>
-      <div><dt>Saldo final</dt><dd>{pesos(report.closingCents)}</dd></div>
+      <div><dt>Saldo inicial</dt><dd>{formatPesos(report.openingCents)}</dd></div>
+      <div><dt>Saldo final</dt><dd>{formatPesos(report.closingCents)}</dd></div>
     </dl>
     {totals("income", "Ingresos")}
     {totals("expense", "Gastos")}
@@ -218,7 +218,7 @@ function ReportView({ report }: { report: Report }) {
     </>}
     <h3 id={`${ids}-entries`}>Movimientos</h3>
     {report.entries.length === 0 ? <p>No hubo movimientos en el período.</p> : <ul aria-labelledby={`${ids}-entries`}>{report.entries.map((e) => <li key={e.id}>
-      <strong>{e.description}</strong> {"—"} {pesos(e.amountCents)} ({e.direction === "income" ? "Ingreso" : "Gasto"})<br />
+      <strong>{e.description}</strong> {"—"} {formatPesos(e.amountCents)} ({e.direction === "income" ? "Ingreso" : "Gasto"})<br />
       <span>{e.category} {"—"} {dayMonthYear(e.date)}</span>
     </li>)}</ul>}
     <FormStatus status={pdfStatus} {...pdfForm.statusProps} />

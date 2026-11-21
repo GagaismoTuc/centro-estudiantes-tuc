@@ -19,7 +19,7 @@ import { canReadDues, hasRole, useMe, useSession } from "../auth/session.tsx";
 import { ConfirmDialog } from "../components/ConfirmDialog.tsx";
 import { Field, FormStatus, useFormErrors, type Status } from "../components/Form.tsx";
 import { PageTitle, useDocumentTitle } from "../components/Page.tsx";
-import { centsOf, dayMonthYear, pesos, pesosInput, todayArgentina } from "../lib/money.ts";
+import { dayMonthYear, formatPesos, parsePesos, pesosInput, todayArgentina } from "../lib/money.ts";
 
 const memberStatusLabel: Record<string, string> = {
   owing: "Debe",
@@ -32,18 +32,18 @@ const owedCents = (amountCents: string, paidCents: string) => String(BigInt(amou
 
 /** "Pagó $ 500,00 de $ 2.000,00" while a payment is partial; otherwise the status label. */
 function memberStatusText(member: DueMember, amountCents: string): string {
-  if (member.status === "owing" && member.paidCents !== "0") return `Pagó ${pesos(member.paidCents)} de ${pesos(amountCents)}`;
+  if (member.status === "owing" && member.paidCents !== "0") return `Pagó ${formatPesos(member.paidCents)} de ${formatPesos(amountCents)}`;
   return memberStatusLabel[member.status] ?? member.status;
 }
 
 function myDueText(due: MyDue): string {
-  const formatted = pesos(due.amountCents);
+  const formatted = formatPesos(due.amountCents);
   const formattedDate = dayMonthYear(due.dueDate);
   if (due.status === "paid") return `Pagada ${formatted} — vencía el ${formattedDate}`;
   // S6: the exempt student sees only "Exento", never the reason.
   if (due.status === "exempt") return "Exento";
   if (due.paidCents !== "0") {
-    return `Pagaste ${pesos(due.paidCents)} de ${formatted}, te falta ${pesos(owedCents(due.amountCents, due.paidCents))} — vence el ${formattedDate}`;
+    return `Pagaste ${formatPesos(due.paidCents)} de ${formatted}, te falta ${formatPesos(owedCents(due.amountCents, due.paidCents))} — vence el ${formattedDate}`;
   }
   return `Debés ${formatted} — vence el ${formattedDate}`;
 }
@@ -64,18 +64,18 @@ function PaymentForm({ member, owed, busy, form, onSubmit, onCancel }: PaymentFo
 
   function handleSubmit() {
     if (!form.validate({
-      amount: (v) => (centsOf(v) === null ? "Ingresá un monto positivo con hasta dos decimales." : null),
+      amount: (v) => (parsePesos(v) === null ? "Ingresá un monto positivo con hasta dos decimales." : null),
       date: (v) => (!v ? "Elegí la fecha del pago." : null),
     })) {
       return;
     }
-    onSubmit({ amountCents: centsOf(amount)!, date });
+    onSubmit({ amountCents: String(parsePesos(amount)!), date });
   }
 
   return (
     <section className="panel">
       <h2 id={headingId}>Registrar pago de {member.fullName}</h2>
-      <p className="muted small">Falta pagar {pesos(owed)}.</p>
+      <p className="muted small">Falta pagar {formatPesos(owed)}.</p>
       <form
         aria-labelledby={headingId}
         {...form.formProps}
@@ -121,12 +121,12 @@ export function DueForm({ heading, headingId: providedHeadingId, plain, submitLa
   function handleSubmit() {
     if (!form.validate({
       name: (v) => (!v.trim() ? "Escribí un nombre." : null),
-      amount: (v) => (centsOf(v) === null ? "Ingresá un monto positivo con hasta dos decimales." : null),
+      amount: (v) => (parsePesos(v) === null ? "Ingresá un monto positivo con hasta dos decimales." : null),
       dueDate: (v) => (!v ? "Elegí una fecha de vencimiento." : null),
     })) {
       return;
     }
-    onSubmit({ name: name.trim(), amountCents: centsOf(amount)!, dueDate });
+    onSubmit({ name: name.trim(), amountCents: String(parsePesos(amount)!), dueDate });
   }
 
   const content = (
@@ -467,7 +467,7 @@ export function Dues() {
               {dues.map((due) => (
                 <li key={due.id}>
                   <div>
-                    <strong>{due.name}</strong> — {pesos(due.amountCents)} — vence el {dayMonthYear(due.dueDate)}
+                    <strong>{due.name}</strong> — {formatPesos(due.amountCents)} — vence el {dayMonthYear(due.dueDate)}
                     <br />
                     <span className="muted small">
                       {due.totalCount - due.owingCount} de {due.totalCount} pagaron
@@ -527,7 +527,7 @@ export function Dues() {
             <div>
               <h2 id="due-detail-title">{detail.name}</h2>
               <p className="muted small">
-                {pesos(detail.amountCents)} — vence el {dayMonthYear(detail.dueDate)} ·{" "}
+                {formatPesos(detail.amountCents)} — vence el {dayMonthYear(detail.dueDate)} ·{" "}
                 {detail.totalCount - detail.owingCount} de {detail.totalCount} pagaron
               </p>
             </div>

@@ -51,7 +51,7 @@ describe("shared error messages", () => {
     expect(errorMessage("description_required")).toBe("Escrib\u00ed una descripci\u00f3n para el precio de referencia.");
     expect(errorMessage("description_required", "finance")).toBe("Escrib\u00ed una descripci\u00f3n.");
     expect(errorMessage("invalid_amount")).toBe("Ingres\u00e1 un monto mayor a cero.");
-    expect(errorMessage("invalid_amount", "finance")).toBe("Ingres\u00e1 un monto positivo en centavos enteros.");
+    expect(errorMessage("invalid_amount", "finance")).toBe("Ingres\u00e1 un monto positivo con hasta dos decimales.");
     expect(errorMessage("invalid_date")).toBe("Ingres\u00e1 una fecha v\u00e1lida.");
     expect(errorMessage("invalid_date", "finance")).toBe("Eleg\u00ed una fecha v\u00e1lida.");
   });
