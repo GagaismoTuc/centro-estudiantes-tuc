@@ -3,10 +3,11 @@ import { errorMessage } from "../api/errors.ts";
 import { moneyRequest } from "../api/money.ts";
 import type { components } from "../api/schema.gen.ts";
 import { hasRole, useMe, useSession } from "../auth/session.tsx";
+import { ConfirmDialog } from "../components/ConfirmDialog.tsx";
 import { Field, FormStatus, useFormErrors, type Status } from "../components/Form.tsx";
 import { PageTitle, useDocumentTitle } from "../components/Page.tsx";
 import { Link } from "../lib/router.tsx";
-import { formatDate, todayArgentina } from "../lib/datetime.ts";
+import { formatDate, formatDateTime, todayArgentina } from "../lib/datetime.ts";
 import { formatPesos } from "../lib/money.ts";
 
 type Summary = components["schemas"]["AccountabilityReportSummary"];
@@ -55,7 +56,7 @@ export function AccountabilityReports() {
   return <>
     <header className="page-header"><PageTitle>Rendiciones de cuentas</PageTitle></header>
     <p><Link to="/caja">Volver a Caja</Link></p>
-    {isOfficer && <PublishPanel onPublished={(report) => { setOpen(report); void load(); }} authError={authError} />}
+    {isOfficer && <PublishPanel published={list ?? []} onPublished={(report) => { setOpen(report); void load(); }} authError={authError} />}
     <section className="panel" aria-labelledby={`${ids}-list`}>
       <h2 id={`${ids}-list`}>Rendiciones publicadas</h2>
       <FormStatus status={listStatus} />
@@ -75,8 +76,11 @@ export function AccountabilityReports() {
   </>;
 }
 
-/** Officer-only form: choose the period and Term, preview it with the notice, then publish. */
-function PublishPanel({ onPublished, authError }: { onPublished: (report: Report) => void; authError: (code: string) => void }) {
+/**
+ * Officer-only form: choose the period and Term, preview it with the notice, then confirm and publish.
+ * Duplicates stay allowed (spec #29); the preview only warns about one of the same Term and period.
+ */
+function PublishPanel({ published, onPublished, authError }: { published: Summary[]; onPublished: (report: Report) => void; authError: (code: string) => void }) {
   const [term, setTerm] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState(todayArgentina);
@@ -84,14 +88,26 @@ function PublishPanel({ onPublished, authError }: { onPublished: (report: Report
   const [status, setStatus] = useState<Status>(null);
   const [busy, setBusy] = useState(false);
   const sending = useRef(false);
+  const [confirming, setConfirming] = useState(false);
+  const publishButton = useRef<HTMLButtonElement>(null);
+  // Set before a render that unmounts the focused control: Cancelar refocuses Publicar,
+  // a successful publish focuses the message (CS-9).
+  const focusAfter = useRef<"publish" | "status" | null>(null);
   const form = useFormErrors();
   const ids = useId();
+  useEffect(() => {
+    const target = focusAfter.current;
+    focusAfter.current = null;
+    if (target === "publish") publishButton.current?.focus();
+    else if (target === "status") form.statusProps.ref.current?.focus();
+  });
+  const duplicate = preview && published.find((r) => r.term === preview.term && r.from === preview.from && r.to === preview.to);
 
   async function showPreview() {
     if (!form.validate({
       term: (v) => !v.trim() ? "Escribí la gestión, por ejemplo «Gestión 2026»." : null,
       from: (v) => !v ? "Elegí la fecha de inicio." : null,
-      to: (v) => !v ? "Elegí la fecha de fin." : from && v < from ? "La fecha «Hasta» no puede ser anterior a «Desde»." : null,
+      to: (v) => !v ? "Elegí la fecha de fin." : v > todayArgentina() ? "La fecha no puede ser futura." : from && v < from ? "La fecha «Hasta» no puede ser anterior a «Desde»." : null,
     })) return;
     setBusy(true); setStatus(null);
     const result = await moneyRequest<Omit<Preview, "term">>(`/finance/report?${new URLSearchParams({ from, to })}`);
@@ -114,6 +130,7 @@ function PublishPanel({ onPublished, authError }: { onPublished: (report: Report
     sending.current = false;
     setBusy(false);
     if (result.ok) {
+      focusAfter.current = "status";
       setPreview(null);
       setStatus({ tone: "ok", text: "Rendición publicada." });
       onPublished(result.data);
@@ -149,11 +166,21 @@ function PublishPanel({ onPublished, authError }: { onPublished: (report: Report
         <div><dt>Saldo final</dt><dd>{formatPesos(preview.closingCents)}</dd></div>
       </dl>
       <p>{preview.entries.length === 1 ? "1 movimiento" : `${preview.entries.length} movimientos`} en el período.</p>
+      {duplicate && <p role="note">Ya hay una rendición de esta gestión y período, publicada el {formatDateTime(duplicate.publishedAt)}.</p>}
       <p role="note"><strong>{NOTICE}</strong></p>
       <div className="panel__actions">
-        <button type="button" className="button button--primary" disabled={busy} onClick={() => void publish()}>Publicar</button>
+        <button ref={publishButton} type="button" className="button button--primary" disabled={busy} onClick={() => setConfirming(true)}>Publicar</button>
       </div>
     </div>}
+    {preview && confirming && <ConfirmDialog
+      title="Publicar la rendición"
+      confirmLabel="Publicar"
+      onConfirm={() => { setConfirming(false); void publish(); }}
+      onCancel={() => { focusAfter.current = "publish"; setConfirming(false); }}
+    >
+      <p><strong>{preview.term}</strong> {"—"} {period(preview)}</p>
+      <p><strong>{NOTICE}</strong></p>
+    </ConfirmDialog>}
   </section>;
 }
 

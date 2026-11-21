@@ -25,6 +25,18 @@ function open() {
   render(<App />);
 }
 
+/** Pins Argentina's today, so «Hasta» 30/11/2026 is not in the future. */
+function today(instant = "2026-11-30T15:00:00Z") {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date(instant));
+}
+
+/** Publicar in the preview, then the confirmation's own Publicar. */
+async function publishConfirmed() {
+  fireEvent.click(within(await screen.findByRole("region", { name: "Vista previa" })).getByRole("button", { name: "Publicar" }));
+  fireEvent.click(within(await screen.findByRole("dialog", { name: "Publicar la rendición" })).getByRole("button", { name: "Publicar" }));
+}
+
 function fillAndPreview(term: string, from: string, to: string) {
   fireEvent.change(screen.getByLabelText(/^Gestión/), { target: { value: term } });
   fireEvent.change(screen.getByLabelText("Desde"), { target: { value: from } });
@@ -68,7 +80,7 @@ test("R9 an Officer previews the period with the notice before publishing it", a
   expect(preview.textContent).toContain("Gestión 2026 — Del 01/03/2026 al 30/11/2026");
   expect(sentTo(sent, "POST /finance/accountability-reports")).toHaveLength(0);
 
-  fireEvent.click(within(preview).getByRole("button", { name: "Publicar" }));
+  await publishConfirmed();
   await screen.findByText("Rendición publicada.");
   expect(sentTo(sent, "POST /finance/accountability-reports").map((s) => s.body)).toEqual([{ from: "2026-03-01", to: "2026-11-30", term: "Gestión 2026" }]);
   const list = screen.getByRole("region", { name: "Rendiciones publicadas" });
@@ -77,6 +89,7 @@ test("R9 an Officer previews the period with the notice before publishing it", a
 });
 
 test("R9 editing the form after the preview discards it", async () => {
+  today();
   mockApi({ "GET /auth/me": ok(officer), "GET /finance/accountability-reports": ok([]), "GET /finance/report": ok(fundReport) });
   open();
   await screen.findByRole("region", { name: "Publicar una rendición" });
@@ -87,6 +100,7 @@ test("R9 editing the form after the preview discards it", async () => {
 });
 
 test("R5 Publicar is disabled while sending, so a double click publishes once", async () => {
+  today();
   let release: (value: Response) => void = () => {};
   const sent = mockApi({ "GET /auth/me": ok(officer), "GET /finance/accountability-reports": ok([]), "GET /finance/report": ok(fundReport) });
   const routed = vi.mocked(fetch).getMockImplementation()!;
@@ -100,7 +114,7 @@ test("R5 Publicar is disabled while sending, so a double click publishes once", 
   await screen.findByRole("region", { name: "Publicar una rendición" });
   fillAndPreview("Gestión 2026", "2026-03-01", "2026-11-30");
   const publish = within(await screen.findByRole("region", { name: "Vista previa" })).getByRole("button", { name: "Publicar" });
-  fireEvent.click(publish);
+  await publishConfirmed();
   await waitFor(() => expect((publish as HTMLButtonElement).disabled).toBe(true));
   fireEvent.click(publish);
   expect(sentTo(sent, "POST /finance/accountability-reports")).toHaveLength(1);
@@ -122,6 +136,7 @@ test("R9 a blank Gestión is announced, marked and focused, and nothing is sent"
 });
 
 test("R9 a future end the server rejects is announced on Hasta", async () => {
+  today();
   mockApi({
     "GET /auth/me": ok(officer),
     "GET /finance/accountability-reports": ok([]),
@@ -131,13 +146,84 @@ test("R9 a future end the server rejects is announced on Hasta", async () => {
   open();
   await screen.findByRole("region", { name: "Publicar una rendición" });
   fillAndPreview("Gestión 2026", "2026-03-01", "2026-11-30");
-  fireEvent.click(within(await screen.findByRole("region", { name: "Vista previa" })).getByRole("button", { name: "Publicar" }));
+  await publishConfirmed();
   await screen.findByText("La fecha no puede ser futura.");
   const to = screen.getByLabelText("Hasta");
   await waitFor(() => expect(document.activeElement).toBe(to));
   expect(to.getAttribute("aria-invalid")).toBe("true");
 });
 
+test("R2 the preview warns about a Rendición of the same Gestión and period, and Publicar stays allowed", async () => {
+  today();
+  const earlier = { id: "r3", from: "2026-03-01", to: "2026-11-30", term: "Gestión 2026", publishedBy: "Ana Ficticia", publishedAt: "2026-11-21T01:30:00Z" };
+  const sent = mockApi({
+    "GET /auth/me": ok(officer),
+    "GET /finance/accountability-reports": ok([published, earlier]),
+    "GET /finance/report": [ok({ ...fundReport, from: "2026-04-01" }), ok(fundReport)],
+    "POST /finance/accountability-reports": ok(copy, 201),
+  });
+  open();
+  await screen.findByText("Del 01/03/2026 al 30/11/2026");
+  const warning = "Ya hay una rendición de esta gestión y período, publicada el 20/11/2026 22:30.";
+  fillAndPreview("Gestión 2026", "2026-04-01", "2026-11-30");
+  await screen.findByRole("region", { name: "Vista previa" });
+  expect(screen.queryByText(warning)).toBeNull();
+
+  fillAndPreview("Gestión 2026", "2026-03-01", "2026-11-30");
+  const preview = await screen.findByRole("region", { name: "Vista previa" });
+  expect(within(preview).getByText(warning)).toBeTruthy();
+  await publishConfirmed();
+  await screen.findByText("Rendición publicada.");
+  expect(sentTo(sent, "POST /finance/accountability-reports").map((s) => s.body)).toEqual([{ from: "2026-03-01", to: "2026-11-30", term: "Gestión 2026" }]);
+});
+
+test("R3 Publicar asks in a ConfirmDialog that repeats the notice; Cancelar publishes nothing", async () => {
+  today();
+  const sent = mockApi({
+    "GET /auth/me": ok(officer),
+    "GET /finance/accountability-reports": ok([]),
+    "GET /finance/report": ok(fundReport),
+    "POST /finance/accountability-reports": ok(copy, 201),
+  });
+  open();
+  await screen.findByRole("region", { name: "Publicar una rendición" });
+  fillAndPreview("Gestión 2026", "2026-03-01", "2026-11-30");
+  const publish = within(await screen.findByRole("region", { name: "Vista previa" })).getByRole("button", { name: "Publicar" });
+  publish.focus();
+  fireEvent.click(publish);
+  let dialog = await screen.findByRole("dialog", { name: "Publicar la rendición" });
+  expect(within(dialog).getByText("Una vez publicada no se puede cambiar.")).toBeTruthy();
+  fireEvent.click(within(dialog).getByRole("button", { name: "Cancelar" }));
+  expect(screen.queryByRole("dialog")).toBeNull();
+  await waitFor(() => expect(document.activeElement).toBe(publish));
+  expect(sentTo(sent, "POST /finance/accountability-reports")).toHaveLength(0);
+  expect(screen.getByRole("region", { name: "Vista previa" })).toBeTruthy();
+
+  fireEvent.click(publish);
+  dialog = await screen.findByRole("dialog", { name: "Publicar la rendición" });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Publicar" }));
+  const message = (await screen.findByText("Rendición publicada.")).closest("[aria-live]");
+  await waitFor(() => expect(document.activeElement).toBe(message));
+  expect(sentTo(sent, "POST /finance/accountability-reports")).toHaveLength(1);
+});
+
+test("R4 a Hasta of tomorrow is a field error before asking for the preview", async () => {
+  today("2026-11-20T15:00:00Z");
+  const sent = mockApi({ "GET /auth/me": ok(officer), "GET /finance/accountability-reports": ok([]), "GET /finance/report": ok(fundReport) });
+  open();
+  await screen.findByRole("region", { name: "Publicar una rendición" });
+  fillAndPreview("Gestión 2026", "2026-03-01", "2026-11-21");
+  const to = screen.getByLabelText("Hasta");
+  await waitFor(() => expect(document.activeElement).toBe(to));
+  expect(to.getAttribute("aria-invalid")).toBe("true");
+  expect(document.getElementById(to.getAttribute("aria-describedby") ?? "")?.textContent).toBe("La fecha no puede ser futura.");
+  expect(sentTo(sent, "GET /finance/report")).toHaveLength(0);
+  expect(screen.queryByRole("region", { name: "Vista previa" })).toBeNull();
+
+  fillAndPreview("Gestión 2026", "2026-03-01", "2026-11-20");
+  await screen.findByRole("region", { name: "Vista previa" });
+  expect(sentTo(sent, "GET /finance/report")).toHaveLength(1);
+});
 
 test("R4 downloading a published PDF reports converter failures", async () => {
   mockApi({ "GET /auth/me": ok(me()), "GET /finance/accountability-reports": ok([published]), "GET /finance/accountability-reports/r1": ok({ ...copy, ...published }), "GET /finance/accountability-reports/r1.pdf": fail(503, "pdf_unavailable") });

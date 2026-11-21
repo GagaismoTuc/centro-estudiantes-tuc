@@ -4,6 +4,7 @@ import { apiClient } from "../api/client.ts";
 import { errorMessage } from "../api/errors.ts";
 import type { components } from "../api/schema.gen.ts";
 import { roleLabel, sortRoles, useSession } from "../auth/session.tsx";
+import { ConfirmDialog } from "../components/ConfirmDialog.tsx";
 import { checks, Field, FormStatus, useFormErrors, type Status } from "../components/Form.tsx";
 import { PageTitle, useDocumentTitle } from "../components/Page.tsx";
 
@@ -26,7 +27,16 @@ export function Members() {
   const statusRef = useRef<HTMLDivElement>(null);
   const memberRef = useRef<HTMLSelectElement>(null);
   const positionRef = useRef<HTMLSelectElement>(null);
-  useEffect(() => { if (status?.tone === "error") statusRef.current?.focus(); }, [status]);
+  const [confirmRemove, setConfirmRemove] = useState<Member | null>(null);
+  // The "Quitar cargo" button that opened the dialog: Cancelar returns focus to it (CS-9).
+  const removeInvoker = useRef<HTMLButtonElement | null>(null);
+  const refocusInvoker = useRef(false);
+  useEffect(() => {
+    if (!refocusInvoker.current) return;
+    refocusInvoker.current = false;
+    removeInvoker.current?.focus();
+  });
+  useEffect(() => { if (status) statusRef.current?.focus(); }, [status]);
   useEffect(() => {
     if (fieldError) (fieldError.field === "position" ? positionRef : memberRef).current?.focus();
   }, [fieldError]);
@@ -65,7 +75,10 @@ export function Members() {
     setBusy(false);
   }
   async function remove(id: string) {
-    setBusy(true); setStatus(null);
+    setConfirmRemove(null);
+    setBusy(true); setStatus(null); setFieldError(null);
+    if (invitationStatus?.tone === "error") setInvitationStatus(null);
+    invitationForm.clear();
     const result = await call(apiClient.DELETE("/members/{memberId}/officer", { params: { path: { memberId: id } } }));
     if (result.ok) { setStatus({ tone: "ok", text: "Se quit\u00f3 el cargo." }); await load(); }
     else failed(result.code);
@@ -98,8 +111,16 @@ export function Members() {
       <ul>{members.map((m, i) => <li key={m.email ?? m.rosterMemberId ?? i}>
         <bdi>{m.fullName ?? m.email}</bdi>{m.fullName && m.email && <> {"\u2014"} <bdi>{m.email}</bdi></>}{m.email === null && <> {"\u2014"} <span>sin cuenta</span></>}
         <ul>{sortRoles(m.roles).map((role) => <li key={role}>{roleLabel[role]}{role === "officer" && m.position ? ` \u2014 ${m.position}` : ""}</li>)}</ul>
-        {m.position && m.rosterMemberId && <button type="button" className="button button--secondary" disabled={busy} aria-label={`Quitar cargo de ${m.fullName ?? m.email ?? ""}`} onClick={() => void remove(m.rosterMemberId!)}>Quitar cargo</button>}
+        {m.position && m.rosterMemberId && <button type="button" className="button button--secondary" disabled={busy} aria-label={`Quitar cargo de ${m.fullName ?? m.email ?? ""}`} onClick={(e) => { removeInvoker.current = e.currentTarget; setConfirmRemove(m); }}>Quitar cargo</button>}
       </li>)}</ul>
     </section>
+    {confirmRemove && <ConfirmDialog
+      title="Quitar cargo"
+      confirmLabel="Quitar cargo"
+      onConfirm={() => void remove(confirmRemove.rosterMemberId!)}
+      onCancel={() => { refocusInvoker.current = true; setConfirmRemove(null); }}
+    >
+      <p>{"\u00bfLe quit\u00e1s el cargo de "}{confirmRemove.position}{" a "}<bdi>{confirmRemove.fullName ?? confirmRemove.email}</bdi>?</p>
+    </ConfirmDialog>}
   </>;
 }

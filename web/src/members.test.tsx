@@ -79,9 +79,55 @@ test("removing a position updates members", async () => {
   window.history.replaceState(null, "", "/miembros");
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Quitar cargo de Ana Ficticia" }));
+  fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Quitar cargo" }));
   await waitFor(() => expect(sentTo(sent, "DELETE /members/m1/officer")).toHaveLength(1));
   await screen.findByText("Se quit\u00f3 el cargo.");
   expect(screen.queryByText("Ana Ficticia")).toBeNull();
+});
+
+test("R1 Quitar cargo asks first: Cancelar changes nothing and returns focus, confirming focuses the message and clears old errors", async () => {
+  const sent = mockApi({
+    "GET /auth/me": ok(me({ role: "school_admin", mfa: "satisfied" })),
+    "GET /members": [ok([{ email: null, fullName: "Ana Ficticia", rosterMemberId: "m1", position: "Tesorero", roles: ["student", "officer"] }]), ok([])],
+    "GET /roster": ok([{ id: "m2", fullName: "Beto Ficticio", documentNumber: "30111223", hasActiveCode: false, hasAccount: false }]),
+    "POST /members/m2/officer": fail(409, "position_taken"),
+    "POST /members/invitations": fail(422, "invalid_email"),
+    "DELETE /members/m1/officer": ok(undefined, 204),
+  });
+  window.history.replaceState(null, "", "/miembros");
+  render(<App />);
+  await screen.findByRole("option", { name: "Beto Ficticio" });
+  fireEvent.change(screen.getByLabelText("Alumno del padrón"), { target: { value: "m2" } });
+  fireEvent.click(screen.getByRole("button", { name: "Asignar cargo" }));
+  await screen.findByText("Ese cargo ya está ocupado.");
+  const email = screen.getByLabelText("Correo electrónico");
+  fireEvent.change(email, { target: { value: "invalid@ejemplo.test" } });
+  fireEvent.click(screen.getByRole("button", { name: "Invitar Veedor" }));
+  await screen.findByText("Revisá el mail: no parece válido.");
+
+  const remove = screen.getByRole("button", { name: "Quitar cargo de Ana Ficticia" });
+  remove.focus();
+  fireEvent.click(remove);
+  let dialog = await screen.findByRole("dialog", { name: "Quitar cargo" });
+  expect(dialog.textContent).toContain("Ana Ficticia");
+  fireEvent.click(within(dialog).getByRole("button", { name: "Cancelar" }));
+  expect(screen.queryByRole("dialog")).toBeNull();
+  await waitFor(() => expect(document.activeElement).toBe(remove));
+  expect(sentTo(sent, "DELETE /members/m1/officer")).toHaveLength(0);
+  expect(screen.getByText("Ana Ficticia")).toBeTruthy();
+  expect(screen.getByText("Ese cargo ya está ocupado.")).toBeTruthy();
+
+  fireEvent.click(remove);
+  dialog = await screen.findByRole("dialog", { name: "Quitar cargo" });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Quitar cargo" }));
+  const message = (await screen.findByText("Se quitó el cargo.")).closest("[aria-live]");
+  await waitFor(() => expect(document.activeElement).toBe(message));
+  expect(sentTo(sent, "DELETE /members/m1/officer")).toHaveLength(1);
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(screen.queryByText("Ese cargo ya está ocupado.")).toBeNull();
+  expect(screen.getByLabelText("Cargo").getAttribute("aria-invalid")).toBeNull();
+  expect(screen.queryByText("Revisá el mail: no parece válido.")).toBeNull();
+  expect(email.getAttribute("aria-invalid")).toBeNull();
 });
 
 test("member selects have constrained, touch-sized field styling", () => {
@@ -214,6 +260,7 @@ test("removing after an elected Board shows board_elected and keeps the officer 
   window.history.replaceState(null, "", "/miembros");
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Quitar cargo de Ana Ficticia" }));
+  fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Quitar cargo" }));
   await screen.findByText(boardElected);
   expect(sentTo(sent, "DELETE /members/m1/officer")).toHaveLength(1);
   expect(memberRoleTexts("Ana Ficticia")).toEqual(["Alumno", "Integrante de la comisión directiva — Presidente"]);
@@ -235,6 +282,7 @@ test("officers with positions from an election show them and can lose them (S10)
   expect(memberRoleTexts("Lu Ficticia")).toEqual(["Alumno", "Integrante de la comisión directiva — Presidenta"]);
   expect(memberRoleTexts("Mo Inventado")).toEqual(["Alumno", "Integrante de la comisión directiva — Vocal"]);
   fireEvent.click(screen.getByRole("button", { name: "Quitar cargo de Mo Inventado" }));
+  fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Quitar cargo" }));
   await waitFor(() => expect(sentTo(sent, "DELETE /members/m6/officer")).toHaveLength(1));
 });
 
