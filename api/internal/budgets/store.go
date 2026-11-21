@@ -4,6 +4,7 @@ package budgets
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/big"
 	"regexp"
 	"sort"
@@ -196,8 +197,19 @@ func (s *Store) saveLine(ctx context.Context, sess auth.Session, budgetID, lineI
 				return ErrNotFound
 			}
 		}
+		if err != nil {
+			return err
+		}
+		// Recompute the totals Get would show, still under the budget's FOR UPDATE, so a line
+		// that makes them overflow int64 is rolled back instead of breaking every later read.
+		check := Detail{Budget: Budget{ID: budgetID, StartsOn: start, EndsOn: end}}
+		if err := loadDetail(ctx, tx, sess.TenantID, &check); errors.Is(err, errTotalsOverflow) {
+			return ErrAmount
+		} else if err != nil {
+			return err
+		}
 		out.LineInput = in
-		return err
+		return nil
 	})
 	return out, err
 }
@@ -237,12 +249,15 @@ type headingAccumulator struct {
 	budgetedExpense, actualExpense, budgetedIncome, actualIncome big.Int
 }
 
+// errTotalsOverflow marks a budget whose totals do not fit in int64 cents.
+var errTotalsOverflow = errors.New("budgets: totals overflow")
+
 func (h *headingAccumulator) comparison() (HeadingComparison, error) {
 	expDiff := new(big.Int).Sub(&h.budgetedExpense, &h.actualExpense)
 	incDiff := new(big.Int).Sub(&h.actualIncome, &h.budgetedIncome)
 	if !h.budgetedExpense.IsInt64() || !h.actualExpense.IsInt64() || !expDiff.IsInt64() ||
 		!h.budgetedIncome.IsInt64() || !h.actualIncome.IsInt64() || !incDiff.IsInt64() {
-		return HeadingComparison{}, errors.New("budget heading totals overflow")
+		return HeadingComparison{}, fmt.Errorf("heading comparison: %w", errTotalsOverflow)
 	}
 	return HeadingComparison{
 		HeadingID:              h.id,
@@ -282,7 +297,7 @@ func (a *accumulator) totals() (Totals, error) {
 	var out Totals
 	delta := new(big.Int).Sub(&a.income, &a.cost)
 	if !a.cost.IsInt64() || !a.income.IsInt64() || !delta.IsInt64() {
-		return out, errors.New("budget totals overflow")
+		return out, fmt.Errorf("totals: %w", errTotalsOverflow)
 	}
 	out.Cost = a.cost.Int64()
 	out.Income = a.income.Int64()
@@ -297,7 +312,7 @@ func (a *accumulator) totals() (Totals, error) {
 		amount.Div(amount, unit)
 		amount.Mul(amount, big.NewInt(10000))
 		if !amount.IsInt64() {
-			return out, errors.New("budget price overflow")
+			return out, fmt.Errorf("break-even price: %w", errTotalsOverflow)
 		}
 		v := amount.Int64()
 		out.BreakEven = &v
@@ -317,55 +332,64 @@ func (s *Store) Get(ctx context.Context, sess auth.Session, id string) (Detail, 
 		if err != nil {
 			return err
 		}
-		rows, err := tx.Query(ctx, `SELECT l.id::text,l.kind,l.description,l.heading_id::text,l.contact_id::text,l.quantity,l.unit_amount_cents,l.day::text,COALESCE(ch.name,'') FROM event_budget_lines l LEFT JOIN contact_headings ch ON ch.tenant_id=l.tenant_id AND ch.id=l.heading_id WHERE l.tenant_id=$1 AND l.budget_id=$2 ORDER BY l.created_at,l.id`, sess.TenantID, id)
-		if err != nil {
+		return loadDetail(ctx, tx, sess.TenantID, &out)
+	})
+	return out, err
+}
+
+// loadDetail fills the lines and totals of out, whose ID, StartsOn and EndsOn are already set.
+// It returns an error wrapping errTotalsOverflow when a total does not fit in int64 cents.
+func loadDetail(ctx context.Context, tx pgx.Tx, tenantID string, out *Detail) error {
+	id := out.ID
+	rows, err := tx.Query(ctx, `SELECT l.id::text,l.kind,l.description,l.heading_id::text,l.contact_id::text,l.quantity,l.unit_amount_cents,l.day::text,COALESCE(ch.name,'') FROM event_budget_lines l LEFT JOIN contact_headings ch ON ch.tenant_id=l.tenant_id AND ch.id=l.heading_id WHERE l.tenant_id=$1 AND l.budget_id=$2 ORDER BY l.created_at,l.id`, tenantID, id)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	out.Lines = []Line{}
+	var all accumulator
+	byDay := map[string]*accumulator{}
+	byHeading := map[string]*headingAccumulator{}
+	headingOf := func(hid, hname string) *headingAccumulator {
+		acc := byHeading[hid]
+		if acc == nil {
+			acc = &headingAccumulator{id: hid, name: hname}
+			byHeading[hid] = acc
+		} else if acc.name == "" && hname != "" {
+			acc.name = hname
+		}
+		return acc
+	}
+	for rows.Next() {
+		var l Line
+		var headingName string
+		if err := rows.Scan(&l.ID, &l.Kind, &l.Description, &l.HeadingID, &l.ContactID, &l.Quantity, &l.UnitAmountCents, &l.Day, &headingName); err != nil {
 			return err
 		}
-		defer rows.Close()
-		out.Lines = []Line{}
-		var all accumulator
-		byDay := map[string]*accumulator{}
-		byHeading := map[string]*headingAccumulator{}
-		headingOf := func(hid, hname string) *headingAccumulator {
-			acc := byHeading[hid]
-			if acc == nil {
-				acc = &headingAccumulator{id: hid, name: hname}
-				byHeading[hid] = acc
-			} else if acc.name == "" && hname != "" {
-				acc.name = hname
+		out.Lines = append(out.Lines, l)
+		all.add(l)
+		if l.Day != nil {
+			if byDay[*l.Day] == nil {
+				byDay[*l.Day] = &accumulator{}
 			}
-			return acc
+			byDay[*l.Day].add(l)
 		}
-		for rows.Next() {
-			var l Line
-			var headingName string
-			if err := rows.Scan(&l.ID, &l.Kind, &l.Description, &l.HeadingID, &l.ContactID, &l.Quantity, &l.UnitAmountCents, &l.Day, &headingName); err != nil {
-				return err
-			}
-			out.Lines = append(out.Lines, l)
-			all.add(l)
-			if l.Day != nil {
-				if byDay[*l.Day] == nil {
-					byDay[*l.Day] = &accumulator{}
-				}
-				byDay[*l.Day].add(l)
-			}
-			if l.HeadingID != nil {
-				acc := headingOf(*l.HeadingID, headingName)
-				if l.Quantity != nil && l.UnitAmountCents != nil {
-					v := new(big.Int).Mul(big.NewInt(*l.Quantity), big.NewInt(*l.UnitAmountCents))
-					if l.Kind == "cost" {
-						acc.budgetedExpense.Add(&acc.budgetedExpense, v)
-					} else {
-						acc.budgetedIncome.Add(&acc.budgetedIncome, v)
-					}
+		if l.HeadingID != nil {
+			acc := headingOf(*l.HeadingID, headingName)
+			if l.Quantity != nil && l.UnitAmountCents != nil {
+				v := new(big.Int).Mul(big.NewInt(*l.Quantity), big.NewInt(*l.UnitAmountCents))
+				if l.Kind == "cost" {
+					acc.budgetedExpense.Add(&acc.budgetedExpense, v)
+				} else {
+					acc.budgetedIncome.Add(&acc.budgetedIncome, v)
 				}
 			}
 		}
-		if err := rows.Err(); err != nil {
-			return err
-		}
-		actualRows, err := tx.Query(ctx, `SELECT fe.heading_id::text, ch.name,
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	actualRows, err := tx.Query(ctx, `SELECT fe.heading_id::text, ch.name,
 			COALESCE(SUM(CASE
 				WHEN fe.reverses_id IS NULL AND fe.direction = 'expense' THEN fe.amount_cents
 				WHEN fe.reverses_id IS NOT NULL AND fe.direction = 'income' THEN -fe.amount_cents
@@ -379,75 +403,73 @@ func (s *Store) Get(ctx context.Context, sess auth.Session, id string) (Detail, 
 			FROM finance_entries fe
 			JOIN contact_headings ch ON ch.tenant_id = fe.tenant_id AND ch.id = fe.heading_id
 			WHERE fe.tenant_id = $1 AND fe.event_budget_id = $2 AND fe.heading_id IS NOT NULL
-			GROUP BY fe.heading_id, ch.name`, sess.TenantID, id)
-		if err != nil {
+			GROUP BY fe.heading_id, ch.name`, tenantID, id)
+	if err != nil {
+		return err
+	}
+	defer actualRows.Close()
+	for actualRows.Next() {
+		var hid, hname, expStr, incStr string
+		if err := actualRows.Scan(&hid, &hname, &expStr, &incStr); err != nil {
 			return err
 		}
-		defer actualRows.Close()
-		for actualRows.Next() {
-			var hid, hname, expStr, incStr string
-			if err := actualRows.Scan(&hid, &hname, &expStr, &incStr); err != nil {
-				return err
-			}
-			acc := headingOf(hid, hname)
-			if v, ok := new(big.Int).SetString(expStr, 10); ok {
-				acc.actualExpense.Add(&acc.actualExpense, v)
-			} else {
-				return errors.New("budgets: invalid actual expense sum")
-			}
-			if v, ok := new(big.Int).SetString(incStr, 10); ok {
-				acc.actualIncome.Add(&acc.actualIncome, v)
-			} else {
-				return errors.New("budgets: invalid actual income sum")
-			}
+		acc := headingOf(hid, hname)
+		if v, ok := new(big.Int).SetString(expStr, 10); ok {
+			acc.actualExpense.Add(&acc.actualExpense, v)
+		} else {
+			return errors.New("budgets: invalid actual expense sum")
 		}
-		if err := actualRows.Err(); err != nil {
-			return err
+		if v, ok := new(big.Int).SetString(incStr, 10); ok {
+			acc.actualIncome.Add(&acc.actualIncome, v)
+		} else {
+			return errors.New("budgets: invalid actual income sum")
 		}
-		sorted := make([]*headingAccumulator, 0, len(byHeading))
-		for _, acc := range byHeading {
-			sorted = append(sorted, acc)
+	}
+	if err := actualRows.Err(); err != nil {
+		return err
+	}
+	sorted := make([]*headingAccumulator, 0, len(byHeading))
+	for _, acc := range byHeading {
+		sorted = append(sorted, acc)
+	}
+	sort.Slice(sorted, func(i, j int) bool {
+		li, lj := strings.ToLower(sorted[i].name), strings.ToLower(sorted[j].name)
+		if li != lj {
+			return li < lj
 		}
-		sort.Slice(sorted, func(i, j int) bool {
-			li, lj := strings.ToLower(sorted[i].name), strings.ToLower(sorted[j].name)
-			if li != lj {
-				return li < lj
-			}
-			if sorted[i].name != sorted[j].name {
-				return sorted[i].name < sorted[j].name
-			}
-			return sorted[i].id < sorted[j].id
-		})
-		out.ByHeading = make([]HeadingComparison, 0, len(sorted))
-		for _, acc := range sorted {
-			cmp, err := acc.comparison()
-			if err != nil {
-				return err
-			}
-			out.ByHeading = append(out.ByHeading, cmp)
+		if sorted[i].name != sorted[j].name {
+			return sorted[i].name < sorted[j].name
 		}
-		out.Totals, err = all.totals()
-		if err != nil {
-			return err
-		}
-		a, _ := time.Parse("2006-01-02", out.StartsOn)
-		b, _ := time.Parse("2006-01-02", out.EndsOn)
-		out.Days = []DayTotals{}
-		for d := a; !d.After(b); d = d.AddDate(0, 0, 1) {
-			day := d.Format("2006-01-02")
-			v := byDay[day]
-			if v == nil {
-				v = &accumulator{}
-			}
-			totals, err := v.totals()
-			if err != nil {
-				return err
-			}
-			out.Days = append(out.Days, DayTotals{Day: day, Totals: totals})
-		}
-		return nil
+		return sorted[i].id < sorted[j].id
 	})
-	return out, err
+	out.ByHeading = make([]HeadingComparison, 0, len(sorted))
+	for _, acc := range sorted {
+		cmp, err := acc.comparison()
+		if err != nil {
+			return err
+		}
+		out.ByHeading = append(out.ByHeading, cmp)
+	}
+	out.Totals, err = all.totals()
+	if err != nil {
+		return err
+	}
+	a, _ := time.Parse("2006-01-02", out.StartsOn)
+	b, _ := time.Parse("2006-01-02", out.EndsOn)
+	out.Days = []DayTotals{}
+	for d := a; !d.After(b); d = d.AddDate(0, 0, 1) {
+		day := d.Format("2006-01-02")
+		v := byDay[day]
+		if v == nil {
+			v = &accumulator{}
+		}
+		totals, err := v.totals()
+		if err != nil {
+			return err
+		}
+		out.Days = append(out.Days, DayTotals{Day: day, Totals: totals})
+	}
+	return nil
 }
 
 func (s *Store) Delete(ctx context.Context, sess auth.Session, id string) error {
