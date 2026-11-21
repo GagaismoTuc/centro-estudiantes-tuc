@@ -29,6 +29,24 @@ test("officer adds a cost using a copied reference price and sees the event tota
   await waitFor(() => expect(screen.getByText(/^Costo:/).textContent).toContain("25.000"));
 });
 
+test("R3 the budget detail shows its dates as dd/mm/aaaa", async () => {
+  const budget = { id: "b1", name: "Week", startsOn: "2026-11-20", endsOn: "2026-11-21", archived: false };
+  const zero = { costCents: 0, incomeCents: 0, resultCents: 0, breakEvenCents: null };
+  mockApi({
+    "GET /auth/me": ok(me({ role: "officer", mfa: "satisfied" })),
+    "GET /event-budgets": ok([budget]),
+    "GET /event-budgets/b1": ok({ ...budget, totals: zero, days: [{ day: "2026-11-20", totals: zero }], lines: [] }),
+    "GET /contacts/headings": ok([]),
+    "GET /contacts": ok([]),
+  });
+  window.history.replaceState(null, "", "/presupuestos");
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Week" }));
+  expect(await screen.findByText("20/11/2026 - 21/11/2026")).toBeTruthy();
+  expect(screen.getByText(/^20\/11\/2026: costo/)).toBeTruthy();
+  expect(screen.queryByText(/2026-11-2/)).toBeNull();
+});
+
 test("invalid budget form focuses the first invalid field and blocks students", async () => {
   mockApi({
     "GET /auth/me": ok(me({ role: "officer", mfa: "satisfied" })),

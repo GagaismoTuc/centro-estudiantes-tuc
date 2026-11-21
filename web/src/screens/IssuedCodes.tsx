@@ -6,14 +6,12 @@ import { ConfirmDialog } from "../components/ConfirmDialog.tsx";
 import { CopyButton } from "../components/CopyButton.tsx";
 import { Icon } from "../components/Icon.tsx";
 import { neutralizeFormula } from "../lib/csv.ts";
+import { formatLongDate } from "../lib/datetime.ts";
 import { guardLeave } from "../lib/router.tsx";
 
 export type IssuedMemberCode = components["schemas"]["IssuedMemberCode"];
 
 const LEAVE = "Los códigos generados no se van a volver a mostrar. ¿Salir igual?";
-
-const dateFormat = new Intl.DateTimeFormat("es-AR", { dateStyle: "long", timeZone: "America/Argentina/Tucuman" });
-const formatDate = (iso: string) => dateFormat.format(new Date(iso));
 
 /** Asks before the page is closed, reloaded or left through the app while codes are on screen. */
 function useLeaveGuard() {
@@ -97,7 +95,7 @@ export function IssuedCodes({ codes, onHide }: { codes: IssuedMemberCode[]; onHi
                 <td data-label="Código">
                   <code className="access-code">{c.code}</code>
                 </td>
-                <td data-label="Vence">{formatDate(c.expiresAt)}</td>
+                <td data-label="Vence">{formatLongDate(c.expiresAt)}</td>
                 <td>
                   <CopyButton text={c.code} label="Copiar" ariaLabel={`Copiar código de ${c.fullName}`} />
                 </td>
@@ -135,7 +133,7 @@ function PrintSheet({ codes }: { codes: IssuedMemberCode[] }) {
           </p>
           <p className="print-card__label">Tu código de acceso</p>
           <p className="print-card__code">{c.code}</p>
-          <p>Vence el {formatDate(c.expiresAt)}. Sirve una sola vez.</p>
+          <p>Vence el {formatLongDate(c.expiresAt)}. Sirve una sola vez.</p>
           <p>
             Creá tu cuenta en <span className="print-card__url">{claimUrl}</span>
           </p>

@@ -2,7 +2,7 @@
 export function formatPesos(cents: number): string {
   const whole = Math.floor(cents / 100);
   const rem = cents % 100;
-  const formattedWhole = whole.toLocaleString("es-AR");
+  const formattedWhole = new Intl.NumberFormat("es-AR").format(whole);
   return rem === 0 ? `$${formattedWhole}` : `$${formattedWhole},${String(rem).padStart(2, "0")}`;
 }
 
@@ -12,21 +12,6 @@ export function pesos(value: string): string {
   const negative = cents < 0n;
   const absolute = negative ? -cents : cents;
   return `$ ${negative ? "-" : ""}${new Intl.NumberFormat("es-AR").format(absolute / 100n)},${String(absolute % 100n).padStart(2, "0")}`;
-}
-
-/** Formats an ISO `YYYY-MM-DD` date as `DD/MM/YYYY`. */
-export function dayMonthYear(isoDate: string): string {
-  return isoDate.split("-").reverse().join("/");
-}
-
-/** Returns today's `YYYY-MM-DD` date in Argentina time. */
-export function todayArgentina(): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Argentina/Buenos_Aires",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
 }
 
 /** Parses a positive peso decimal input (`2000` or `2000,50`) into a positive int64 centavos string. */

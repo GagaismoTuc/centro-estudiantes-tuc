@@ -68,12 +68,21 @@ func reportFields(report finance.Report) (map[string]string, map[string][]map[st
 		if entry.Direction != "income" {
 			amount = -amount
 		}
-		entries = append(entries, map[string]string{"fecha": entry.Date, "categoria": names[entry.CategoryID], "descripcion": entry.Description,
+		entries = append(entries, map[string]string{"fecha": pdfDate(entry.Date), "categoria": names[entry.CategoryID], "descripcion": entry.Description,
 			"monto": pdfAmount(amount), "registrado_por": entry.RecordedBy, "alumno": entry.RosterMemberName})
 	}
-	return map[string]string{"desde": report.From, "hasta": report.To, "saldo_inicial": pdfAmount(report.OpeningCents),
+	return map[string]string{"desde": pdfDate(report.From), "hasta": pdfDate(report.To), "saldo_inicial": pdfAmount(report.OpeningCents),
 			"ingresos": pdfAmount(income), "gastos": pdfAmount(expenses), "saldo_final": pdfAmount(report.ClosingCents)},
 		map[string][]map[string]string{"totales": totals, "movimientos": entries}
+}
+
+// pdfDate prints an ISO "2006-01-02" date as "02/01/2006", the way the PDFs show every date.
+func pdfDate(iso string) string {
+	day, err := time.Parse(time.DateOnly, iso)
+	if err != nil {
+		return iso
+	}
+	return day.Format("02/01/2006")
 }
 
 func pdfAmount(cents int64) string {

@@ -6,7 +6,8 @@ import { hasRole, useMe, useSession } from "../auth/session.tsx";
 import { Field, FormStatus, useFormErrors, type Status } from "../components/Form.tsx";
 import { PageTitle, useDocumentTitle } from "../components/Page.tsx";
 import { Link } from "../lib/router.tsx";
-import { dayMonthYear, pesos, todayArgentina } from "../lib/money.ts";
+import { formatDate, todayArgentina } from "../lib/datetime.ts";
+import { pesos } from "../lib/money.ts";
 
 type Summary = components["schemas"]["AccountabilityReportSummary"];
 type Total = Omit<components["schemas"]["FinanceCategoryTotal"], "totalCents"> & { totalCents: string };
@@ -17,7 +18,7 @@ type Report = Summary & { openingCents: string; closingCents: string; totals: To
 type Preview = { from: string; to: string; term: string; openingCents: string; closingCents: string; incomeCents: string; expenseCents: string; entries: unknown[] };
 
 const NOTICE = "Una vez publicada no se puede cambiar.";
-const period = (r: { from: string; to: string }) => `Del ${dayMonthYear(r.from)} al ${dayMonthYear(r.to)}`;
+const period = (r: { from: string; to: string }) => `Del ${formatDate(r.from)} al ${formatDate(r.to)}`;
 const csvHref = (id: string) => `/api/finance/accountability-reports/${encodeURIComponent(id)}.csv`;
 
 /** "Caja → Rendiciones": the published Financial accountability reports; Officers publish new ones. */
@@ -213,13 +214,13 @@ function ReportView({ report }: { report: Report }) {
     {report.dues.length > 0 && <>
       <h3 id={`${ids}-dues`}>Cuotas</h3>
       <ul className="report-list" aria-labelledby={`${ids}-dues`}>
-        {report.dues.map((d) => <li key={d.dueId}><span>{d.name}</span><span>{d.paidCount} de {d.totalCount} pagaron al {dayMonthYear(report.to)}</span></li>)}
+        {report.dues.map((d) => <li key={d.dueId}><span>{d.name}</span><span>{d.paidCount} de {d.totalCount} pagaron al {formatDate(report.to)}</span></li>)}
       </ul>
     </>}
     <h3 id={`${ids}-entries`}>Movimientos</h3>
     {report.entries.length === 0 ? <p>No hubo movimientos en el período.</p> : <ul aria-labelledby={`${ids}-entries`}>{report.entries.map((e) => <li key={e.id}>
       <strong>{e.description}</strong> {"—"} {pesos(e.amountCents)} ({e.direction === "income" ? "Ingreso" : "Gasto"})<br />
-      <span>{e.category} {"—"} {dayMonthYear(e.date)}</span>
+      <span>{e.category} {"—"} {formatDate(e.date)}</span>
     </li>)}</ul>}
     <FormStatus status={pdfStatus} {...pdfForm.statusProps} />
     <p><a className="button button--secondary" href={csvHref(report.id)} download>Descargar CSV</a> {" "}
