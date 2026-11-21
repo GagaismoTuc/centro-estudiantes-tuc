@@ -45,8 +45,13 @@ function BudgetForm({ initial, save }: { initial?: Budget; save: (name: string, 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!form.validate({ name: (v) => v.trim() ? null : "Escrib\u00ed un nombre.", startsOn: (v) => v ? null : "Eleg\u00ed la fecha de inicio.", endsOn: (v) => v ? null : "Eleg\u00ed la fecha de fin." })) return;
-    setBusy(true); const code = await save(form.value("name"), form.value("startsOn"), form.value("endsOn")); setBusy(false);
-    if (code) { setStatus({ tone: "error", text: errorMessage(code) }); form.failed(code); }
+    const startsOn = form.value("startsOn"), endsOn = form.value("endsOn");
+    setBusy(true); const code = await save(form.value("name"), startsOn, endsOn); setBusy(false);
+    if (code) {
+      // The API answers invalid_range for both causes; ISO dates compare as text.
+      const text = code !== "invalid_range" ? errorMessage(code) : endsOn < startsOn ? "La fecha de fin no puede ser anterior al inicio." : "El evento puede durar hasta 31 días.";
+      setStatus({ tone: "error", text }); form.failed(code);
+    }
     else setStatus({ tone: "ok", text: "Presupuesto guardado." });
   }
   return <form {...form.formProps} onSubmit={(e) => void submit(e)}>

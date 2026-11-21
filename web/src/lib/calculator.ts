@@ -293,6 +293,7 @@ export function calculateRaffle(input: {
 }
 
 const DUE_AMOUNT_ERROR = "Revisá la meta y la cantidad de alumnos";
+const TOO_MANY_EXEMPT_ERROR = "Los exentos no pueden ser más que los alumnos del padrón.";
 
 /**
  * Calculates the per-student Due amount from a target goal, the current roster count and an
@@ -312,12 +313,14 @@ export function calculateDueAmount(input: {
 
   const rawExempt = (input.expectedExempt ?? "").trim();
   const exemptCount = rawExempt === "" ? 0 : parseNonNegativeInteger(rawExempt);
-  if (exemptCount === null || !rosterValid || exemptCount >= input.rosterCount) {
+  if (exemptCount === null || !rosterValid) {
     errors.expectedExempt = DUE_AMOUNT_ERROR;
+  } else if (exemptCount >= input.rosterCount) {
+    errors.expectedExempt = TOO_MANY_EXEMPT_ERROR;
   }
 
   if (Object.keys(errors).length > 0 || !parsedGoal.ok || exemptCount === null) {
-    return { ok: false, error: DUE_AMOUNT_ERROR, errors };
+    return { ok: false, error: errors.goal ?? errors.expectedExempt ?? DUE_AMOUNT_ERROR, errors };
   }
 
   const payingCount = input.rosterCount - exemptCount;
