@@ -2967,6 +2967,38 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/NotFoundError" }
+  /finance/accountability-reports/{id}.pdf:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getFinanceAccountabilityReportPdf
+      summary: Download a published Financial accountability report as PDF
+      description: Same readers as the frozen report; served by the `{id}` route.
+      responses:
+        "200":
+          description: Attachment `rendicion-de-cuentas-<term>-<from>-a-<to>.pdf`.
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/MemberForbidden" }
+        "404":
+          description: No such report in the active school.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotFoundError" }
+        "503":
+          description: PDF conversion unavailable.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error: { type: string, enum: [pdf_unavailable] }
   /finance/entries/{entryId}:
     parameters:
       - name: entryId

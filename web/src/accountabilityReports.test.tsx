@@ -137,3 +137,52 @@ test("R9 a future end the server rejects is announced on Hasta", async () => {
   await waitFor(() => expect(document.activeElement).toBe(to));
   expect(to.getAttribute("aria-invalid")).toBe("true");
 });
+
+
+test("R4 downloading a published PDF reports converter failures", async () => {
+  mockApi({ "GET /auth/me": ok(me()), "GET /finance/accountability-reports": ok([published]), "GET /finance/accountability-reports/r1": ok({ ...copy, ...published }), "GET /finance/accountability-reports/r1.pdf": fail(503, "pdf_unavailable") });
+  open();
+  fireEvent.click(await screen.findByRole("button", { name: "Ver" }));
+  const view = await screen.findByRole("region", { name: "Gesti\u00f3n 2025" });
+  fireEvent.click(within(view).getByRole("button", { name: "Descargar PDF" }));
+  const message = await within(view).findByText("No pudimos generar el PDF. Prob\u00e1 de nuevo en unos minutos.");
+  await waitFor(() => expect(document.activeElement).toBe(message.closest("[aria-live]")));
+});
+
+
+test("R1 downloads the PDF of the opened accountability report", async () => {
+ const sent = mockApi({ "GET /auth/me": ok(me()), "GET /finance/accountability-reports": ok([published]), "GET /finance/accountability-reports/r1": ok({ ...copy, ...published }), "GET /finance/accountability-reports/r1.pdf": ok("pdf") });
+ const handler = vi.mocked(fetch).getMockImplementation()!;
+ vi.mocked(fetch).mockImplementation(async (input, init) => {
+   const response = await handler(input, init);
+   if (new URL((input as Request).url).pathname !== "/api/finance/accountability-reports/r1.pdf") return response;
+   return new Response("%PDF-1.4", { headers: { "Content-Type": "application/pdf", "Content-Disposition": 'attachment; filename="rendicion-de-cuentas-gestion-2025-2025-03-01-a-2025-11-30.pdf"' } });
+ });
+ const create = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:report");
+ const revoke = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+ let downloaded: HTMLAnchorElement | undefined;
+ const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) { downloaded = this; });
+ open(); fireEvent.click(await screen.findByRole("button", { name: "Ver" }));
+ const view = await screen.findByRole("region", { name: "Gesti\u00f3n 2025" });
+ fireEvent.click(within(view).getByRole("button", { name: "Descargar PDF" }));
+ await waitFor(() => expect(click).toHaveBeenCalled());
+ expect(sentTo(sent, "GET /finance/accountability-reports/r1.pdf")).toHaveLength(1);
+ expect(downloaded?.download).toBe("rendicion-de-cuentas-gestion-2025-2025-03-01-a-2025-11-30.pdf");
+ expect(revoke).toHaveBeenCalledWith("blob:report");
+ create.mockRestore(); revoke.mockRestore(); click.mockRestore();
+});
+
+
+test("switching reports clears the previous PDF error", async () => {
+  mockApi({ "GET /auth/me": ok(me()), "GET /finance/accountability-reports": ok([published, copy]), "GET /finance/accountability-reports/r1": ok({ ...copy, ...published }), "GET /finance/accountability-reports/r2": ok(copy), "GET /finance/accountability-reports/r1.pdf": fail(503, "pdf_unavailable") });
+  open();
+  const list = await screen.findByRole("region", { name: "Rendiciones publicadas" });
+  const items = await within(list).findAllByRole("listitem");
+  fireEvent.click(within(items[0]!).getByRole("button", { name: "Ver" }));
+  const first = await screen.findByRole("region", { name: "Gesti\u00f3n 2025" });
+  fireEvent.click(within(first).getByRole("button", { name: "Descargar PDF" }));
+  await within(first).findByText("No pudimos generar el PDF. Prob\u00e1 de nuevo en unos minutos.");
+  fireEvent.click(within(items[1]!).getByRole("button", { name: "Ver" }));
+  const second = await screen.findByRole("region", { name: "Gesti\u00f3n 2026" });
+  expect(within(second).queryByText("No pudimos generar el PDF. Prob\u00e1 de nuevo en unos minutos.")).toBeNull();
+});

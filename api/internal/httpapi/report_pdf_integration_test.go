@@ -166,3 +166,98 @@ func TestFinanceReportPDFWithGotenberg(t *testing.T) {
 		t.Fatal("conversion changed ledger or balance")
 	}
 }
+
+func accountabilityGotenberg(t *testing.T) string {
+	t.Helper()
+	if testing.Short() {
+		t.Skip("integration test: needs Docker")
+	}
+	compose, err := os.ReadFile("../../../compose.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var config struct {
+		Services map[string]struct {
+			Image string `yaml:"image"`
+		} `yaml:"services"`
+	}
+	if err = yaml.Unmarshal(compose, &config); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
+	t.Cleanup(cancel)
+	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{Started: true, ContainerRequest: testcontainers.ContainerRequest{Image: config.Services["gotenberg"].Image, ExposedPorts: []string{"3000/tcp"}, WaitingFor: wait.ForHTTP("/health").WithPort("3000/tcp").WithStartupTimeout(2 * time.Minute)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = container.Terminate(context.Background()) })
+	host, err := container.Host(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	port, err := container.MappedPort(ctx, "3000/tcp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return fmt.Sprintf("http://%s:%s", host, port.Port())
+}
+
+// TestAccountabilityPDFPrivacyWithGotenberg extracts actual PDF text.
+func TestAccountabilityPDFPrivacyWithGotenberg(t *testing.T) {
+	url := accountabilityGotenberg(t)
+	rf := newAcctFixture(t)
+	march := rf.record(t, "income/Ventas", "2026-03-01", 50000, "Kiosco de marzo")
+	_, student, beto := rf.student(t, rf.ctx, "Beto Ficticio", "30111223")
+	_, _, eva := rf.student(t, rf.ctx, "Eva Ficticia", "30111224")
+	empty, _ := rf.publishOK(t, rf.officer, "2026-03-01", "2026-11-30", "Gesti\u00f3n 2026")
+	due := rf.createDue(t, "Cuota de noviembre", "2026-11-15", 200000)
+	rf.payDue(t, due, beto, "2026-11-10", 200000)
+	exempt := rf.do(http.MethodPost, "/api/finance/dues/"+due+"/exemptions", fmt.Sprintf(`{"rosterMemberId":%q,"reason":"Beca"}`, eva), reportIP, rf.officer, nil)
+	if exempt.Code != http.StatusCreated {
+		t.Fatalf("exemption: %d %s", exempt.Code, exempt.Body)
+	}
+	rep, _ := rf.publishOK(t, rf.officer, "2026-03-01", "2026-11-30", "Gesti\u00f3n 2026")
+	pdfRouter(rf.fixture, url)
+	emptyPDF := rf.get(acctPath+"/"+empty.ID+".pdf", student)
+	if emptyPDF.Code != 200 {
+		t.Fatalf("empty PDF: %d %s", emptyPDF.Code, emptyPDF.Body)
+	}
+	emptyText, err := converterText(emptyPDF.Body.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(emptyText, "Sin cuotas en el per\u00edodo") || strings.Contains(emptyText, "{{") {
+		t.Fatalf("empty PDF: %q", emptyText)
+	}
+	response := rf.get(acctPath+"/"+rep.ID+".pdf", student)
+	if response.Code != 200 {
+		t.Fatalf("PDF: %d %s", response.Code, response.Body)
+	}
+	text, err := converterText(response.Body.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"Cuotas - ingreso", "Cuota de noviembre - 1 de 2 pagaron"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("PDF missing spaced text %q: %q", want, text)
+		}
+	}
+	if strings.Contains(text, "Beto Ficticio") || strings.Contains(text, "Eva Ficticia") || !strings.Contains(text, "Cuota de noviembre") || !strings.Contains(text, "1 de 2 pagaron") {
+		t.Fatalf("PDF privacy or totals: %q", text)
+	}
+	reversal := rf.do(http.MethodPost, "/api/finance/entries/"+march+"/reversal", "", reportIP, rf.officer, nil)
+	if reversal.Code != http.StatusCreated {
+		t.Fatalf("reversal: %d %s", reversal.Code, reversal.Body)
+	}
+	after := rf.get(acctPath+"/"+rep.ID+".pdf", student)
+	if after.Code != http.StatusOK {
+		t.Fatalf("PDF after reversal: %d %s", after.Code, after.Body)
+	}
+	afterText, err := converterText(after.Body.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if afterText != text {
+		t.Fatal("reversal changed rendered PDF text")
+	}
+}

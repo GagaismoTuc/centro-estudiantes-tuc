@@ -8,3 +8,4 @@ output-options:
   # GetFinanceAccountabilityReport serves it from the `{id}` route.
   exclude-operation-ids:
     - getFinanceAccountabilityReportCsv
+    - getFinanceAccountabilityReportPdf

@@ -15,6 +15,7 @@ import (
 const wordNamespace = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 
 var fieldPattern = regexp.MustCompile(`\{\{([^{}]+)\}\}`)
+var xmlSpacePattern = regexp.MustCompile(`\s+xml:space\s*=\s*["'][^"']*["']`)
 
 type span struct {
 	start, end int
@@ -229,6 +230,58 @@ func fillStory(data []byte, fields map[string]string, rows map[string][]map[stri
 			expanded.Write(unwrap(filled))
 		}
 		data = append(append(append([]byte{}, data[:r.start]...), expanded.Bytes()...), data[r.end:]...)
+	}
+	return preserveTextSpaces(data)
+}
+
+// preserveTextSpaces keeps run-boundary whitespace created by field replacement.
+func preserveTextSpaces(data []byte) ([]byte, error) {
+	decoder := xml.NewDecoder(bytes.NewReader(data))
+	type edit struct {
+		start, end int
+		opening    string
+	}
+	var edits []edit
+	var start, end int
+	var opening string
+	var text strings.Builder
+	inside := false
+	for {
+		before := int(decoder.InputOffset())
+		token, err := decoder.Token()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		switch v := token.(type) {
+		case xml.StartElement:
+			if v.Name.Space == wordNamespace && v.Name.Local == "t" {
+				start, end = before, int(decoder.InputOffset())
+				opening = string(data[start:end])
+				text.Reset()
+				inside = true
+			}
+		case xml.CharData:
+			if inside {
+				text.Write(v)
+			}
+		case xml.EndElement:
+			if inside && v.Name.Space == wordNamespace && v.Name.Local == "t" {
+				value := text.String()
+				if value != "" && (strings.ContainsAny(value[:1], " \t\r\n") || strings.ContainsAny(value[len(value)-1:], " \t\r\n")) {
+					opening = xmlSpacePattern.ReplaceAllString(opening, "")
+					opening = strings.TrimSuffix(opening, ">") + ` xml:space="preserve">`
+					edits = append(edits, edit{start, end, opening})
+				}
+				inside = false
+			}
+		}
+	}
+	for i := len(edits) - 1; i >= 0; i-- {
+		e := edits[i]
+		data = append(append(append([]byte{}, data[:e.start]...), []byte(e.opening)...), data[e.end:]...)
 	}
 	return data, nil
 }

@@ -97,10 +97,24 @@ func (s *server) GetFinanceAccountabilityReport(w http.ResponseWriter, r *http.R
 	if !ok {
 		return
 	}
-	id, asCSV := strings.CutSuffix(id, ".csv")
-	rep, err := s.finance.AccountabilityReport(r.Context(), sess, id)
+	s.getAccountabilityReport(w, r, id, func(id string) (finance.AccountabilityReport, error) {
+		return s.finance.AccountabilityReport(r.Context(), sess, id)
+	})
+}
+
+func (s *server) getAccountabilityReport(w http.ResponseWriter, r *http.Request, id string, lookup func(string) (finance.AccountabilityReport, error)) {
+	id, asPDF := strings.CutSuffix(id, ".pdf")
+	var asCSV bool
+	if !asPDF {
+		id, asCSV = strings.CutSuffix(id, ".csv")
+	}
+	rep, err := lookup(id)
 	if err != nil {
 		writeFinanceError(w, err)
+		return
+	}
+	if asPDF {
+		s.writeAccountabilityPDF(w, r, rep)
 		return
 	}
 	if !asCSV {
