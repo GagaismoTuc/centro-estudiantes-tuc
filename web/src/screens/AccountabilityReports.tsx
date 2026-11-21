@@ -70,7 +70,7 @@ export function AccountabilityReports() {
         </div>
       </li>)}</ul>}
     </section>
-    {open && <ReportView report={open} />}
+    {open && <ReportView key={open.id} report={open} />}
   </>;
 }
 
@@ -163,27 +163,33 @@ function ReportView({ report }: { report: Report }) {
   const [pdfStatus, setPdfStatus] = useState<Status>(null);
   const [pdfBusy, setPdfBusy] = useState(false);
   const pdfForm = useFormErrors();
+  const mounted = useRef(false);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   async function downloadPdf() {
     setPdfBusy(true); setPdfStatus(null);
     try {
       const response = await fetch(new Request(new URL(`/api/finance/accountability-reports/${encodeURIComponent(report.id)}.pdf`, window.location.origin)));
       if (!response.ok) {
         const body = await response.json().catch(() => ({})) as { error?: string };
+        if (!mounted.current) return;
         const code = body.error ?? "server_error";
         if (code === "mfa_required" || code === "unauthenticated") void refresh();
         setPdfStatus({ tone: "error", text: errorMessage(code, "finance") });
         pdfForm.failed(code);
         return;
       }
-      const url = URL.createObjectURL(await response.blob());
+      const blob = await response.blob();
+      if (!mounted.current) return;
+      const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
       link.download = /filename="([^";]+)"/.exec(response.headers.get("Content-Disposition") ?? "")?.[1] ?? "rendicion-de-cuentas.pdf";
       link.click(); URL.revokeObjectURL(url);
     } catch {
+      if (!mounted.current) return;
       setPdfStatus({ tone: "error", text: errorMessage("network", "finance") });
       pdfForm.failed("network");
-    } finally { setPdfBusy(false); }
+    } finally { if (mounted.current) setPdfBusy(false); }
   }
   const totals = (direction: "income" | "expense", title: string) => {
     const rows = report.totals.filter((t) => t.direction === direction);

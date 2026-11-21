@@ -174,3 +174,31 @@ func TestFillIgnoresEmptyRowName(t *testing.T) {
 		t.Fatalf("unexpected output: %s", raw)
 	}
 }
+
+func TestFillPreservesBoundarySpacesInRuns(t *testing.T) {
+	var b bytes.Buffer
+	z := zip.NewWriter(&b)
+	w, _ := z.Create("word/document.xml")
+	_, _ = io.WriteString(w, `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>{{name}} - {{count}}</w:t></w:r><w:r><w:t xml:space="preserve"> existing </w:t></w:r></w:p></w:body></w:document>`)
+	_ = z.Close()
+	out, err := docx.Fill(b.Bytes(), map[string]string{"name": "Cuotas", "count": "ingreso "}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	zr, err := zip.NewReader(bytes.NewReader(out), int64(len(out)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := zr.File[0].Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	raw, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `<w:t xml:space="preserve">Cuotas - ingreso </w:t>`) {
+		t.Fatalf("boundary spaces not preserved: %s", raw)
+	}
+}

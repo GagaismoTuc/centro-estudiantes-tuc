@@ -237,6 +237,11 @@ func TestAccountabilityPDFPrivacyWithGotenberg(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	for _, want := range []string{"Cuotas - ingreso", "Cuota de noviembre - 1 de 2 pagaron"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("PDF missing spaced text %q: %q", want, text)
+		}
+	}
 	if strings.Contains(text, "Beto Ficticio") || strings.Contains(text, "Eva Ficticia") || !strings.Contains(text, "Cuota de noviembre") || !strings.Contains(text, "1 de 2 pagaron") {
 		t.Fatalf("PDF privacy or totals: %q", text)
 	}

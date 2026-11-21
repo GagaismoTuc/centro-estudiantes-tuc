@@ -104,3 +104,11 @@ func TestAccountabilityPDFWithoutDues(t *testing.T) {
 		t.Fatalf("empty dues: %s", text)
 	}
 }
+
+func TestAccountabilityPDFRejectsDoubleSuffix(t *testing.T) {
+	rf := newAcctFixture(t)
+	rep, _ := rf.publishOK(t, rf.officer, "2026-03-01", "2026-11-30", "Gestion 2026")
+	srv, _ := accountabilityConverter(t)
+	pdfRouter(rf.fixture, srv.URL)
+	wantResponse(t, rf.get(acctPath+"/"+rep.ID+".csv.pdf", rf.officer), http.StatusNotFound, `{"error":"not_found"}`)
+}

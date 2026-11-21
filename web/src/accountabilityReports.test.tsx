@@ -171,3 +171,18 @@ test("R1 downloads the PDF of the opened accountability report", async () => {
  expect(revoke).toHaveBeenCalledWith("blob:report");
  create.mockRestore(); revoke.mockRestore(); click.mockRestore();
 });
+
+
+test("switching reports clears the previous PDF error", async () => {
+  mockApi({ "GET /auth/me": ok(me()), "GET /finance/accountability-reports": ok([published, copy]), "GET /finance/accountability-reports/r1": ok({ ...copy, ...published }), "GET /finance/accountability-reports/r2": ok(copy), "GET /finance/accountability-reports/r1.pdf": fail(503, "pdf_unavailable") });
+  open();
+  const list = await screen.findByRole("region", { name: "Rendiciones publicadas" });
+  const items = await within(list).findAllByRole("listitem");
+  fireEvent.click(within(items[0]!).getByRole("button", { name: "Ver" }));
+  const first = await screen.findByRole("region", { name: "Gesti\u00f3n 2025" });
+  fireEvent.click(within(first).getByRole("button", { name: "Descargar PDF" }));
+  await within(first).findByText("No pudimos generar el PDF. Prob\u00e1 de nuevo en unos minutos.");
+  fireEvent.click(within(items[1]!).getByRole("button", { name: "Ver" }));
+  const second = await screen.findByRole("region", { name: "Gesti\u00f3n 2026" });
+  expect(within(second).queryByText("No pudimos generar el PDF. Prob\u00e1 de nuevo en unos minutos.")).toBeNull();
+});
