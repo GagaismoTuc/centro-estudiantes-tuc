@@ -16,7 +16,8 @@ import { ConfirmDialog } from "../components/ConfirmDialog.tsx";
 import { Field, FormStatus, useFormErrors, type Status } from "../components/Form.tsx";
 import { PageTitle, useDocumentTitle } from "../components/Page.tsx";
 import { Link } from "../lib/router.tsx";
-import { centsOf, dayMonthYear, pesos, todayArgentina } from "../lib/money.ts";
+import { formatDate, formatDateTime, todayArgentina } from "../lib/datetime.ts";
+import { centsOf, pesos } from "../lib/money.ts";
 import { FinanceCategories } from "./FinanceCategories.tsx";
 
 type Category = components["schemas"]["FinanceCategory"];
@@ -406,11 +407,11 @@ export function Finance() {
     <section className="panel"><h2>Movimientos</h2>
       {entries === null ? <p>Cargando...</p> : entries.length === 0 ? <p>{"Todav\u00eda no hay movimientos."}</p> : <ul>{entries.map((entry) => <li key={entry.id}>
         <strong>{entry.description}</strong> {"\u2014"} {pesos(entry.amountCents)} ({entry.direction === "income" ? "Ingreso" : "Gasto"})<br />
-        {categories.find((c) => c.id === entry.categoryId)?.name} {"\u2014"} {entry.date}<br />
-        Registrado por {entry.recordedBy} {"\u2014"} {new Date(entry.recordedAt).toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" })}
+        {categories.find((c) => c.id === entry.categoryId)?.name} {"\u2014"} {formatDate(entry.date)}<br />
+        Registrado por {entry.recordedBy} {"\u2014"} {formatDateTime(entry.recordedAt)}
         {entry.eventBudgetName && <><br /><span>Evento: {entry.eventBudgetName}{entry.headingName ? ` \u2014 ${entry.headingName}` : ""}</span></>}
         {entry.hasReceipt && <><br /><span>Con comprobante</span></>}
-        {entry.reversalId && <><br /><span>Revertido por {entry.reversedBy} el {dayMonthYear(entry.reversedOn ?? "")}</span></>}
+        {entry.reversalId && <><br /><span>Revertido por {entry.reversedBy} el {formatDate(entry.reversedOn ?? "")}</span></>}
         {(canViewReceipts || (isOfficer && !entry.reversalId && !entry.reversesId)) && (
           <div className="panel__actions">
             {canViewReceipts && (
@@ -447,7 +448,7 @@ export function Finance() {
             <h2 id="entry-detail-title">{detail.entry.description}</h2>
             <p className="muted small">
               {pesos(detail.entry.amountCents)} ({detail.entry.direction === "income" ? "Ingreso" : "Gasto"}) —{" "}
-              {categories.find((c) => c.id === detail.entry.categoryId)?.name} — {detail.entry.date}
+              {categories.find((c) => c.id === detail.entry.categoryId)?.name} — {formatDate(detail.entry.date)}
               {detail.entry.eventBudgetName && <> — Evento: {detail.entry.eventBudgetName}{detail.entry.headingName ? ` (${detail.entry.headingName})` : ""}</>}
             </p>
           </div>
