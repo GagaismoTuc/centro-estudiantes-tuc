@@ -17,8 +17,17 @@ test("R15 students read the ledger and balance without an entry form", async () 
   window.history.replaceState(null, "", "/caja"); render(<App />);
   expect(await screen.findByText("$ 2.000,00")).toBeTruthy();
   expect(screen.getByText(/Registrado por Ana Ficticia/)).toBeTruthy();
-  expect(screen.getByText(/Ventas.*2026-11-10/)).toBeTruthy();
+  expect(screen.getByText(/Ventas.*10\/11\/2026/)).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Nuevo movimiento" })).toBeNull();
+});
+
+test("R1 R3 the ledger shows the entry date as dd/mm/aaaa and when it was recorded in Argentina time on a 24-hour clock", async () => {
+  const late = { ...entry, date: "2026-11-20", recordedAt: "2026-11-21T01:45:25Z" };
+  mockApi({ "GET /auth/me": ok(me()), ...reads, "GET /finance/entries": ok([late]) });
+  window.history.replaceState(null, "", "/caja"); render(<App />);
+  expect(await screen.findByText(/Ventas — 20\/11\/2026/)).toBeTruthy();
+  expect(screen.getByText(/Registrado por Ana Ficticia — 20\/11\/2026 22:45/)).toBeTruthy();
+  expect(screen.queryByText(/2026-11-20/)).toBeNull();
 });
 
 test.each([["student", "not_required"], ["officer", "satisfied"]] as const)("S10 a %s sees the ledger CSV download and the Informe link", async (role, mfa) => {
@@ -181,7 +190,7 @@ test("R2 renaming changes the category shown on historical movements", async () 
   fireEvent.click(within(used).getByRole("button", { name: "Renombrar" }));
   fireEvent.change(screen.getByLabelText("Nuevo nombre"), { target: { value: "Kiosco" } });
   fireEvent.click(screen.getByRole("button", { name: "Guardar nombre" }));
-  expect(await screen.findByText(/Kiosco.*2026-11-10/)).toBeTruthy();
+  expect(await screen.findByText(/Kiosco.*10\/11\/2026/)).toBeTruthy();
 });
 
 test("R3 archived categories disappear from entry choices but remain on historical movements", async () => {
@@ -196,7 +205,7 @@ test("R3 archived categories disappear from entry choices but remain on historic
   fireEvent.click(within(used).getByRole("button", { name: "Archivar" }));
   fireEvent.click(screen.getByRole("button", { name: "Confirmar archivo" }));
   await screen.findByText("(Archivada)", { exact: false });
-  expect(screen.getByText(/Ventas.*2026-11-10/)).toBeTruthy();
+  expect(screen.getByText(/Ventas.*10\/11\/2026/)).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Nuevo movimiento" }));
   expect(screen.queryByRole("option", { name: "Ventas" })).toBeNull();
 });

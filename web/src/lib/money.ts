@@ -6,21 +6,6 @@ export function formatPesos(cents: bigint | number | string): string {
   return `${value < 0n ? "-" : ""}$ ${whole},${String(absolute % 100n).padStart(2, "0")}`;
 }
 
-/** Formats an ISO `YYYY-MM-DD` date as `DD/MM/YYYY`. */
-export function dayMonthYear(isoDate: string): string {
-  return isoDate.split("-").reverse().join("/");
-}
-
-/** Returns today's `YYYY-MM-DD` date in Argentina time. */
-export function todayArgentina(): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Argentina/Buenos_Aires",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-}
-
 const MAX_CENTS = 9223372036854775807n; // int64, the API's centavos range
 
 // A dot followed by exactly three digits groups thousands; the decimals are a comma, or a final dot, and one or two digits.

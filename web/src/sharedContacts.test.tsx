@@ -161,6 +161,7 @@ describe("Shared directory and contact sharing", () => {
     expect(await screen.findByRole("heading", { name: "Directorio compartido" })).toBeTruthy();
     expect(await screen.findByText("Gazebos Ficticios SRL")).toBeTruthy();
     expect(screen.getByText("$ 25.000,00")).toBeTruthy();
+    expect(screen.getByText("01/09/2026")).toBeTruthy();
     expect(screen.getByText("Página 1 de 2")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Editar|Borrar|Compartir/i })).toBeNull();
 

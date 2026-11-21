@@ -6,6 +6,7 @@ import type { components } from "../api/schema.gen.ts";
 import { canReadContacts, hasRole, useMe, useSession } from "../auth/session.tsx";
 import { FormStatus, type Status } from "../components/Form.tsx";
 import { PageTitle, useDocumentTitle } from "../components/Page.tsx";
+import { formatDate } from "../lib/datetime.ts";
 import { formatPesos } from "../lib/money.ts";
 import { Link } from "../lib/router.tsx";
 import { ContactMeta, NoContactsAccess } from "./contactShared.tsx";
@@ -220,7 +221,7 @@ export function SharedDirectory() {
                               <bdi>{price.description}</bdi>
                             </span>
                             <span className="contact-prices__amount">{formatPesos(price.amountCents)}</span>
-                            <span className="contact-prices__date">{price.date}</span>
+                            <span className="contact-prices__date">{formatDate(price.date)}</span>
                           </div>
                         </li>
                       ))}

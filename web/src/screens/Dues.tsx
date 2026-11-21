@@ -19,7 +19,8 @@ import { canReadDues, hasRole, useMe, useSession } from "../auth/session.tsx";
 import { ConfirmDialog } from "../components/ConfirmDialog.tsx";
 import { Field, FormStatus, useFormErrors, type Status } from "../components/Form.tsx";
 import { PageTitle, useDocumentTitle } from "../components/Page.tsx";
-import { dayMonthYear, formatPesos, parsePesos, pesosInput, todayArgentina } from "../lib/money.ts";
+import { formatDate, todayArgentina } from "../lib/datetime.ts";
+import { formatPesos, parsePesos, pesosInput } from "../lib/money.ts";
 
 const memberStatusLabel: Record<string, string> = {
   owing: "Debe",
@@ -38,7 +39,7 @@ function memberStatusText(member: DueMember, amountCents: string): string {
 
 function myDueText(due: MyDue): string {
   const formatted = formatPesos(due.amountCents);
-  const formattedDate = dayMonthYear(due.dueDate);
+  const formattedDate = formatDate(due.dueDate);
   if (due.status === "paid") return `Pagada ${formatted} — vencía el ${formattedDate}`;
   // S6: the exempt student sees only "Exento", never the reason.
   if (due.status === "exempt") return "Exento";
@@ -467,7 +468,7 @@ export function Dues() {
               {dues.map((due) => (
                 <li key={due.id}>
                   <div>
-                    <strong>{due.name}</strong> — {formatPesos(due.amountCents)} — vence el {dayMonthYear(due.dueDate)}
+                    <strong>{due.name}</strong> — {formatPesos(due.amountCents)} — vence el {formatDate(due.dueDate)}
                     <br />
                     <span className="muted small">
                       {due.totalCount - due.owingCount} de {due.totalCount} pagaron
@@ -527,7 +528,7 @@ export function Dues() {
             <div>
               <h2 id="due-detail-title">{detail.name}</h2>
               <p className="muted small">
-                {formatPesos(detail.amountCents)} — vence el {dayMonthYear(detail.dueDate)} ·{" "}
+                {formatPesos(detail.amountCents)} — vence el {formatDate(detail.dueDate)} ·{" "}
                 {detail.totalCount - detail.owingCount} de {detail.totalCount} pagaron
               </p>
             </div>

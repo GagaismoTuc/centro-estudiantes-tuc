@@ -7,6 +7,7 @@ import { canReadContacts, hasRole, useMe, useSession } from "../auth/session.tsx
 import { ConfirmDialog } from "../components/ConfirmDialog.tsx";
 import { FormStatus, SubmitButton, type Status } from "../components/Form.tsx";
 import { PageTitle, useDocumentTitle } from "../components/Page.tsx";
+import { formatDate, todayArgentina } from "../lib/datetime.ts";
 import { formatPesos, parsePesosNumber } from "../lib/money.ts";
 import { Link } from "../lib/router.tsx";
 import { ContactMeta, NoContactsAccess } from "./contactShared.tsx";
@@ -47,14 +48,6 @@ function markOutdatedIfApproved(contact: Contact): Contact {
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-function todayLocalISO(): string {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
 
 type ContactFormValues = {
   name: string;
@@ -336,7 +329,7 @@ function ReferencePriceForm({
   const baseId = useId();
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
-  const [date, setDate] = useState(todayLocalISO());
+  const [date, setDate] = useState(todayArgentina());
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<PriceField, string>>>({});
   const [status, setStatus] = useState<Status>(null);
   const [busy, setBusy] = useState(false);
@@ -374,7 +367,7 @@ function ReferencePriceForm({
     const amountCents = parsePesosNumber(amount);
     if (amountCents === null) errs.amount = "Ingresá un monto positivo con hasta dos decimales.";
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) errs.date = "Ingresá una fecha válida.";
-    else if (date > todayLocalISO()) errs.date = "La fecha no puede ser futura.";
+    else if (date > todayArgentina()) errs.date = "La fecha no puede ser futura.";
 
     if (Object.keys(errs).length > 0 || amountCents === null) {
       setFieldErrors(errs);
@@ -934,7 +927,7 @@ export function Contacts() {
                               <bdi>{price.description}</bdi>
                             </span>
                             <span className="contact-prices__amount">{formatPesos(price.amountCents)}</span>
-                            <span className="contact-prices__date">{price.date}</span>
+                            <span className="contact-prices__date">{formatDate(price.date)}</span>
                           </div>
                           {canWrite && (
                             <button

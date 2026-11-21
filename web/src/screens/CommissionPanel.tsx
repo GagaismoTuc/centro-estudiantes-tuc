@@ -6,13 +6,12 @@ import { useSession } from "../auth/session.tsx";
 import { ConfirmDialog } from "../components/ConfirmDialog.tsx";
 import { Field, FieldError, FormStatus, useFormErrors, type Check, type Status } from "../components/Form.tsx";
 import { PageTitle, useDocumentTitle } from "../components/Page.tsx";
+import { fromLocalInput, toLocalInput } from "../lib/datetime.ts";
 import { Link } from "../lib/router.tsx";
 import { ListCard, ListForm } from "./ElectionLists.tsx";
 import {
   DEFAULT_POSITIONS,
-  fromLocalInput,
   loadCommissionStatus,
-  toLocalInput,
   type CommissionStatus,
   type Election,
   type ElectionList,

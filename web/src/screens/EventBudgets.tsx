@@ -7,6 +7,7 @@ import { canReadContacts, hasRole, useMe } from "../auth/session.tsx";
 import { ConfirmDialog } from "../components/ConfirmDialog.tsx";
 import { Field, FormStatus, useFormErrors, type Status } from "../components/Form.tsx";
 import { PageTitle, useDocumentTitle } from "../components/Page.tsx";
+import { formatDate } from "../lib/datetime.ts";
 import { formatPesos, parsePesosNumber, pesosInput } from "../lib/money.ts";
 import { Link } from "../lib/router.tsx";
 
@@ -124,7 +125,7 @@ export function EventBudgets() {
     <Link to="/calculadora">Calculadora</Link><FormStatus ref={statusRef} status={status} />
     <section aria-label="Presupuestos"><h2>Presupuestos</h2>{canWrite && detail && <button type="button" className="button button--secondary" onClick={() => { setDetail(null); setEditing(false); setLineEdit(null); }}>Nuevo presupuesto</button>}{budgets.length === 0 && <p>{"Todav\u00eda no hay presupuestos."}</p>}<ul>{budgets.map((b) => <li key={b.id}><button type="button" className="text-button" onClick={() => { setEditing(false); setLineEdit(null); void loadDetail(b.id); }}>{b.name}</button>{b.archived && " (archivado)"}</li>)}</ul></section>
     {canWrite && !detail && <section><h2>Crear presupuesto</h2><BudgetForm save={saveBudget} /></section>}
-    {detail && <section aria-label="Detalle del presupuesto"><h2>{detail.name}</h2><p>{detail.startsOn} - {detail.endsOn}{detail.archived && " (archivado)"}</p>
+    {detail && <section aria-label="Detalle del presupuesto"><h2>{detail.name}</h2><p>{formatDate(detail.startsOn)} - {formatDate(detail.endsOn)}{detail.archived && " (archivado)"}</p>
       {canWrite && !detail.archived && <><button className="button button--secondary" type="button" onClick={() => setEditing(!editing)}>Editar presupuesto</button><button className="button button--secondary" type="button" onClick={() => setConfirm("archive")}>Archivar</button><button className="button button--secondary" type="button" onClick={() => setConfirm("delete")}>Borrar</button>{editing && <BudgetForm key={detail.id} initial={detail} save={saveBudget} />}</>}
       <h3>Resultado total</h3><p>Costo: {formatPesos(detail.totals.costCents)}; ingresos: {formatPesos(detail.totals.incomeCents)}; resultado: {formatPesos(detail.totals.resultCents)}. Entrada para no perder: {detail.totals.breakEvenCents === null ? "sin calcular" : formatPesos(detail.totals.breakEvenCents)}.</p>
       <h3>Presupuestado vs real por rubro</h3>
@@ -179,7 +180,7 @@ export function EventBudgets() {
           </table>
         </div>
       </>}
-      <h3>{"Por d\u00eda"}</h3><ul>{detail.days.map((day) => <li key={day.day}>{day.day}: costo {formatPesos(day.totals.costCents)}, ingresos {formatPesos(day.totals.incomeCents)}, resultado {formatPesos(day.totals.resultCents)}, entrada {day.totals.breakEvenCents === null ? "sin calcular" : formatPesos(day.totals.breakEvenCents)}</li>)}</ul>
+      <h3>{"Por d\u00eda"}</h3><ul>{detail.days.map((day) => <li key={day.day}>{formatDate(day.day)}: costo {formatPesos(day.totals.costCents)}, ingresos {formatPesos(day.totals.incomeCents)}, resultado {formatPesos(day.totals.resultCents)}, entrada {day.totals.breakEvenCents === null ? "sin calcular" : formatPesos(day.totals.breakEvenCents)}</li>)}</ul>
       <h3>{"L\u00edneas"}</h3><ul>{detail.lines.map((line) => <li key={line.id}>{line.description} - {line.quantity ?? "-"} x {line.unitAmountCents == null ? "sin precio" : formatPesos(line.unitAmountCents)} {canWrite && !detail.archived && <><button type="button" className="text-button" onClick={() => setLineEdit(line)}>Editar</button><button type="button" className="text-button" onClick={() => setConfirm(line.id)}>Borrar</button></>}</li>)}</ul>
       {canWrite && !detail.archived && <><h3>{lineEdit ? "Editar l\u00ednea" : "Agregar l\u00ednea"}</h3><LineForm key={lineEdit?.id ?? "new"} headings={headings} contacts={contacts} initial={lineEdit ?? undefined} save={saveLine} cancel={lineEdit ? () => setLineEdit(null) : undefined} /></>}
     </section>}

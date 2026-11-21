@@ -6,7 +6,8 @@ import { useSession } from "../auth/session.tsx";
 import { Field, FormStatus, useFormErrors, type Status } from "../components/Form.tsx";
 import { PageTitle, useDocumentTitle } from "../components/Page.tsx";
 import { Link } from "../lib/router.tsx";
-import { dayMonthYear, formatPesos, todayArgentina } from "../lib/money.ts";
+import { formatDate, todayArgentina } from "../lib/datetime.ts";
+import { formatPesos } from "../lib/money.ts";
 
 type Entry = Omit<components["schemas"]["FinanceEntry"], "amountCents"> & { amountCents: string };
 type Total = Omit<components["schemas"]["FinanceCategoryTotal"], "totalCents"> & { totalCents: string };
@@ -111,7 +112,7 @@ export function FundReport() {
     {report && <>
       <section className="panel" aria-labelledby={`${ids}-summary`}>
         <h2 id={`${ids}-summary`}>Saldos</h2>
-        <p>Del {dayMonthYear(report.from)} al {dayMonthYear(report.to)}</p>
+        <p>Del {formatDate(report.from)} al {formatDate(report.to)}</p>
         <dl className="report-summary">
           <div><dt>Saldo inicial</dt><dd>{formatPesos(report.openingCents)}</dd></div>
           <div><dt>Total de ingresos</dt><dd>{formatPesos(report.incomeCents)}</dd></div>
@@ -128,7 +129,7 @@ export function FundReport() {
         <h2 id={`${ids}-entries`}>Movimientos del rango</h2>
         {report.entries.length === 0 ? <p>No hay movimientos entre esas fechas.</p> : <ul>{report.entries.map((entry) => <li key={entry.id}>
           <strong>{entry.description}</strong> {"—"} {formatPesos(entry.amountCents)} ({entry.direction === "income" ? "Ingreso" : "Gasto"})<br />
-          <span>{names.get(entry.categoryId)} {"—"} {dayMonthYear(entry.date)}</span><br />
+          <span>{names.get(entry.categoryId)} {"—"} {formatDate(entry.date)}</span><br />
           Registrado por {entry.recordedBy}
         </li>)}</ul>}
       </section>

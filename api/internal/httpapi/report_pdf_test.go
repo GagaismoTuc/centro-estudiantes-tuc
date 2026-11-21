@@ -104,6 +104,22 @@ func TestFinanceReportPDFExample(t *testing.T) {
 	}
 }
 
+func TestFinanceReportPDFArgentineDates(t *testing.T) {
+	ctx := integration(t)
+	rf := newReportFixture(t, ctx, time.Date(2026, 12, 1, 15, 0, 0, 0, time.UTC))
+	rf.record(t, "income/Ventas", "2026-03-01", 200000, "Venta de tortas")
+	converter, documents := accountabilityConverter(t)
+	pdfRouter(rf.fixture, converter.URL)
+	if r := rf.get("/api/finance/report.pdf?from=2026-03-01&to=2026-11-30", rf.officer); r.Code != http.StatusOK {
+		t.Fatalf("status %d %s", r.Code, r.Body)
+	}
+	text := wordText(t, <-documents)
+	// The movements are a table: each cell is its own line, the date right before the description.
+	if !strings.Contains(text, "Desde 01/03/2026 hasta 30/11/2026") || !strings.Contains(text, "\n01/03/2026\nVenta de tortas\n") || strings.Contains(text, "2026-03-01") || strings.Contains(text, "2026-11-30") {
+		t.Fatalf("dates not dd/mm/aaaa: %s", text)
+	}
+}
+
 func TestFinanceReportPDFReadersAndPrivacy(t *testing.T) {
 	p := newPayFixture(t)
 	p.payOK(t, 100000)
