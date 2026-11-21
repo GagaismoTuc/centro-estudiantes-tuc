@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { App } from "./App.tsx";
-import { me, mockApi, ok } from "./test/api.ts";
+import { fail, me, mockApi, ok, sentTo } from "./test/api.ts";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -50,4 +50,48 @@ test("invalid budget form focuses the first invalid field and blocks students", 
   });
   render(<App />);
   expect((await screen.findByRole("alert")).textContent).toContain("No ten\u00e9s acceso");
+});
+
+async function submitBudget(startsOn: string, endsOn: string) {
+  fireEvent.change(await screen.findByLabelText("Nombre"), { target: { value: "Semana" } });
+  fireEvent.change(screen.getByLabelText("Inicio"), { target: { value: startsOn } });
+  fireEvent.change(screen.getByLabelText("Fin"), { target: { value: endsOn } });
+  fireEvent.click(screen.getByRole("button", { name: "Crear presupuesto" }));
+}
+
+test("R1 (#134) the date range error names its cause", async () => {
+  const sent = mockApi({
+    "GET /auth/me": ok(me({ role: "officer", mfa: "satisfied" })),
+    "GET /event-budgets": ok([]),
+    "GET /contacts/headings": ok([]),
+    "GET /contacts": ok([]),
+    "POST /event-budgets": fail(422, "invalid_range"),
+  });
+  window.history.replaceState(null, "", "/presupuestos");
+  render(<App />);
+  await submitBudget("2026-11-05", "2026-11-01");
+  expect(await screen.findByText("La fecha de fin no puede ser anterior al inicio.")).toBeTruthy();
+  await submitBudget("2026-11-01", "2026-12-10");
+  expect(await screen.findByText("El evento puede durar hasta 31 días.")).toBeTruthy();
+  expect(screen.queryByText("La fecha de fin no puede ser anterior al inicio.")).toBeNull();
+  expect(screen.queryByText(/Revisá el rango de fechas/)).toBeNull();
+  expect(sentTo(sent, "POST /event-budgets").map((r) => r.body)).toEqual([
+    { name: "Semana", startsOn: "2026-11-05", endsOn: "2026-11-01" },
+    { name: "Semana", startsOn: "2026-11-01", endsOn: "2026-12-10" },
+  ]);
+});
+
+test("R10 (#134) a server error without its own message shows the generic one, never the raw code", async () => {
+  mockApi({
+    "GET /auth/me": ok(me({ role: "officer", mfa: "satisfied" })),
+    "GET /event-budgets": ok([]),
+    "GET /contacts/headings": ok([]),
+    "GET /contacts": ok([]),
+    "POST /event-budgets": fail(500, "internal"),
+  });
+  window.history.replaceState(null, "", "/presupuestos");
+  render(<App />);
+  await submitBudget("2026-11-01", "2026-11-05");
+  expect(await screen.findByText("Algo salió mal de nuestro lado. Probá de nuevo en un rato.")).toBeTruthy();
+  expect(document.body.textContent).not.toContain("internal");
 });

@@ -8,11 +8,15 @@ import { Icon, type IconName } from "../components/Icon.tsx";
 import { PageTitle, useDocumentTitle } from "../components/Page.tsx";
 import { Link } from "../lib/router.tsx";
 
-const upcoming: { title: string; text: string; icon: IconName }[] = [
-  { title: "Finanzas", text: "Ingresos y gastos del centro, con comprobantes.", icon: "wallet" },
-  { title: "Elecciones", text: "Votación desde el celular, con voto secreto.", icon: "ballot" },
-  { title: "Notas", text: "Notas formales con el membrete de tu escuela.", icon: "note" },
+type Module = { title: string; text: string; icon: IconName };
+
+// Finance and elections are for anyone in a school (/eleccion sends users without one home).
+const schoolModules: (Module & { to: string })[] = [
+  { title: "Finanzas", text: "Ingresos y gastos del centro, con comprobantes.", icon: "wallet", to: "/caja" },
+  { title: "Elecciones", text: "Votación desde el celular, con voto secreto.", icon: "ballot", to: "/eleccion" },
 ];
+
+const upcoming: Module[] = [{ title: "Notas", text: "Notas formales con el membrete de tu escuela.", icon: "note" }];
 
 function VerifyEmailBanner({ email }: { email: string }) {
   const [status, setStatus] = useState<Status>(null);
@@ -102,6 +106,21 @@ export function Home() {
               </Link>
             </li>
           )}
+          {me.role !== null &&
+            schoolModules.map((module) => (
+              <li key={module.title}>
+                <Link to={module.to} className="card card--link">
+                  <span className="card__icon">
+                    <Icon name={module.icon} />
+                  </span>
+                  <span className="card__title">{module.title}</span>
+                  <span className="card__text">{module.text}</span>
+                  <span className="card__cta">
+                    Abrir <Icon name="arrow" />
+                  </span>
+                </Link>
+              </li>
+            ))}
           {upcoming.map((module) => (
             <li key={module.title}>
               <div className="card card--muted">

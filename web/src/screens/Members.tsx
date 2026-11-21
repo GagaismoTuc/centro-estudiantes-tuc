@@ -43,7 +43,7 @@ export function Members() {
 
   async function invite(role: "veedor" | "school_admin") {
     setInvitationStatus(null);
-    if (!invitationForm.validate({ email: checks.email })) return;
+    if (!invitationForm.validate({ email: (v) => (v.trim() ? checks.email(v) : "Escribí el mail de la persona.") })) return;
     setBusy(true);
     const result = await call(apiClient.POST("/members/invitations", { body: { email: invitationForm.value("email").trim(), role } }));
     if (result.ok) setInvitationStatus({ tone: "ok", text: "Se gener\u00f3 la invitaci\u00f3n. Si no llega, pod\u00e9s reenviarla." });

@@ -193,7 +193,8 @@ describe("R2, R3, R4, R7 (#84) — Calculators from real data", () => {
     // Negative: exempt >= roster shows error, marks aria-invalid, focuses on submit, hides button.
     fireEvent.change(exemptInput, { target: { value: "480" } });
     expect(exemptInput.getAttribute("aria-invalid")).toBe("true");
-    expect(within(dueSection).getAllByText("Revisá la meta y la cantidad de alumnos").length).toBeGreaterThan(0);
+    expect(within(dueSection).getAllByText("Los exentos no pueden ser más que los alumnos del padrón.").length).toBeGreaterThan(0);
+    expect(within(dueSection).queryByText("Revisá la meta y la cantidad de alumnos")).toBeNull();
     expect(within(dueSection).queryByRole("button", { name: "Crear Cuota con este monto" })).toBeNull();
     fireEvent.submit(dueSection.querySelector("form")!);
     expect(document.activeElement).toBe(exemptInput);

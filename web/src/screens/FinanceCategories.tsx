@@ -7,6 +7,7 @@ import { ConfirmDialog } from "../components/ConfirmDialog.tsx";
 import { Field, FormStatus, useFormErrors, type Status } from "../components/Form.tsx";
 
 type Category = components["schemas"]["FinanceCategory"];
+const done = { add: "Se agregó la categoría.", rename: "Se renombró la categoría.", archive: "Se archivó la categoría.", delete: "Se borró la categoría." };
 type Props = { categories: Category[]; used: Set<string> | null; officer: boolean; reload: () => Promise<void>; authError: (code: string) => void };
 
 export function FinanceCategories({ categories, used, officer, reload, authError }: Props) {
@@ -32,7 +33,7 @@ export function FinanceCategories({ categories, used, officer, reload, authError
       : operation === "archive" ? await call(apiClient.POST("/finance/categories/{id}/archive", { params: { path: { id: category!.id } } }))
       : await call(apiClient.DELETE("/finance/categories/{id}", { params: { path: { id: category!.id } } }));
     if (result.ok) {
-      setName(""); setEditing(null); setConfirm(null); setStatus({ tone: "ok", text: "Se actualiz\u00f3 la categor\u00eda." }); await reload();
+      setName(""); setEditing(null); setConfirm(null); setStatus({ tone: "ok", text: done[operation] }); await reload();
     } else {
       authError(result.code);
       setStatus({ tone: "error", text: errorMessage(result.code) });

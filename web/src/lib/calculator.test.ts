@@ -179,10 +179,8 @@ describe("R2 (#84) — Monto de Cuota", () => {
       expect(exactMultiple.result.formattedAmountPerStudent).toBe("$ 1.000");
     }
 
-    // Negative cases: exempt >= roster, empty/0 goal, negative exempt, empty roster.
+    // Negative cases: empty/0 goal, negative exempt, empty roster.
     for (const invalid of [
-      { input: { goal: "600000", rosterCount: 480, expectedExempt: "480" }, field: "expectedExempt" as const },
-      { input: { goal: "600000", rosterCount: 480, expectedExempt: "500" }, field: "expectedExempt" as const },
       { input: { goal: "", rosterCount: 480, expectedExempt: "0" }, field: "goal" as const },
       { input: { goal: "0", rosterCount: 480, expectedExempt: "0" }, field: "goal" as const },
       { input: { goal: "-1000", rosterCount: 480, expectedExempt: "0" }, field: "goal" as const },
@@ -268,5 +266,20 @@ describe("R4 (#84) — Cuánto podemos gastar", () => {
     });
     expect(badCost.comparison).toBeNull();
     expect(badCost.plannedCostError).toBe("Ingresá un costo planeado válido");
+  });
+});
+
+describe("R9 (#134) — exentos y padrón", () => {
+  test("says the exempt count cannot exceed the roster when it is equal or larger", () => {
+    for (const expectedExempt of ["480", "500"]) {
+      const result = calculateDueAmount({ goal: "600000", rosterCount: 480, expectedExempt });
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error).toBe("Los exentos no pueden ser más que los alumnos del padrón.");
+        expect(result.errors).toEqual({ expectedExempt: "Los exentos no pueden ser más que los alumnos del padrón." });
+      }
+    }
+    const below = calculateDueAmount({ goal: "600000", rosterCount: 480, expectedExempt: "479" });
+    expect(below.ok).toBe(true);
   });
 });
