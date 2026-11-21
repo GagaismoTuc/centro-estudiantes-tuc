@@ -245,6 +245,22 @@ describe("roster import", () => {
       `'=1+2,'+54,'-3,'@x,'\tA,"'\rB","Pérez, Ana",ok\r\n`,
     );
   });
+
+  test("R5 (#134) an empty file says so and is not sent", async () => {
+    const sent = await openRoster();
+    for (const content of ["", String.fromCharCode(0xfeff, 10)]) {
+      upload(new File([content], "vacio.csv", { type: "text/csv" }));
+      await waitFor(() => expect(liveText()).toContain("El archivo está vacío."));
+    }
+    expect(sentTo(sent, "POST /roster/import")).toHaveLength(0);
+  });
+
+  test("R5 (#134) a reimport without new students says none were new", async () => {
+    await openRoster({ "POST /roster/import": ok({ inserted: 0, skipped: 2 }) });
+    upload(new File([csv], "padron.csv", { type: "text/csv" }));
+    await waitFor(() => expect(liveText()).toContain("No había alumnos nuevos: los 2 ya estaban en el padrón."));
+    expect(liveText()).not.toContain("Se cargaron 0");
+  });
 });
 
 describe("issuing access codes", () => {

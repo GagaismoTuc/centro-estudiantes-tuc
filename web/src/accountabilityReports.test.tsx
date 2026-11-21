@@ -164,7 +164,7 @@ test("R2 the preview warns about a Rendición of the same Gestión and period, a
   });
   open();
   await screen.findByText("Del 01/03/2026 al 30/11/2026");
-  const warning = "Ya hay una rendición de esta gestión y período, publicada el 20/11/2026.";
+  const warning = "Ya hay una rendición de esta gestión y período, publicada el 20/11/2026 22:30.";
   fillAndPreview("Gestión 2026", "2026-04-01", "2026-11-30");
   await screen.findByRole("region", { name: "Vista previa" });
   expect(screen.queryByText(warning)).toBeNull();

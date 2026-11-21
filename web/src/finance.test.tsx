@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { App } from "./App.tsx";
-import { fail, me, mockApi, ok, sentTo } from "./test/api.ts";
+import { fail, me, mockApi, noContent, ok, sentTo } from "./test/api.ts";
 
 afterEach(() => vi.restoreAllMocks());
 const categories = [
@@ -17,8 +17,17 @@ test("R15 students read the ledger and balance without an entry form", async () 
   window.history.replaceState(null, "", "/caja"); render(<App />);
   expect(await screen.findByText("$ 2.000,00")).toBeTruthy();
   expect(screen.getByText(/Registrado por Ana Ficticia/)).toBeTruthy();
-  expect(screen.getByText(/Ventas.*2026-11-10/)).toBeTruthy();
+  expect(screen.getByText(/Ventas.*10\/11\/2026/)).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Nuevo movimiento" })).toBeNull();
+});
+
+test("R1 R3 the ledger shows the entry date as dd/mm/aaaa and when it was recorded in Argentina time on a 24-hour clock", async () => {
+  const late = { ...entry, date: "2026-11-20", recordedAt: "2026-11-21T01:45:25Z" };
+  mockApi({ "GET /auth/me": ok(me()), ...reads, "GET /finance/entries": ok([late]) });
+  window.history.replaceState(null, "", "/caja"); render(<App />);
+  expect(await screen.findByText(/Ventas — 20\/11\/2026/)).toBeTruthy();
+  expect(screen.getByText(/Registrado por Ana Ficticia — 20\/11\/2026 22:45/)).toBeTruthy();
+  expect(screen.queryByText(/2026-11-20/)).toBeNull();
 });
 
 test.each([["student", "not_required"], ["officer", "satisfied"]] as const)("S10 a %s sees the ledger CSV download and the Informe link", async (role, mfa) => {
@@ -181,7 +190,7 @@ test("R2 renaming changes the category shown on historical movements", async () 
   fireEvent.click(within(used).getByRole("button", { name: "Renombrar" }));
   fireEvent.change(screen.getByLabelText("Nuevo nombre"), { target: { value: "Kiosco" } });
   fireEvent.click(screen.getByRole("button", { name: "Guardar nombre" }));
-  expect(await screen.findByText(/Kiosco.*2026-11-10/)).toBeTruthy();
+  expect(await screen.findByText(/Kiosco.*10\/11\/2026/)).toBeTruthy();
 });
 
 test("R3 archived categories disappear from entry choices but remain on historical movements", async () => {
@@ -196,7 +205,7 @@ test("R3 archived categories disappear from entry choices but remain on historic
   fireEvent.click(within(used).getByRole("button", { name: "Archivar" }));
   fireEvent.click(screen.getByRole("button", { name: "Confirmar archivo" }));
   await screen.findByText("(Archivada)", { exact: false });
-  expect(screen.getByText(/Ventas.*2026-11-10/)).toBeTruthy();
+  expect(screen.getByText(/Ventas.*10\/11\/2026/)).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Nuevo movimiento" }));
   expect(screen.queryByRole("option", { name: "Ventas" })).toBeNull();
 });
@@ -394,4 +403,50 @@ test("R2 and R3 detail upload shows Spanish error and moves focus to invalid inp
   expect(await screen.findByText(/est\u00e1 vac\u00edo/)).toBeTruthy();
   expect(input.getAttribute("aria-invalid")).toBe("true");
   await waitFor(() => expect(document.activeElement).toBe(input));
+});
+
+test("#130 R1 R2 R3 Caja accepts 1.234,56, rejects ambiguous amounts without posting, and shows a negative balance as -$ 195.269,88", async () => {
+  const sent = mockApi({ "GET /auth/me": ok(me({ role: "officer", mfa: "satisfied" })), ...reads, "GET /finance/balance": ok({ balanceCents: -19526988 }), "POST /finance/entries": ok(entry, 201) });
+  window.history.replaceState(null, "", "/caja"); render(<App />);
+  expect(await screen.findByText("-$ 195.269,88")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Nuevo movimiento" }));
+  await screen.findByRole("option", { name: "Ventas" });
+  fireEvent.change(screen.getByLabelText("Categoría"), { target: { value: "c1" } });
+  fireEvent.change(screen.getByLabelText("Fecha"), { target: { value: "2026-11-10" } });
+  fireEvent.change(screen.getByLabelText("Descripción"), { target: { value: "Venta de tortas" } });
+  const amount = screen.getByLabelText("Monto en pesos");
+  for (const raw of ["1.2345", "12,345", "1.23.4", "1,234", "-5", "0", "abc", ""]) {
+    fireEvent.change(amount, { target: { value: raw } });
+    fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+    await waitFor(() => expect(amount.getAttribute("aria-invalid")).toBe("true"));
+    expect(document.getElementById(amount.getAttribute("aria-describedby") ?? "")?.textContent).toBe("Ingresá un monto positivo con hasta dos decimales.");
+  }
+  expect(sentTo(sent, "POST /finance/entries")).toHaveLength(0);
+  fireEvent.change(amount, { target: { value: "1.234,56" } });
+  fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+  await waitFor(() => expect(sentTo(sent, "POST /finance/entries")).toHaveLength(1));
+  expect(sentTo(sent, "POST /finance/entries")[0]?.body).toMatchObject({ amountCents: 123456 });
+});
+
+test("R2 (#134) each category change says what happened", async () => {
+  mockApi({ "GET /auth/me": ok(me({ role: "officer", mfa: "satisfied" })), ...reads,
+    "POST /finance/categories": ok({ id: "c4", name: "Buzos", direction: "expense", active: true, reserved: false }, 201),
+    "PATCH /finance/categories/c1": ok({ ...categories[0], name: "Kiosco" }),
+    "DELETE /finance/categories/c3": noContent(),
+  });
+  window.history.replaceState(null, "", "/caja"); render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Categorías" }));
+  const used = (await screen.findByText("Ventas", { selector: "strong" })).closest("li")!;
+  const unused = screen.getByText("Viajes", { selector: "strong" }).closest("li")!;
+  fireEvent.change(screen.getByLabelText("Nombre de la categoría"), { target: { value: "Buzos" } });
+  fireEvent.click(screen.getByRole("button", { name: "Agregar categoría" }));
+  expect(await screen.findByText("Se agregó la categoría.")).toBeTruthy();
+  fireEvent.click(within(used).getByRole("button", { name: "Renombrar" }));
+  fireEvent.change(screen.getByLabelText("Nuevo nombre"), { target: { value: "Kiosco" } });
+  fireEvent.click(screen.getByRole("button", { name: "Guardar nombre" }));
+  expect(await screen.findByText("Se renombró la categoría.")).toBeTruthy();
+  fireEvent.click(within(unused).getByRole("button", { name: "Borrar" }));
+  fireEvent.click(screen.getByRole("button", { name: "Confirmar borrado" }));
+  expect(await screen.findByText("Se borró la categoría.")).toBeTruthy();
+  expect(screen.queryByText("Se actualizó la categoría.")).toBeNull();
 });

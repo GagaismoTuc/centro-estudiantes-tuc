@@ -311,3 +311,22 @@ test("R12: school admin invites a Veedor or school administrator by email", asyn
   expect(sentTo(sent, "POST /members/invitations")[2]!.body).toEqual({ email: "admin@ejemplo.test", role: "school_admin" });
   expect(await screen.findByText("Se gener\u00f3 la invitaci\u00f3n. Si no llega, pod\u00e9s reenviarla.")).toBeTruthy();
 });
+
+test("R3 (#134) inviting with an empty email asks for the person's email and sends nothing", async () => {
+  const sent = mockApi({
+    "GET /auth/me": ok(me({ role: "school_admin", mfa: "satisfied" })),
+    "GET /members": ok([]),
+    "GET /roster": ok([]),
+  });
+  window.history.replaceState(null, "", "/miembros");
+  render(<App />);
+  const email = await screen.findByLabelText("Correo electrónico");
+  fireEvent.click(screen.getByRole("button", { name: "Invitar Veedor" }));
+  await waitFor(() => expect(email.getAttribute("aria-invalid")).toBe("true"));
+  expect(document.activeElement).toBe(email);
+  const describedBy = (email.getAttribute("aria-describedby") ?? "").split(" ");
+  const message = describedBy.map((id) => document.getElementById(id)?.textContent ?? "").join(" ");
+  expect(message).toContain("Escribí el mail de la persona.");
+  expect(message).not.toContain("Escribí tu mail.");
+  expect(sentTo(sent, "POST /members/invitations")).toHaveLength(0);
+});

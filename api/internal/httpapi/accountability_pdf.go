@@ -33,13 +33,13 @@ func (s *server) writeAccountabilityPDF(w http.ResponseWriter, r *http.Request, 
 		if e.Direction != "income" {
 			amount = -amount
 		}
-		entries = append(entries, map[string]string{"fecha": e.Date, "categoria": e.Category, "descripcion": e.Description, "monto": pdfAmount(amount), "registrado_por": e.RecordedBy})
+		entries = append(entries, map[string]string{"fecha": pdfDate(e.Date), "categoria": e.Category, "descripcion": e.Description, "monto": pdfAmount(amount), "registrado_por": e.RecordedBy})
 	}
 	empty := ""
 	if len(dues) == 0 {
 		empty = "Sin cuotas en el per\u00edodo"
 	}
-	fields := map[string]string{"gestion": rep.Term, "desde": rep.From, "hasta": rep.To, "publicada_por": rep.PublishedBy, "saldo_inicial": pdfAmount(rep.Copy.OpeningCents), "saldo_final": pdfAmount(rep.Copy.ClosingCents), "sin_cuotas": empty}
+	fields := map[string]string{"gestion": rep.Term, "desde": pdfDate(rep.From), "hasta": pdfDate(rep.To), "publicada_por": rep.PublishedBy, "saldo_inicial": pdfAmount(rep.Copy.OpeningCents), "saldo_final": pdfAmount(rep.Copy.ClosingCents), "sin_cuotas": empty}
 	document, err := docx.Fill(accountabilityTemplate, fields, map[string][]map[string]string{"totales": totals, "cuotas": dues, "movimientos": entries})
 	if err != nil {
 		slog.Error("pdf generation failed", "cause", "template")

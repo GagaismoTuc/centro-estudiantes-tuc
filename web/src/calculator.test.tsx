@@ -35,8 +35,8 @@ describe("R4 — No guarda nada", () => {
     fireEvent.change(within(raffleSection).getByLabelText("Precio por unidad ($)"), { target: { value: "1500" } });
     fireEvent.change(within(raffleSection).getByLabelText("Unidades disponibles"), { target: { value: "200" } });
 
-    expect(within(personSection).getByText("$ 4.400")).toBeTruthy();
-    expect(within(raffleSection).getByText("$ 240.000")).toBeTruthy();
+    expect(within(personSection).getByText("$ 4.400,00")).toBeTruthy();
+    expect(within(raffleSection).getByText("$ 240.000,00")).toBeTruthy();
     expect(sent.filter((request) => ["POST", "PATCH", "DELETE"].includes(request.method))).toHaveLength(0);
 
     // Simulating a page reload clears in-memory calculator inputs and results.
@@ -44,7 +44,7 @@ describe("R4 — No guarda nada", () => {
     renderAt("/calculadora");
     const reloadedPerson = await screen.findByRole("region", { name: "Precio por persona" });
     expect((within(reloadedPerson).getByLabelText("Costo total ($)") as HTMLInputElement).value).toBe("");
-    expect(within(reloadedPerson).queryByText("$ 4.400")).toBeNull();
+    expect(within(reloadedPerson).queryByText("$ 4.400,00")).toBeNull();
   });
 });
 
@@ -109,7 +109,7 @@ describe("R6 — Pantalla accesible y en vivo", () => {
 
     fireEvent.change(peopleInput, { target: { value: "30" } });
     expect(peopleInput.getAttribute("aria-invalid")).toBeNull();
-    expect(personLive?.textContent).toContain("$ 3.400");
+    expect(personLive?.textContent).toContain("$ 3.400,00");
 
     const raffleSection = screen.getByRole("region", { name: "Rifa o venta" });
     const raffleLive = raffleSection.querySelector('[aria-live="polite"]');
@@ -120,7 +120,7 @@ describe("R6 — Pantalla accesible y en vivo", () => {
     });
     fireEvent.change(within(raffleSection).getByLabelText("Precio por unidad ($)"), { target: { value: "1500" } });
     fireEvent.change(within(raffleSection).getByLabelText("Unidades disponibles"), { target: { value: "200" } });
-    expect(raffleLive?.textContent).toContain("Ni vendiendo todo cubrís el costo: perdés $ 100.000");
+    expect(raffleLive?.textContent).toContain("Ni vendiendo todo cubrís el costo: perdés $ 100.000,00");
 
     const gridRule = css.match(/\.calc-grid\s*\{([^}]*)\}/);
     expect(gridRule).not.toBeNull();
@@ -180,20 +180,21 @@ describe("R2, R3, R4, R7 (#84) — Calculators from real data", () => {
     const exemptInput = within(dueSection).getByLabelText("Exentos previstos");
     expect((exemptInput as HTMLInputElement).value).toBe("0");
 
-    // Goal $600.000 / 480 -> $ 1.300 (Sin redondeo: $ 1.250).
+    // Goal $600.000 / 480 -> $ 1.300,00 (Sin redondeo: $ 1.250,00).
     fireEvent.change(goalInput, { target: { value: "600000" } });
-    expect(within(dueSection).getByText("$ 1.300")).toBeTruthy();
-    expect(within(dueSection).getByText("Sin redondeo: $ 1.250")).toBeTruthy();
+    expect(within(dueSection).getByText("$ 1.300,00")).toBeTruthy();
+    expect(within(dueSection).getByText("Sin redondeo: $ 1.250,00")).toBeTruthy();
 
-    // With 30 expected exempt -> $600.000 / 450 = $ 1.333,33 -> $ 1.400.
+    // With 30 expected exempt -> $600.000 / 450 = $ 1.333,33 -> $ 1.400,00.
     fireEvent.change(exemptInput, { target: { value: "30" } });
-    expect(within(dueSection).getByText("$ 1.400")).toBeTruthy();
+    expect(within(dueSection).getByText("$ 1.400,00")).toBeTruthy();
     expect(within(dueSection).getByText("Sin redondeo: $ 1.333,33")).toBeTruthy();
 
     // Negative: exempt >= roster shows error, marks aria-invalid, focuses on submit, hides button.
     fireEvent.change(exemptInput, { target: { value: "480" } });
     expect(exemptInput.getAttribute("aria-invalid")).toBe("true");
-    expect(within(dueSection).getAllByText("Revisá la meta y la cantidad de alumnos").length).toBeGreaterThan(0);
+    expect(within(dueSection).getAllByText("Los exentos no pueden ser más que los alumnos del padrón.").length).toBeGreaterThan(0);
+    expect(within(dueSection).queryByText("Revisá la meta y la cantidad de alumnos")).toBeNull();
     expect(within(dueSection).queryByRole("button", { name: "Crear Cuota con este monto" })).toBeNull();
     fireEvent.submit(dueSection.querySelector("form")!);
     expect(document.activeElement).toBe(exemptInput);
@@ -300,16 +301,16 @@ describe("R2, R3, R4, R7 (#84) — Calculators from real data", () => {
 
     const spendableSection = await screen.findByRole("region", { name: "Cuánto podemos gastar" });
     expect(
-      await within(spendableSection).findByText("Hoy tenés $ 150.000; si cobrás lo que falta, $ 466.000"),
+      await within(spendableSection).findByText("Hoy tenés $ 150.000,00; si cobrás lo que falta, $ 466.000,00"),
     ).toBeTruthy();
 
     const plannedInput = within(spendableSection).getByLabelText("Costo planeado opcional ($)");
     fireEvent.change(plannedInput, { target: { value: "500000" } });
-    expect(within(spendableSection).getByText("Aunque cobres todo, te faltan $ 34.000")).toBeTruthy();
+    expect(within(spendableSection).getByText("Aunque cobres todo, te faltan $ 34.000,00")).toBeTruthy();
 
     // Invalid optional plannedCost keeps the real spendable summary visible, marks aria-invalid, and focuses on submit (CS-9).
     fireEvent.change(plannedInput, { target: { value: "-100" } });
-    expect(within(spendableSection).getByText("Hoy tenés $ 150.000; si cobrás lo que falta, $ 466.000")).toBeTruthy();
+    expect(within(spendableSection).getByText("Hoy tenés $ 150.000,00; si cobrás lo que falta, $ 466.000,00")).toBeTruthy();
     expect(plannedInput.getAttribute("aria-invalid")).toBe("true");
     expect(within(spendableSection).getAllByText("Ingresá un costo planeado válido").length).toBeGreaterThan(0);
     fireEvent.submit(spendableSection.querySelector("form")!);
@@ -325,7 +326,7 @@ describe("R2, R3, R4, R7 (#84) — Calculators from real data", () => {
     const second = renderAt("/calculadora");
     const negSection = await screen.findByRole("region", { name: "Cuánto podemos gastar" });
     expect(
-      await within(negSection).findByText("Hoy tenés -$ 20.000; si cobrás lo que falta, -$ 10.000"),
+      await within(negSection).findByText("Hoy tenés -$ 20.000,00; si cobrás lo que falta, -$ 10.000,00"),
     ).toBeTruthy();
 
     // Values above Number.MAX_SAFE_INTEGER from the raw JSON response display without precision loss.
@@ -392,4 +393,22 @@ describe("PRESERVE — App, AppShell, Icon, and exactMoneyJSON", () => {
     expect(await screen.findByRole("heading", { level: 1, name: "Calculadora" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Seguridad" })).toBeTruthy();
   });
+});
+
+test("#130 R1 R3 Calculadora reads 1.234,56 as pesos with thousands and shows a negative balance as -$ 195.269,88", async () => {
+  const sent = mockApi({
+    "GET /auth/me": ok(me({ role: "officer", mfa: "satisfied" })),
+    "GET /finance/calculator-summary": ok({ rosterCount: 100, balance: -19_526_988, owedOnDues: 0 }),
+  });
+  renderAt("/calculadora");
+  const personSection = await screen.findByRole("region", { name: "Precio por persona" });
+  fireEvent.change(within(personSection).getByLabelText("Costo total ($)"), { target: { value: "1.234,56" } });
+  fireEvent.change(within(personSection).getByLabelText("Cantidad de personas"), { target: { value: "1" } });
+  expect(within(personSection).getByText("Sin redondeo: $ 1.234,56")).toBeTruthy();
+  expect(within(personSection).getByText("$ 1.300,00")).toBeTruthy();
+  const spendableSection = screen.getByRole("region", { name: "Cuánto podemos gastar" });
+  expect(
+    await within(spendableSection).findByText("Hoy tenés -$ 195.269,88; si cobrás lo que falta, -$ 195.269,88"),
+  ).toBeTruthy();
+  expect(sent.filter((r) => ["POST", "PATCH", "DELETE"].includes(r.method))).toHaveLength(0);
 });
