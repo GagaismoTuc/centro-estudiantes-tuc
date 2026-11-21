@@ -8,7 +8,7 @@ import { ConfirmDialog } from "../components/ConfirmDialog.tsx";
 import { FormStatus, SubmitButton, type Status } from "../components/Form.tsx";
 import { PageTitle, useDocumentTitle } from "../components/Page.tsx";
 import { formatDate, todayArgentina } from "../lib/datetime.ts";
-import { formatPesos } from "../lib/money.ts";
+import { formatPesos, parsePesosNumber } from "../lib/money.ts";
 import { Link } from "../lib/router.tsx";
 import { ContactMeta, NoContactsAccess } from "./contactShared.tsx";
 
@@ -48,14 +48,6 @@ function markOutdatedIfApproved(contact: Contact): Contact {
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-function parsePesosToCents(raw: string): number | null {
-  const cleaned = raw.trim().replace(/\s+/g, "").replace(",", ".");
-  if (!/^\d+(\.\d{1,2})?$/.test(cleaned)) return null;
-  const [wholePart, fracPart = ""] = cleaned.split(".");
-  const cents = Number(wholePart) * 100 + Number(fracPart.padEnd(2, "0"));
-  return Number.isSafeInteger(cents) && cents > 0 ? cents : null;
-}
 
 type ContactFormValues = {
   name: string;
@@ -372,8 +364,8 @@ function ReferencePriceForm({
   async function handleSubmit() {
     const errs: Partial<Record<PriceField, string>> = {};
     if (!description.trim()) errs.description = "Escribí una descripción.";
-    const amountCents = parsePesosToCents(amount);
-    if (amountCents === null) errs.amount = "Ingresá un monto mayor a cero.";
+    const amountCents = parsePesosNumber(amount);
+    if (amountCents === null) errs.amount = "Ingresá un monto positivo con hasta dos decimales.";
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) errs.date = "Ingresá una fecha válida.";
     else if (date > todayArgentina()) errs.date = "La fecha no puede ser futura.";
 

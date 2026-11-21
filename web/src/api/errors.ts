@@ -102,7 +102,7 @@ export type ErrorContext = "finance" | "due-exemption" | "access-code" | "change
 
 const contextual: Record<ErrorContext, Record<string, string>> = {
   finance: {
-    invalid_amount: "Ingres\u00e1 un monto positivo en centavos enteros.",
+    invalid_amount: "Ingres\u00e1 un monto positivo con hasta dos decimales.",
     invalid_date: "Eleg\u00ed una fecha v\u00e1lida.",
     description_required: "Escrib\u00ed una descripci\u00f3n.",
     unsupported_media_type: "El archivo tiene que ser JPG, PNG o PDF.",

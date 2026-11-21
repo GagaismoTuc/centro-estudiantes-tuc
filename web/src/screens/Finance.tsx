@@ -17,7 +17,7 @@ import { Field, FormStatus, useFormErrors, type Status } from "../components/For
 import { PageTitle, useDocumentTitle } from "../components/Page.tsx";
 import { Link } from "../lib/router.tsx";
 import { formatDate, formatDateTime, todayArgentina } from "../lib/datetime.ts";
-import { centsOf, pesos } from "../lib/money.ts";
+import { formatPesos, parsePesos } from "../lib/money.ts";
 import { FinanceCategories } from "./FinanceCategories.tsx";
 
 type Category = components["schemas"]["FinanceCategory"];
@@ -174,7 +174,7 @@ export function Finance() {
     }
     if (!form.validate({
       date: (v) => (!v ? "Eleg\u00ed una fecha." : null),
-      amount: (v) => (centsOf(v) === null ? "Ingres\u00e1 un monto positivo con hasta dos decimales." : null),
+      amount: (v) => (parsePesos(v) === null ? "Ingres\u00e1 un monto positivo con hasta dos decimales." : null),
       description: (v) =>
         !v.trim()
           ? "Escrib\u00ed una descripci\u00f3n."
@@ -196,7 +196,7 @@ export function Finance() {
       categoryId: category,
       direction,
       date,
-      amountCents: centsOf(amount)!,
+      amountCents: String(parsePesos(amount)!),
       description,
       ...(eventBudgetId ? { eventBudgetId, headingId } : {}),
     });
@@ -325,7 +325,7 @@ export function Finance() {
     <FormStatus status={status} {...form.statusProps} />
     <button type="button" className="button button--secondary" onClick={() => setShowCategories(!showCategories)}>{"Categor\u00edas"}</button>
     {showCategories && <FinanceCategories categories={categories} used={entries === null ? null : new Set(entries.map((e) => e.categoryId))} officer={isOfficer} reload={load} authError={(code) => { if (code === "mfa_required" || code === "unauthenticated") void refresh(); }} />}
-    <section className="panel"><h2>Saldo</h2><p>{balance === null ? "Cargando..." : pesos(balance)}</p></section>
+    <section className="panel"><h2>Saldo</h2><p>{balance === null ? "Cargando..." : formatPesos(balance)}</p></section>
     {isOfficer && <section className="panel">
       {!open ? <button type="button" className="button button--primary" onClick={() => setOpen(true)}>Nuevo movimiento</button> : <>
         <h2>Nuevo movimiento</h2>
@@ -406,7 +406,7 @@ export function Finance() {
     </section>}
     <section className="panel"><h2>Movimientos</h2>
       {entries === null ? <p>Cargando...</p> : entries.length === 0 ? <p>{"Todav\u00eda no hay movimientos."}</p> : <ul>{entries.map((entry) => <li key={entry.id}>
-        <strong>{entry.description}</strong> {"\u2014"} {pesos(entry.amountCents)} ({entry.direction === "income" ? "Ingreso" : "Gasto"})<br />
+        <strong>{entry.description}</strong> {"\u2014"} {formatPesos(entry.amountCents)} ({entry.direction === "income" ? "Ingreso" : "Gasto"})<br />
         {categories.find((c) => c.id === entry.categoryId)?.name} {"\u2014"} {formatDate(entry.date)}<br />
         Registrado por {entry.recordedBy} {"\u2014"} {formatDateTime(entry.recordedAt)}
         {entry.eventBudgetName && <><br /><span>Evento: {entry.eventBudgetName}{entry.headingName ? ` \u2014 ${entry.headingName}` : ""}</span></>}
@@ -447,7 +447,7 @@ export function Finance() {
           <div>
             <h2 id="entry-detail-title">{detail.entry.description}</h2>
             <p className="muted small">
-              {pesos(detail.entry.amountCents)} ({detail.entry.direction === "income" ? "Ingreso" : "Gasto"}) —{" "}
+              {formatPesos(detail.entry.amountCents)} ({detail.entry.direction === "income" ? "Ingreso" : "Gasto"}) —{" "}
               {categories.find((c) => c.id === detail.entry.categoryId)?.name} — {formatDate(detail.entry.date)}
               {detail.entry.eventBudgetName && <> — Evento: {detail.entry.eventBudgetName}{detail.entry.headingName ? ` (${detail.entry.headingName})` : ""}</>}
             </p>
