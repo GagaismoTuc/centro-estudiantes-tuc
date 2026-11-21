@@ -29,6 +29,30 @@ test("officer adds a cost using a copied reference price and sees the event tota
   await waitFor(() => expect(screen.getByText(/^Costo:/).textContent).toContain("25.000"));
 });
 
+test("a line that would overflow the budget totals marks the price and moves focus to it", async () => {
+  const budget = { id: "b1", name: "Week", startsOn: "2026-09-21", endsOn: "2026-09-25", archived: false };
+  mockApi({
+    "GET /auth/me": ok(me({ role: "officer", mfa: "satisfied" })),
+    "GET /event-budgets": ok([budget]),
+    "GET /event-budgets/b1": ok({ ...budget, totals: { costCents: 0, incomeCents: 0, resultCents: 0, breakEvenCents: null }, days: [], lines: [] }),
+    "GET /contacts/headings": ok([{ id: "h1", name: "gazebos", archived: false, reserved: false }]),
+    "GET /contacts": ok([]),
+    "POST /event-budgets/b1/lines": fail(422, "invalid_amount"),
+  });
+  window.history.replaceState(null, "", "/presupuestos");
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Week" }));
+  fireEvent.change(await screen.findByLabelText("Descripción"), { target: { value: "Huge" } });
+  fireEvent.change(screen.getByLabelText("Cantidad"), { target: { value: "99999999" } });
+  const price = screen.getByLabelText("Precio unitario ($)") as HTMLInputElement;
+  fireEvent.change(price, { target: { value: "99999999999" } });
+  fireEvent.click(screen.getByRole("button", { name: "Agregar línea" }));
+  await waitFor(() => expect(document.activeElement).toBe(price));
+  expect(price.getAttribute("aria-invalid")).toBe("true");
+  const describedBy = (price.getAttribute("aria-describedby") ?? "").split(" ").map((id) => document.getElementById(id)?.textContent ?? "").join(" ");
+  expect(describedBy).toContain("El total del presupuesto sería demasiado grande.");
+});
+
 test("R3 the budget detail shows its dates as dd/mm/aaaa", async () => {
   const budget = { id: "b1", name: "Week", startsOn: "2026-11-20", endsOn: "2026-11-21", archived: false };
   const zero = { costCents: 0, incomeCents: 0, resultCents: 0, breakEvenCents: null };
