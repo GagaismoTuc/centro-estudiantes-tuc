@@ -206,7 +206,7 @@ describe("Inicio", () => {
     await within(main).findByRole("heading", { name: "¡Hola!" });
     expect(byText(main, "Escuela Demo Tucum\u00e1n \u00b7 Administrador de la escuela")).toBeTruthy();
     expect(within(main).getByRole("link", { name: /Padrón/ })).toBeTruthy();
-    expect(within(main).getAllByText("Próximamente")).toHaveLength(3);
+    expect(within(main).getAllByText("Próximamente")).toHaveLength(1);
 
     const banner = within(main).getByRole("region", { name: "Verificá tu mail" });
     expect(banner.textContent).toContain("Cuando creaste la cuenta te enviamos un enlace a ana@escuela.edu.ar.");
@@ -240,6 +240,28 @@ describe("Inicio", () => {
     await within(main).findByRole("heading", { name: "¡Hola!" });
     expect(byText(main, "Sin escuela")).toBeTruthy();
     expect(screen.queryByText(/Escuela Demo/)).toBeNull();
+  });
+
+  test("R4 (#134) Finanzas and Elecciones link to their screens for anyone in a school", async () => {
+    mockApi({ "GET /auth/me": ok(me()) });
+    renderAt("/");
+    const main = await screen.findByRole("main");
+    await within(main).findByRole("heading", { name: "¡Hola!" });
+    expect(within(main).getByRole("link", { name: /Finanzas/ }).getAttribute("href")).toBe("/caja");
+    expect(within(main).getByRole("link", { name: /Elecciones/ }).getAttribute("href")).toBe("/eleccion");
+    const soon = within(main).getAllByText("Próximamente");
+    expect(soon).toHaveLength(1);
+    expect(soon[0]!.closest("li")?.textContent).toContain("Notas");
+  });
+
+  test("R4 (#134) without a school Finanzas and Elecciones are not offered", async () => {
+    mockApi({ "GET /auth/me": ok(me({ tenantId: null, tenantName: null, role: null })) });
+    renderAt("/");
+    const main = await screen.findByRole("main");
+    await within(main).findByRole("heading", { name: "¡Hola!" });
+    expect(within(main).queryByRole("link", { name: /Finanzas/ })).toBeNull();
+    expect(within(main).queryByRole("link", { name: /Elecciones/ })).toBeNull();
+    expect(within(main).queryByText("Finanzas")).toBeNull();
   });
 
   test("an API outage on start shows a retry message instead of a blank page", async () => {

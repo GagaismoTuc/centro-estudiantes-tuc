@@ -22,6 +22,34 @@ import (
 
 const invitationPath = "/api/members/invitations"
 
+// invitationSubject is the invitation mail subject for a fixture school, which is named after the test.
+func invitationSubject(t *testing.T, role string) string {
+	return "Te invitaron a " + t.Name() + " como " + map[string]string{"veedor": "Veedor", "school_admin": "Administrador de la escuela"}[role]
+}
+
+// R6 (#134): the invitation mail names the school and the role in its subject and body.
+func TestInvitationMailNamesSchoolAndRole(t *testing.T) {
+	ctx := integration(t)
+	f := newFixture(t, ctx)
+	if _, err := tdb.Super.Exec(ctx, `UPDATE organizations SET name='Escuela QA' WHERE id=$1`, f.tenant); err != nil {
+		t.Fatal(err)
+	}
+	_, admin, _, _ := f.signInMFA(t, ctx, "school_admin")
+	for role, want := range map[string]string{"veedor": "Te invitaron a Escuela QA como Veedor", "school_admin": "Te invitaron a Escuela QA como Administrador de la escuela"} {
+		email := uniqueEmail("named-" + role)
+		if r := f.post(invitationPath, fmt.Sprintf(`{"email":%q,"role":%q}`, email, role), "198.51.100.89", admin); r.Code != http.StatusAccepted {
+			t.Fatalf("invite %s: %d %s", role, r.Code, r.Body)
+		}
+		msgs := f.mail.take()
+		if len(msgs) != 1 || msgs[0].To != email || msgs[0].Subject != want {
+			t.Fatalf("messages = %+v, want one to %s with subject %q", msgs, email, want)
+		}
+		if !strings.HasPrefix(msgs[0].Text, "Hola:\n\n"+want+" en Centro de Estudiantes.\n\n") || !strings.Contains(msgs[0].Text, baseURL+"/invitacion#token=") {
+			t.Fatalf("text = %q, want the school, the role and the link", msgs[0].Text)
+		}
+	}
+}
+
 // R1 and R2: only an MFA-verified school admin sends an invitation; reissue replaces it.
 func TestSchoolInvitationIssuance(t *testing.T) {
 	ctx := integration(t)
@@ -47,7 +75,7 @@ func TestSchoolInvitationIssuance(t *testing.T) {
 		if r := s.post(invitationPath, body(email, role), "198.51.100.88", s.admin); r.Code != http.StatusAccepted {
 			t.Fatalf("invite %s: %d %s", role, r.Code, r.Body)
 		}
-		raw := s.oneLink(t, email, "Invitaci\u00f3n a Centro de Estudiantes", "/invitacion")
+		raw := s.oneLink(t, email, invitationSubject(t, role), "/invitacion")
 		b, err := base64.RawURLEncoding.DecodeString(raw)
 		if err != nil || len(b) != 32 {
 			t.Fatalf("invalid token length: %v", err)
@@ -81,7 +109,7 @@ func TestInvitationAcceptanceCreatesAccountOnce(t *testing.T) {
 	if r := f.post(invitationPath, invite, "198.51.100.81", admin); r.Code != http.StatusAccepted {
 		t.Fatalf("invite: %d %s", r.Code, r.Body)
 	}
-	token := f.oneLink(t, email, "Invitaci\u00f3n a Centro de Estudiantes", "/invitacion")
+	token := f.oneLink(t, email, invitationSubject(t, "veedor"), "/invitacion")
 	accept := func(tok, pw string) *httptest.ResponseRecorder {
 		return f.post("/api/auth/invitations/accept", fmt.Sprintf(`{"token":%q,"password":%q}`, tok, pw), "198.51.100.82", "")
 	}
@@ -127,7 +155,7 @@ func TestInvitationAcceptanceCreatesAccountOnce(t *testing.T) {
 	if r := f.post(invitationPath, fmt.Sprintf(`{"email":%q,"role":"school_admin"}`, email2), "198.51.100.81", admin); r.Code != http.StatusAccepted {
 		t.Fatalf("invite expired: %d", r.Code)
 	}
-	expired := f.oneLink(t, email2, "Invitaci\u00f3n a Centro de Estudiantes", "/invitacion")
+	expired := f.oneLink(t, email2, invitationSubject(t, "school_admin"), "/invitacion")
 	f.clk.Advance(48 * time.Hour)
 	wantResponse(t, accept(expired, password), http.StatusUnprocessableEntity, invalidTokenBody)
 }
@@ -144,7 +172,7 @@ func TestInvitationAcceptanceExistingAccountRequiresLoginAndMFA(t *testing.T) {
 	if r.Code != http.StatusAccepted {
 		t.Fatalf("invite: %d %s", r.Code, r.Body)
 	}
-	token := f.oneLink(t, email, "Invitaci\u00f3n a Centro de Estudiantes", "/invitacion")
+	token := f.oneLink(t, email, invitationSubject(t, "school_admin"), "/invitacion")
 	raw, _ := base64.RawURLEncoding.DecodeString(token)
 	sum := sha256.Sum256(raw)
 	unchanged := func() {

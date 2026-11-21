@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { App } from "./App.tsx";
-import { fail, me, mockApi, ok, sentTo } from "./test/api.ts";
+import { fail, me, mockApi, noContent, ok, sentTo } from "./test/api.ts";
 
 afterEach(() => vi.restoreAllMocks());
 const categories = [
@@ -417,4 +417,27 @@ test("#130 R1 R2 R3 Caja accepts 1.234,56, rejects ambiguous amounts without pos
   fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
   await waitFor(() => expect(sentTo(sent, "POST /finance/entries")).toHaveLength(1));
   expect(sentTo(sent, "POST /finance/entries")[0]?.body).toMatchObject({ amountCents: 123456 });
+});
+
+test("R2 (#134) each category change says what happened", async () => {
+  mockApi({ "GET /auth/me": ok(me({ role: "officer", mfa: "satisfied" })), ...reads,
+    "POST /finance/categories": ok({ id: "c4", name: "Buzos", direction: "expense", active: true, reserved: false }, 201),
+    "PATCH /finance/categories/c1": ok({ ...categories[0], name: "Kiosco" }),
+    "DELETE /finance/categories/c3": noContent(),
+  });
+  window.history.replaceState(null, "", "/caja"); render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Categorías" }));
+  const used = (await screen.findByText("Ventas", { selector: "strong" })).closest("li")!;
+  const unused = screen.getByText("Viajes", { selector: "strong" }).closest("li")!;
+  fireEvent.change(screen.getByLabelText("Nombre de la categoría"), { target: { value: "Buzos" } });
+  fireEvent.click(screen.getByRole("button", { name: "Agregar categoría" }));
+  expect(await screen.findByText("Se agregó la categoría.")).toBeTruthy();
+  fireEvent.click(within(used).getByRole("button", { name: "Renombrar" }));
+  fireEvent.change(screen.getByLabelText("Nuevo nombre"), { target: { value: "Kiosco" } });
+  fireEvent.click(screen.getByRole("button", { name: "Guardar nombre" }));
+  expect(await screen.findByText("Se renombró la categoría.")).toBeTruthy();
+  fireEvent.click(within(unused).getByRole("button", { name: "Borrar" }));
+  fireEvent.click(screen.getByRole("button", { name: "Confirmar borrado" }));
+  expect(await screen.findByText("Se borró la categoría.")).toBeTruthy();
+  expect(screen.queryByText("Se actualizó la categoría.")).toBeNull();
 });
