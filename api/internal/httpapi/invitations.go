@@ -14,6 +14,9 @@ import (
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/roster"
 )
 
+// invitationRoles names each invitable role as the web does (roleLabel in web/src/auth/session.tsx).
+var invitationRoles = map[string]string{"veedor": "Veedor", "school_admin": "Administrador de la escuela"}
+
 func (s *server) PostMemberInvitation(w http.ResponseWriter, r *http.Request) {
 	sess, ok := rosterSession(w, r)
 	if !ok {
@@ -41,7 +44,7 @@ func (s *server) PostMemberInvitation(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusTooManyRequests, "too_many_attempts")
 		return
 	}
-	token, err := s.roster.Invite(r.Context(), sess, email, req.Role)
+	token, school, err := s.roster.Invite(r.Context(), sess, email, req.Role)
 	if err != nil {
 		s.mailLimiter.Refund(ip)
 		s.mailLimiter.Refund(address)
@@ -56,7 +59,8 @@ func (s *server) PostMemberInvitation(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	msg := mail.Message{To: email, Subject: "Invitaci\u00f3n a Centro de Estudiantes", Text: fmt.Sprintf("Hola:\n\nAbr\u00ed este enlace para aceptar la invitaci\u00f3n (vence en 48 horas):\n\n%s/invitacion#token=%s\n", s.baseURL, token)}
+	invited := fmt.Sprintf("Te invitaron a %s como %s", school, invitationRoles[req.Role])
+	msg := mail.Message{To: email, Subject: invited, Text: fmt.Sprintf("Hola:\n\n%s en Centro de Estudiantes.\n\nAbr\u00ed este enlace para aceptar la invitaci\u00f3n (vence en 48 horas):\n\n%s/invitacion#token=%s\n", invited, s.baseURL, token)}
 	w.WriteHeader(http.StatusAccepted)
 	s.background(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

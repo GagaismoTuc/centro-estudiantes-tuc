@@ -15,9 +15,9 @@ import (
 )
 
 // Invite issues a single-use invitation in the school, invalidating an earlier invitation for the same email.
-func (s *Store) Invite(ctx context.Context, sess auth.Session, email, role string) (string, error) {
-	var token string
-	err := s.asAdmin(ctx, sess, func(tx pgx.Tx) error {
+// It returns the token and the school's name, which the invitation mail names.
+func (s *Store) Invite(ctx context.Context, sess auth.Session, email, role string) (token, school string, err error) {
+	err = s.asAdmin(ctx, sess, func(tx pgx.Tx) error {
 		// Serialize reissues, including when there is no earlier row to lock.
 		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, sess.TenantID+":"+email); err != nil {
 			return err
@@ -34,13 +34,17 @@ func (s *Store) Invite(ctx context.Context, sess auth.Session, email, role strin
 		if _, err := tx.Exec(ctx, `INSERT INTO school_invitations(tenant_id,token_hash,email,role,created_at,expires_at) VALUES($1,$2,$3,$4,$5,$6)`, sess.TenantID, hash[:], email, role, now, now.Add(48*time.Hour)); err != nil {
 			return err
 		}
+		school, err = tenantName(ctx, tx, sess.TenantID)
+		if err != nil {
+			return err
+		}
 		token = base64.RawURLEncoding.EncodeToString(raw)
 		return nil
 	})
 	if err != nil {
-		return "", fmt.Errorf("issue invitation: %w", err)
+		return "", "", fmt.Errorf("issue invitation: %w", err)
 	}
-	return token, nil
+	return token, school, nil
 }
 
 // ErrInvitationLogin means the invitation belongs to an existing account which must sign in first.
