@@ -38,6 +38,10 @@ function parseCents(raw: string): number | null {
   return Number.isSafeInteger(cents) && cents > 0 ? cents : null;
 }
 
+// The line form already checks the amount is a positive number, so the API's invalid_amount
+// for a line means the budget totals would no longer fit.
+const lineErrorMessage = (code: string) => code === "invalid_amount" ? "El total del presupuesto sería demasiado grande." : errorMessage(code);
+
 function BudgetForm({ initial, save }: { initial?: Budget; save: (name: string, start: string, end: string) => Promise<string | null> }) {
   const form = useFormErrors();
   const [status, setStatus] = useState<Status>(null);
@@ -75,7 +79,7 @@ function LineForm({ headings, contacts, initial, save, cancel }: { headings: Hea
     const amountCents = amount ? parseCents(amount) : null;
     const input: LineInput = { kind, description: form.value("description"), ...(kind === "cost" ? { headingId: heading, ...(contact ? { contactId: contact } : {}) } : {}), ...(form.value("quantity") ? { quantity: Number(form.value("quantity")) } : {}), ...(amountCents ? { unitAmountCents: amountCents } : {}), ...(form.value("day") ? { day: form.value("day") } : {}) };
     setBusy(true); const code = await save(input); setBusy(false);
-    if (code) { setStatus({ tone: "error", text: errorMessage(code) }); form.failed(code); } else { setStatus({ tone: "ok", text: "L\u00ednea guardada." }); if (cancel) cancel(); }
+    if (code) { setStatus({ tone: "error", text: lineErrorMessage(code) }); form.failed(code); } else { setStatus({ tone: "ok", text: "L\u00ednea guardada." }); if (cancel) cancel(); }
   }
   return <form {...form.formProps} onSubmit={(e) => void submit(e)}>
     <div className="field"><label htmlFor="budget-kind">Tipo</label><select id="budget-kind" value={kind} onChange={(e) => setKind(e.target.value)}><option value="cost">Costo</option><option value="ticket">Entradas</option><option value="foodtruck">Canon de puestos</option><option value="sponsor">Sponsor</option><option value="due">Cuotas</option></select></div>
