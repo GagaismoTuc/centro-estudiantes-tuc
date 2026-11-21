@@ -86,7 +86,7 @@ test("R1 and R5 officer links a new movement to an active event and heading, exc
   const sent = mockApi({
     "GET /auth/me": ok(me({ role: "officer", mfa: "satisfied" })),
     "GET /finance/categories": ok(categories),
-    "GET /finance/balance": [ok({ balanceCents: 0 }), ok({ balanceCents: -11000000 })],
+    "GET /finance/balance": [ok({ balanceCents: 11000000 }), ok({ balanceCents: 0 })],
     "GET /finance/entries": [ok([]), ok([linkedEntry])],
     "GET /event-budgets": ok([activeBudget, archivedBudget]),
     "GET /event-budgets/b1": ok(budgetDetail),
@@ -134,7 +134,7 @@ test("R2 selecting an event without a heading blocks submit, marks aria-invalid,
   const sent = mockApi({
     "GET /auth/me": ok(me({ role: "officer", mfa: "satisfied" })),
     "GET /finance/categories": ok(categories),
-    "GET /finance/balance": ok({ balanceCents: 0 }),
+    "GET /finance/balance": ok({ balanceCents: 11000000 }),
     "GET /finance/entries": ok([]),
     "GET /event-budgets": ok([activeBudget]),
     "GET /event-budgets/b1": ok(budgetDetail),
