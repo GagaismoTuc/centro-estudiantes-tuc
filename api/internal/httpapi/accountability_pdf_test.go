@@ -66,7 +66,7 @@ func TestAccountabilityPDFArgentineDates(t *testing.T) {
 		t.Fatalf("status %d %s", r.Code, r.Body)
 	}
 	text := strings.ReplaceAll(wordText(t, <-docs), "\n", "")
-	if !strings.Contains(text, "del 01/03/2026 al 30/11/2026") || !strings.Contains(text, "01/03/2026 - Ventas - Kiosco de marzo") || strings.Contains(text, "2026-03-01") || strings.Contains(text, "2026-11-30") {
+	if !strings.Contains(text, "Período: 01/03/2026 a 30/11/2026") || !strings.Contains(text, "01/03/2026 - Ventas - Kiosco de marzo") || strings.Contains(text, "2026-03-01") || strings.Contains(text, "2026-11-30") {
 		t.Fatalf("dates not dd/mm/aaaa: %s", text)
 	}
 }
