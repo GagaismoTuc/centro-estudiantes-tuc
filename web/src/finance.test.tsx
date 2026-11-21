@@ -450,3 +450,57 @@ test("R2 (#134) each category change says what happened", async () => {
   expect(await screen.findByText("Se borró la categoría.")).toBeTruthy();
   expect(screen.queryByText("Se actualizó la categoría.")).toBeNull();
 });
+
+async function fillExpense(amount: string) {
+  fireEvent.click(await screen.findByRole("button", { name: "Nuevo movimiento" }));
+  fireEvent.change(screen.getByLabelText("Tipo"), { target: { value: "expense" } });
+  await screen.findByRole("option", { name: "Viajes" });
+  fireEvent.change(screen.getByLabelText("Categoría"), { target: { value: "c3" } });
+  fireEvent.change(screen.getByLabelText("Fecha"), { target: { value: "2026-11-20" } });
+  fireEvent.change(screen.getByLabelText("Monto en pesos"), { target: { value: amount } });
+  fireEvent.change(screen.getByLabelText("Descripción"), { target: { value: "Micro a la excursión" } });
+  fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+}
+
+test("#135 R1 an expense that leaves the balance negative asks for confirmation and, confirmed, is recorded", async () => {
+  const sent = mockApi({ "GET /auth/me": ok(me({ role: "officer", mfa: "satisfied" })), ...reads, "GET /finance/balance": ok({ balanceCents: 317962 }), "POST /finance/entries": ok({ ...entry, categoryId: "c3", direction: "expense" }, 201) });
+  window.history.replaceState(null, "", "/caja"); render(<App />);
+  expect(await screen.findByText("$ 3.179,62")).toBeTruthy();
+  await fillExpense("100.000");
+  const dialog = await screen.findByRole("dialog", { name: "Saldo negativo" });
+  expect(dialog.textContent).toContain("El saldo va a quedar en -$ 96.820,38. ¿Registrar igual?");
+  expect(sentTo(sent, "POST /finance/entries")).toHaveLength(0);
+  fireEvent.click(within(dialog).getByRole("button", { name: "Registrar igual" }));
+  await waitFor(() => expect(sentTo(sent, "POST /finance/entries")).toHaveLength(1));
+  expect(sentTo(sent, "POST /finance/entries")[0]?.body).toMatchObject({ categoryId: "c3", direction: "expense", amountCents: 10000000 });
+  expect(await screen.findByText("Se registró el movimiento.")).toBeTruthy();
+  expect(screen.queryByRole("dialog")).toBeNull();
+});
+
+test("#135 R2 an expense of $ 1.000 with a balance of $ 3.179,62 is recorded without a warning", async () => {
+  const sent = mockApi({ "GET /auth/me": ok(me({ role: "officer", mfa: "satisfied" })), ...reads, "GET /finance/balance": ok({ balanceCents: 317962 }), "POST /finance/entries": ok({ ...entry, categoryId: "c3", direction: "expense" }, 201) });
+  window.history.replaceState(null, "", "/caja"); render(<App />);
+  expect(await screen.findByText("$ 3.179,62")).toBeTruthy();
+  await fillExpense("1.000");
+  await waitFor(() => expect(sentTo(sent, "POST /finance/entries")).toHaveLength(1));
+  expect(sentTo(sent, "POST /finance/entries")[0]?.body).toMatchObject({ direction: "expense", amountCents: 100000 });
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(screen.queryByText(/El saldo va a quedar/)).toBeNull();
+});
+
+test("#135 R3 Cancelar writes nothing and the form keeps what was entered", async () => {
+  const sent = mockApi({ "GET /auth/me": ok(me({ role: "officer", mfa: "satisfied" })), ...reads, "GET /finance/balance": ok({ balanceCents: 317962 }), "POST /finance/entries": ok(entry, 201) });
+  window.history.replaceState(null, "", "/caja"); render(<App />);
+  expect(await screen.findByText("$ 3.179,62")).toBeTruthy();
+  await fillExpense("100.000");
+  const dialog = await screen.findByRole("dialog", { name: "Saldo negativo" });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Cancelar" }));
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(sentTo(sent, "POST /finance/entries")).toHaveLength(0);
+  expect((screen.getByLabelText("Tipo") as HTMLSelectElement).value).toBe("expense");
+  expect((screen.getByLabelText("Categoría") as HTMLSelectElement).value).toBe("c3");
+  expect((screen.getByLabelText("Fecha") as HTMLInputElement).value).toBe("2026-11-20");
+  expect((screen.getByLabelText("Monto en pesos") as HTMLInputElement).value).toBe("100.000");
+  expect((screen.getByLabelText("Descripción") as HTMLInputElement).value).toBe("Micro a la excursión");
+  expect(screen.getByRole("button", { name: "Guardar" })).toBeTruthy();
+});

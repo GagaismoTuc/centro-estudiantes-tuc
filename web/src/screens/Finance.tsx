@@ -83,6 +83,8 @@ export function Finance() {
   const [eventError, setEventError] = useState("");
   const [headingError, setHeadingError] = useState("");
   const [confirmReverse, setConfirmReverse] = useState<Entry | null>(null);
+  /** Balance in centavos an expense would leave, while its confirmation is open. */
+  const [confirmOverdraft, setConfirmOverdraft] = useState<string | null>(null);
   const form = useFormErrors();
 
   useEffect(() => {
@@ -165,7 +167,7 @@ export function Finance() {
     void load();
   }, [load]);
 
-  async function save() {
+  async function save(overdraftConfirmed = false) {
     if (pending.current) return;
     if (!category) {
       setCategoryError("Eleg\u00ed una categor\u00eda.");
@@ -187,6 +189,15 @@ export function Finance() {
       setHeadingError("Eleg\u00ed un rubro del evento.");
       if (!eventHeadingsLoading) headingRef.current?.focus();
       return;
+    }
+    if (!overdraftConfirmed && direction === "expense" && balance !== null) {
+      // #135: an expense may still overdraw the fund, but only after the officer confirms it.
+      // shortcut: no warning while the balance is unknown (not loaded or failed); the server allows it anyway.
+      const after = BigInt(balance) - parsePesos(amount)!;
+      if (after < 0n) {
+        setConfirmOverdraft(String(after));
+        return;
+      }
     }
     pending.current = true;
     setBusy(true);
@@ -511,6 +522,9 @@ export function Finance() {
     )}
     {confirmReverse && <ConfirmDialog title="Revertir movimiento" confirmLabel="Revertir" onConfirm={() => void reverse(confirmReverse)} onCancel={() => setConfirmReverse(null)}>
       <p>{"¿Revertís este movimiento? Se va a cargar un movimiento opuesto con fecha de hoy."}</p>
+    </ConfirmDialog>}
+    {confirmOverdraft !== null && <ConfirmDialog title="Saldo negativo" confirmLabel="Registrar igual" onConfirm={() => { setConfirmOverdraft(null); void save(true); }} onCancel={() => setConfirmOverdraft(null)}>
+      <p>{`El saldo va a quedar en ${formatPesos(confirmOverdraft)}. ¿Registrar igual?`}</p>
     </ConfirmDialog>}
   </>;
 }

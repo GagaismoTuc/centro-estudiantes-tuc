@@ -413,3 +413,78 @@ test("#130 R1 R2 Cuotas accepts 1.234,56 in Nueva cuota and Registrar pago and r
   await waitFor(() => expect(sentTo(sent, "POST /finance/dues/d1/payments")).toHaveLength(1));
   expect(sentTo(sent, "POST /finance/dues/d1/payments")[0]?.body).toEqual({ rosterMemberId: "r2", date: "2026-11-13", amountCents: 123456 });
 });
+
+const march = { ...dueSummary, name: "Cuota de marzo", dueDate: "2026-03-10" };
+const myMarch = { ...myDue, name: "Cuota de marzo", dueDate: "2026-03-10" };
+/** 22:00 on 20/11/2026 in Argentina, already 21/11 in UTC. */
+const pinArgentinaEvening = () => { vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-11-21T01:00:00Z")); };
+const sectionOf = (heading: string) => screen.getByRole("heading", { name: heading }).closest("section")!;
+
+test("#135 R4 an unpaid due past its date says Vencida — venció el 10/03/2026 in Mis cuotas and in the commission list", async () => {
+  pinArgentinaEvening();
+  try {
+    mockApi({
+      "GET /auth/me": ok(officerMe()),
+      "GET /finance/dues": ok([march]),
+      "GET /finance/dues/d1": ok({ ...dueDetail, name: "Cuota de marzo", dueDate: "2026-03-10" }),
+      "GET /finance/dues/mine": ok([myMarch, { ...myMarch, id: "d2", name: "Cuota de abril", paidCents: 50000 }]),
+    });
+    window.history.replaceState(null, "", "/cuotas");
+    render(<App />);
+    expect(await screen.findByText("Debés $ 2.000,00 — Vencida — venció el 10/03/2026")).toBeTruthy();
+    expect(screen.getByText("Pagaste $ 500,00 de $ 2.000,00, te falta $ 1.500,00 — Vencida — venció el 10/03/2026")).toBeTruthy();
+    await waitFor(() => expect(sectionOf("Listado de cuotas").textContent).toContain("Cuota de marzo — $ 2.000,00 — Vencida — venció el 10/03/2026"));
+    fireEvent.click(screen.getByRole("button", { name: "Ver detalle de Cuota de marzo" }));
+    expect(await screen.findByText(/\$ 2\.000,00 — Vencida — venció el 10\/03\/2026 · 0 de 2 pagaron/)).toBeTruthy();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("#135 R5 a paid or exempt due, or one due today, never says Vencida", async () => {
+  pinArgentinaEvening();
+  try {
+    mockApi({
+      "GET /auth/me": ok(officerMe()),
+      "GET /finance/dues": ok([
+        { ...march, owingCount: 0 },
+        { ...dueSummary, id: "d3", name: "Cuota de hoy", dueDate: "2026-11-20" },
+      ]),
+      "GET /finance/dues/mine": ok([
+        { ...myMarch, status: "paid", paidCents: 200000 },
+        { ...myMarch, id: "d2", name: "Cuota de abril", status: "exempt" },
+        { ...myMarch, id: "d3", name: "Cuota de hoy", dueDate: "2026-11-20" },
+      ]),
+    });
+    window.history.replaceState(null, "", "/cuotas");
+    render(<App />);
+    expect(await screen.findByText("Pagada $ 2.000,00 — vencía el 10/03/2026")).toBeTruthy();
+    expect(screen.getByText("Exento")).toBeTruthy();
+    expect(screen.getByText("Debés $ 2.000,00 — vence el 20/11/2026")).toBeTruthy();
+    await waitFor(() => expect(sectionOf("Listado de cuotas").textContent).toContain("Cuota de hoy — $ 2.000,00 — vence el 20/11/2026"));
+    expect(sectionOf("Listado de cuotas").textContent).toContain("Cuota de marzo — $ 2.000,00 — vence el 10/03/2026");
+    expect(screen.queryByText(/Vencida/)).toBeNull();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("#135 R6 a student sees only their own Vencida and never the commission list", async () => {
+  pinArgentinaEvening();
+  try {
+    const sent = mockApi({
+      "GET /auth/me": ok(me()),
+      "GET /finance/dues": ok([{ ...march, id: "d9", name: "Cuota de otro" }]),
+      "GET /finance/dues/mine": ok([myMarch]),
+    });
+    window.history.replaceState(null, "", "/cuotas");
+    render(<App />);
+    expect(await screen.findByText("Debés $ 2.000,00 — Vencida — venció el 10/03/2026")).toBeTruthy();
+    expect(screen.getAllByText(/Vencida/)).toHaveLength(1);
+    expect(screen.queryByText(/Cuota de otro/)).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Listado de cuotas" })).toBeNull();
+    expect(sentTo(sent, "GET /finance/dues")).toHaveLength(0);
+  } finally {
+    vi.useRealTimers();
+  }
+});
