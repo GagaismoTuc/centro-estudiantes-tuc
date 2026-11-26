@@ -1,5 +1,4 @@
-# Written by orca-stack init (#424): the CI gate of orca-stack lint. The .githooks/pre-push hook is only an early warning.
-# Actions are pinned by commit SHA like ci.yml (supply-chain safety); the comment names the release.
+# Written by orca-stack init (Gagaismo/orca-stack#424): the CI gate of orca-stack lint. The .githooks/pre-push hook is only an early warning.
 name: orca-stack lint
 
 on:
