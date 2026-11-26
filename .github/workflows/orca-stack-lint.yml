@@ -1,0 +1,25 @@
+# Written by orca-stack init (#424): the CI gate of orca-stack lint. The .githooks/pre-push hook is only an early warning.
+# Actions are pinned by commit SHA like ci.yml (supply-chain safety); the comment names the release.
+name: orca-stack lint
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  orca-stack-lint:
+    name: orca-stack lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - name: orca-stack lint contra la Baseline
+        run: npx --yes github:Gagaismo/orca-stack#v0.24.0 lint
