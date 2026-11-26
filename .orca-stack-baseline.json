@@ -1,0 +1,149 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "rule": "comment-excuse",
+      "file": "api/internal/auth/limiter.go",
+      "location": "Limiter",
+      "fingerprint": "sha256:2f1eee2a0d6b0acc"
+    },
+    {
+      "rule": "comment-excuse",
+      "file": "api/internal/httpapi/pdf_text_test.go",
+      "location": "converterText()",
+      "fingerprint": "sha256:8cd21d7406a9d54d"
+    },
+    {
+      "rule": "comment-excuse",
+      "file": "api/internal/mail/queue.go",
+      "location": "Queue",
+      "fingerprint": "sha256:5599c18015c9d82c"
+    },
+    {
+      "rule": "comment-excuse",
+      "file": "web/src/lib/calculator.ts",
+      "location": "multiplyCents()",
+      "fingerprint": "sha256:bbdb97ad8d8e0ca1"
+    },
+    {
+      "rule": "comment-excuse",
+      "file": "web/src/screens/Contacts.tsx",
+      "location": "markOutdatedIfApproved()",
+      "fingerprint": "sha256:3f9a58d75103ead5"
+    },
+    {
+      "rule": "comment-excuse",
+      "file": "web/src/screens/Dues.tsx",
+      "location": "hasPayments()",
+      "fingerprint": "sha256:8f7cd075517491c7"
+    },
+    {
+      "rule": "comment-excuse",
+      "file": "web/src/screens/Finance.tsx",
+      "location": "save()",
+      "fingerprint": "sha256:755bfc5a64b18fe5"
+    },
+    {
+      "rule": "comment-stale",
+      "file": "web/src/App.test.tsx",
+      "location": "<módulo>",
+      "fingerprint": "sha256:a7a3e635008840f1"
+    },
+    {
+      "rule": "long-file",
+      "file": "openapi/openapi.yaml",
+      "location": "file",
+      "fingerprint": "sha256:1d41ca0aacb66a99"
+    },
+    {
+      "rule": "shallow-module",
+      "file": "api/internal/auth",
+      "location": "module",
+      "fingerprint": "sha256:97327972996a38a9"
+    },
+    {
+      "rule": "shallow-module",
+      "file": "api/internal/db",
+      "location": "module",
+      "fingerprint": "sha256:4f5d1a7df27e6a32"
+    },
+    {
+      "rule": "shallow-module",
+      "file": "api/internal/totp",
+      "location": "module",
+      "fingerprint": "sha256:d49002962fd6eb42"
+    },
+    {
+      "rule": "shallow-module",
+      "file": "web/src/api/dues.ts",
+      "location": "module",
+      "fingerprint": "sha256:4e0a3522b69ee4bd"
+    },
+    {
+      "rule": "shallow-module",
+      "file": "web/src/auth/session.tsx",
+      "location": "module",
+      "fingerprint": "sha256:2fd72bbf24ff329c"
+    },
+    {
+      "rule": "shallow-module",
+      "file": "web/src/lib/router.tsx",
+      "location": "module",
+      "fingerprint": "sha256:ea61e33de14afe5e"
+    },
+    {
+      "rule": "shallow-module",
+      "file": "web/src/test/api.ts",
+      "location": "module",
+      "fingerprint": "sha256:329c8d4963e3ec0e"
+    },
+    {
+      "rule": "wide-directory",
+      "file": "./",
+      "location": "directory",
+      "fingerprint": "sha256:c14cecec97312ad1"
+    },
+    {
+      "rule": "wide-directory",
+      "file": "api/internal/db/",
+      "location": "directory",
+      "fingerprint": "sha256:544618bea12eb485"
+    },
+    {
+      "rule": "wide-directory",
+      "file": "api/internal/elections/",
+      "location": "directory",
+      "fingerprint": "sha256:03253e703f97dbbb"
+    },
+    {
+      "rule": "wide-directory",
+      "file": "api/internal/finance/",
+      "location": "directory",
+      "fingerprint": "sha256:a147c3eb68e6705d"
+    },
+    {
+      "rule": "wide-directory",
+      "file": "api/internal/httpapi/",
+      "location": "directory",
+      "fingerprint": "sha256:b7072a195a5fd6ad"
+    },
+    {
+      "rule": "wide-directory",
+      "file": "api/migrations/",
+      "location": "directory",
+      "fingerprint": "sha256:5ec9e7b49b20269c"
+    },
+    {
+      "rule": "wide-directory",
+      "file": "web/src/",
+      "location": "directory",
+      "fingerprint": "sha256:39495dbd5a16f4d4"
+    },
+    {
+      "rule": "wide-directory",
+      "file": "web/src/screens/",
+      "location": "directory",
+      "fingerprint": "sha256:03a193c1d76220d2"
+    }
+  ]
+}

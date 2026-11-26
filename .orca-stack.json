@@ -43,5 +43,15 @@
     "despues": false
   },
   "idioma": "inglés para código, commits y PRs; la interfaz en español rioplatense",
-  "setup": "completo"
+  "setup": "completo",
+  "lint": {
+    "enabled": true,
+    "excluir": [
+      "api/internal/oapi/*.gen.go",
+      "web/src/api/*.gen.ts"
+    ],
+    "comentarios": {
+      "alcance": "repo"
+    }
+  }
 }
