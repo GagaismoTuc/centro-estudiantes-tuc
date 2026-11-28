@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { App } from "./App.tsx";
+import css from "./styles.css?raw";
 import { fail, me, mockApi, noContent, ok, sentTo } from "./test/api.ts";
 
 afterEach(() => vi.restoreAllMocks());
@@ -15,7 +16,7 @@ const reads = { "GET /finance/categories": ok(categories), "GET /finance/balance
 test("R15 students read the ledger and balance without an entry form", async () => {
   mockApi({ "GET /auth/me": ok(me()), ...reads });
   window.history.replaceState(null, "", "/caja"); render(<App />);
-  expect(await screen.findByText("$ 2.000,00")).toBeTruthy();
+  expect(await screen.findByText("$ 2.000,00", { selector: "p" })).toBeTruthy();
   expect(screen.getByText(/Registrado por Ana Ficticia/)).toBeTruthy();
   expect(screen.getByText(/Ventas.*10\/11\/2026/)).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Nuevo movimiento" })).toBeNull();
@@ -33,7 +34,7 @@ test("R1 R3 the ledger shows the entry date as dd/mm/aaaa and when it was record
 test.each([["student", "not_required"], ["officer", "satisfied"]] as const)("S10 a %s sees the ledger CSV download and the Informe link", async (role, mfa) => {
   mockApi({ "GET /auth/me": ok(me({ role, mfa })), ...reads });
   window.history.replaceState(null, "", "/caja"); render(<App />);
-  expect(await screen.findByText("$ 2.000,00")).toBeTruthy();
+  expect(await screen.findByText("$ 2.000,00", { selector: "p" })).toBeTruthy();
   const csv = screen.getByRole("link", { name: "Descargar CSV" });
   expect(csv.getAttribute("href")).toBe("/api/finance/entries.csv");
   expect(csv.hasAttribute("download")).toBe(true);
@@ -43,7 +44,7 @@ test.each([["student", "not_required"], ["officer", "satisfied"]] as const)("S10
 test("R15 school admins read the ledger without an entry form", async () => {
   mockApi({ "GET /auth/me": ok(me({ role: "school_admin", mfa: "satisfied" })), ...reads });
   window.history.replaceState(null, "", "/caja"); render(<App />);
-  expect(await screen.findByText("$ 2.000,00")).toBeTruthy();
+  expect(await screen.findByText("$ 2.000,00", { selector: "p" })).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Nuevo movimiento" })).toBeNull();
 });
 
@@ -503,4 +504,33 @@ test("#135 R3 Cancelar writes nothing and the form keeps what was entered", asyn
   expect((screen.getByLabelText("Monto en pesos") as HTMLInputElement).value).toBe("100.000");
   expect((screen.getByLabelText("Descripción") as HTMLInputElement).value).toBe("Micro a la excursión");
   expect(screen.getByRole("button", { name: "Guardar" })).toBeTruthy();
+});
+
+function whiteSpaceOf(text: string) {
+  const style = document.createElement("style");
+  style.textContent = css;
+  document.head.append(style);
+  try {
+    return getComputedStyle(screen.getByText(text)).whiteSpace;
+  } finally {
+    style.remove();
+  }
+}
+
+test("#146 R3 the overdraft dialog keeps -$ 99.999.999.999,99 on one line", async () => {
+  mockApi({ "GET /auth/me": ok(me({ role: "officer", mfa: "satisfied" })), ...reads, "GET /finance/balance": ok({ balanceCents: 0 }) });
+  window.history.replaceState(null, "", "/caja"); render(<App />);
+  expect(await screen.findByText("$ 0,00")).toBeTruthy();
+  await fillExpense("99.999.999.999,99");
+  const dialog = await screen.findByRole("dialog", { name: "Saldo negativo" });
+  expect(dialog.textContent).toContain("El saldo va a quedar en -$ 99.999.999.999,99. ¿Registrar igual?");
+  expect(whiteSpaceOf("-$ 99.999.999.999,99")).toBe("nowrap");
+});
+
+test("#146 R3 a ledger entry of $ 99.999.999.999,99 keeps the amount on one line", async () => {
+  mockApi({ "GET /auth/me": ok(me()), ...reads, "GET /finance/entries": ok([{ ...entry, amountCents: 9999999999999 }]) });
+  window.history.replaceState(null, "", "/caja"); render(<App />);
+  expect(await screen.findByText(/Registrado por Ana Ficticia/)).toBeTruthy();
+  expect(screen.getByText("Venta de tortas").closest("li")!.textContent).toContain("Venta de tortas — $ 99.999.999.999,99 (Ingreso)");
+  expect(whiteSpaceOf("$ 99.999.999.999,99")).toBe("nowrap");
 });

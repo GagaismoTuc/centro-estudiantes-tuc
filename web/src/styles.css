@@ -1708,6 +1708,9 @@ select[aria-invalid="true"] {
   gap: 0.5rem 1rem;
   min-inline-size: 0;
 }
+.amount {
+  white-space: nowrap;
+}
 .contact-prices__amount {
   font-family: var(--font-mono);
   font-weight: 600;
