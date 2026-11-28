@@ -401,3 +401,52 @@ test("ListForm preserves input typed before passive mount effects flush", async 
     observer.disconnect();
   }
 });
+
+test("ListForm focuses list name in the same commit that marks aria-invalid on list_name_taken", async () => {
+  mockApi({
+    "GET /auth/me": ok(me({ role: "student", mfa: "not_required" })),
+    "GET /electoral-commission": ok({ commission: { id: "c1", createdAt: "2026-11-01T12:00:00Z", members: [ana, beto] }, isMember: false, canDesignate: false }),
+    "GET /elections/latest": ok(submissionElection),
+    "GET /elections/e1/candidates": [ok([ciro]), ok([dana]), ok([eli]), ok([fito])],
+    "GET /elections/e1/lists": ok({ rosterMemberId: "r-ciro", lists: [] }),
+    "POST /elections/e1/lists": fail(409, "list_name_taken"),
+  });
+
+  renderAt("/eleccion");
+  const nameInput = await screen.findByLabelText("Nombre de la lista");
+  fireEvent.change(nameInput, { target: { value: "Lista Azul" } });
+  await searchCandidate(document, "Cir");
+  await screen.findAllByRole("option", { name: "Ciro Inventado" });
+  fireEvent.change(screen.getByLabelText("Presidente"), { target: { value: "r-ciro" } });
+  await searchCandidate(document, "Dan");
+  await screen.findAllByRole("option", { name: "Dana Ejemplo" });
+  fireEvent.change(screen.getByLabelText("Vicepresidente"), { target: { value: "r-dana" } });
+  await searchCandidate(document, "Eli");
+  await screen.findAllByRole("option", { name: "Eli Supuesto" });
+  fireEvent.change(screen.getByLabelText("Secretario"), { target: { value: "r-eli" } });
+  await searchCandidate(document, "Fit");
+  await screen.findAllByRole("option", { name: "Fito Cuarto" });
+  fireEvent.change(screen.getByLabelText("Tesorero"), { target: { value: "r-fito" } });
+
+  expect(document.activeElement).not.toBe(nameInput);
+
+  let activeElementOnInvalidCommit: Element | null = null;
+  let errorTextOnInvalidCommit: string | null = null;
+  const observer = new MutationObserver(() => {
+    if (nameInput.getAttribute("aria-invalid") !== "true") return;
+    activeElementOnInvalidCommit = document.activeElement;
+    errorTextOnInvalidCommit = screen.queryByText("Ya hay otra lista con ese nombre en esta elección.")?.textContent ?? null;
+    observer.disconnect();
+  });
+  observer.observe(nameInput, { attributes: true, attributeFilter: ["aria-invalid"] });
+
+  try {
+    fireEvent.click(screen.getByRole("button", { name: "Presentar lista" }));
+    await waitFor(() => expect(nameInput.getAttribute("aria-invalid")).toBe("true"));
+    expect(activeElementOnInvalidCommit).toBe(nameInput);
+    expect(document.activeElement).toBe(nameInput);
+    expect(errorTextOnInvalidCommit).toBe("Ya hay otra lista con ese nombre en esta elección.");
+  } finally {
+    observer.disconnect();
+  }
+});

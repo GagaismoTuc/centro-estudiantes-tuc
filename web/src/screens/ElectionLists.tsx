@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { call } from "../api/call.ts";
 import { apiClient } from "../api/client.ts";
 import { errorMessage } from "../api/errors.ts";
@@ -279,7 +279,7 @@ export function ListForm({
     setStatus(null);
   }, [initial, positionsKey]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!focusNext.current) return;
     focusNext.current.focus();
     focusNext.current = null;
