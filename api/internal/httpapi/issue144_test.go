@@ -48,23 +48,31 @@ func TestIssue144DueFreezeMatchesUpdate(t *testing.T) {
 			if *dues[0].Frozen != frozen {
 				t.Fatalf("frozen = %v, want %v", *dues[0].Frozen, frozen)
 			}
-			patch := p.do(http.MethodPatch, "/api/finance/dues/"+p.due, `{"amountCents":150000,"dueDate":"2026-12-15"}`, "198.51.100.10", p.officer, nil)
-			if frozen {
-				wantResponse(t, patch, http.StatusConflict, `{"error":"due_frozen"}`)
-			} else {
-				if patch.Code != http.StatusOK {
+			for _, body := range []string{`{"amountCents":150000}`, `{"dueDate":"2026-12-15"}`} {
+				patch := p.do(http.MethodPatch, "/api/finance/dues/"+p.due, body, "198.51.100.10", p.officer, nil)
+				if frozen {
+					wantResponse(t, patch, http.StatusConflict, `{"error":"due_frozen"}`)
+				} else if patch.Code != http.StatusOK {
 					t.Fatalf("update: %d %s", patch.Code, patch.Body)
 				}
-				var updated struct {
-					AmountCents int64  `json:"amountCents"`
-					DueDate     string `json:"dueDate"`
-				}
-				if err := json.Unmarshal(patch.Body.Bytes(), &updated); err != nil {
-					t.Fatal(err)
-				}
-				if updated.AmountCents != 150000 || updated.DueDate != "2026-12-15" {
-					t.Fatalf("updated: %+v", updated)
-				}
+			}
+			readback := p.do(http.MethodGet, "/api/finance/dues/"+p.due, "", "198.51.100.10", p.officer, nil)
+			if readback.Code != http.StatusOK {
+				t.Fatalf("readback: %d %s", readback.Code, readback.Body)
+			}
+			var updated struct {
+				AmountCents int64  `json:"amountCents"`
+				DueDate     string `json:"dueDate"`
+			}
+			if err := json.Unmarshal(readback.Body.Bytes(), &updated); err != nil {
+				t.Fatal(err)
+			}
+			wantAmount, wantDate := int64(150000), "2026-12-15"
+			if frozen {
+				wantAmount, wantDate = 125050, "2026-11-30"
+			}
+			if updated.AmountCents != wantAmount || updated.DueDate != wantDate {
+				t.Fatalf("updated: %+v", updated)
 			}
 		})
 	}
@@ -82,6 +90,14 @@ func TestIssue144DeletePreservesFreeze(t *testing.T) {
 				wantResponse(t, rec, http.StatusConflict, `{"error":"due_frozen"}`)
 			} else if rec.Code != http.StatusNoContent {
 				t.Fatalf("delete: %d %s", rec.Code, rec.Body)
+			}
+			readback := p.do(http.MethodGet, "/api/finance/dues/"+p.due, "", "198.51.100.10", p.officer, nil)
+			want := http.StatusNotFound
+			if frozen {
+				want = http.StatusOK
+			}
+			if readback.Code != want {
+				t.Fatalf("readback: %d %s", readback.Code, readback.Body)
 			}
 		})
 	}

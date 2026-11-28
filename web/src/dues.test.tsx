@@ -544,8 +544,11 @@ for (const [label, summary, locked] of [
     if (locked) {
       expect(screen.getByText("Ya tiene pagos: solo pod\u00e9s cambiar el nombre.")).toBeTruthy();
     } else {
+      fireEvent.change(screen.getByLabelText("Monto en pesos"), { target: { value: "2500" } });
+      fireEvent.change(screen.getByLabelText("Vencimiento"), { target: { value: "2026-12-15" } });
       fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
       await waitFor(() => expect(sentTo(sent, "PATCH /finance/dues/d1")).toHaveLength(1));
+      expect(sentTo(sent, "PATCH /finance/dues/d1")[0]?.body).toEqual({ name: dueSummary.name, amountCents: 250000, dueDate: "2026-12-15" });
     }
     view.unmount();
   });
