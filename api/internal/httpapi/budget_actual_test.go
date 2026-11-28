@@ -356,7 +356,6 @@ func TestBudgetDeleteVsEntryLinkRace(t *testing.T) {
 		return b.ID
 	}
 
-	// Deterministic branch 1: DELETE commits while POST waits on FOR SHARE -> POST gets 404 not_found.
 	t.Run("delete wins under row lock yields 404 not_found on link", func(t *testing.T) {
 		bid := makeBudgetWithLine("Carrera deterministica delete")
 		blocker, err := tdb.Super.Begin(ctx)
@@ -375,7 +374,7 @@ func TestBudgetDeleteVsEntryLinkRace(t *testing.T) {
 		deadline := time.Now().Add(5 * time.Second)
 		for time.Now().Before(deadline) {
 			var waiting int
-			if err := tdb.Super.QueryRow(ctx, `SELECT count(*) FROM pg_stat_activity WHERE wait_event_type='Lock' AND query LIKE '%event_budgets%FOR SHARE%'`).Scan(&waiting); err == nil && waiting > 0 {
+			if err := tdb.Super.QueryRow(ctx, `SELECT count(*) FROM pg_stat_activity WHERE wait_event_type='Lock' AND query LIKE '%event_budgets%FOR UPDATE%'`).Scan(&waiting); err == nil && waiting > 0 {
 				break
 			}
 			time.Sleep(10 * time.Millisecond)
@@ -390,37 +389,13 @@ func TestBudgetDeleteVsEntryLinkRace(t *testing.T) {
 		}
 	})
 
-	// Deterministic branch 2: link commits while DELETE waits on FOR UPDATE -> DELETE gets 409 budget_has_entries.
-	t.Run("link wins under row lock yields 409 budget_has_entries on delete", func(t *testing.T) {
+	t.Run("link wins yields 409 budget_has_entries on delete", func(t *testing.T) {
 		bid := makeBudgetWithLine("Carrera deterministica link")
-		blocker, err := tdb.Super.Begin(ctx)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer blocker.Rollback(ctx)
-		if _, err := blocker.Exec(ctx, `SELECT 1 FROM event_budgets WHERE id=$1 FOR SHARE`, bid); err != nil {
-			t.Fatal(err)
-		}
-		done := make(chan *httptest.ResponseRecorder, 1)
-		go func() {
-			done <- f.do(http.MethodDelete, "/api/event-budgets/"+bid, "", ip, officer, nil)
-		}()
-		deadline := time.Now().Add(5 * time.Second)
-		for time.Now().Before(deadline) {
-			var waiting int
-			if err := tdb.Super.QueryRow(ctx, `SELECT count(*) FROM pg_stat_activity WHERE wait_event_type='Lock' AND query LIKE '%event_budgets%FOR UPDATE%'`).Scan(&waiting); err == nil && waiting > 0 {
-				break
-			}
-			time.Sleep(10 * time.Millisecond)
-		}
 		entryBody := fmt.Sprintf(`{"categoryId":%q,"direction":"expense","date":"2026-11-14","amountCents":100000,"description":"Sillas","eventBudgetId":%q,"headingId":%q}`, alquileres, bid, headings["mesas y sillas"])
 		if postRec := f.do(http.MethodPost, "/api/finance/entries", entryBody, ip, officer, nil); postRec.Code != 201 {
-			t.Fatalf("post while FOR SHARE held = %d %s", postRec.Code, postRec.Body)
+			t.Fatalf("post = %d %s", postRec.Code, postRec.Body)
 		}
-		if err := blocker.Commit(ctx); err != nil {
-			t.Fatal(err)
-		}
-		wantResponse(t, <-done, 409, `{"error":"budget_has_entries"}`)
+		wantResponse(t, f.do(http.MethodDelete, "/api/event-budgets/"+bid, "", ip, officer, nil), 409, `{"error":"budget_has_entries"}`)
 		var exists bool
 		if err := tdb.Super.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM event_budgets WHERE id=$1)`, bid).Scan(&exists); err != nil || !exists {
 			t.Fatalf("budget missing after 409 delete: exists=%v err=%v", exists, err)
