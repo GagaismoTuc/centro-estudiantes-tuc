@@ -28,15 +28,6 @@ const memberStatusLabel: Record<string, string> = {
   exempt: "Exento",
 };
 
-/**
- * Whether the due already has payments, from what the screen holds: someone paid in full in the
- * list count, or the open detail shows a partial payment.
- * shortcut: a partial payment with the detail closed, or only reversed payments, go unseen and the
- * API answers due_frozen on save; add an activity flag to FinanceDueSummary if that confuses Officers.
- */
-const hasPayments = (due: DueSummary, detail: DueDetail | null) =>
-  due.totalCount - due.owingCount > 0 || (detail?.id === due.id && detail.members.some((m) => m.paidCents !== "0"));
-
 /** What a member still owes of a due, in centavos. */
 const owedCents = (amountCents: string, paidCents: string) => String(BigInt(amountCents) - BigInt(paidCents));
 
@@ -472,7 +463,7 @@ export function Dues() {
           submitLabel="Guardar cambios"
           busy={busy}
           initial={{ name: editing.name, amount: pesosInput(editing.amountCents), dueDate: editing.dueDate }}
-          locked={hasPayments(editing, detail)}
+          locked={editing.frozen}
           form={editForm}
           onSubmit={(values) => void handleEdit(values)}
           onCancel={() => {

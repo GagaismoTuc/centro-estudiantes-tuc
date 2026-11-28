@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -31,5 +32,21 @@ func TestWriteDueErrorMappingsAndSanitizedLogs(t *testing.T) {
 	}
 	if logs := buf.String(); strings.Contains(logs, "Ana Ficticia") || strings.Contains(logs, "30111222") {
 		t.Fatalf("500 log leaked personal data: %s", logs)
+	}
+}
+
+func TestIssue144SummaryIncludesFrozen(t *testing.T) {
+	for _, frozen := range []bool{false, true} {
+		data, err := json.Marshal(dueSummaryResponse(finance.Due{Frozen: frozen}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var summary map[string]any
+		if err := json.Unmarshal(data, &summary); err != nil {
+			t.Fatal(err)
+		}
+		if value, ok := summary["frozen"]; !ok || value != frozen {
+			t.Fatalf("frozen = %v, present = %v", value, ok)
+		}
 	}
 }

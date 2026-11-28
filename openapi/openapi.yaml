@@ -3997,6 +3997,7 @@ components:
         createdAt: { type: string, format: date-time }
         owingCount: { type: integer, description: "Members who owe; exempt members are left out." }
         totalCount: { type: integer, description: "Members in the snapshot minus exempt members (the denominator)." }
+        frozen: { type: boolean, description: "Whether payments or exemptions prevent editing amount and due date." }
     FinanceDueDetail:
       type: object
       required: [id, name, amountCents, dueDate, createdAt, owingCount, totalCount, members]

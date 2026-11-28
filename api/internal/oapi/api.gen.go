@@ -2191,8 +2191,11 @@ type FinanceDueSummary struct {
 	AmountCents int64     `json:"amountCents"`
 	CreatedAt   time.Time `json:"createdAt"`
 	DueDate     string    `json:"dueDate"`
-	Id          string    `json:"id"`
-	Name        string    `json:"name"`
+
+	// Frozen Whether payments or exemptions prevent editing amount and due date.
+	Frozen *bool  `json:"frozen,omitempty"`
+	Id     string `json:"id"`
+	Name   string `json:"name"`
 
 	// OwingCount Members who owe; exempt members are left out.
 	OwingCount int `json:"owingCount"`
