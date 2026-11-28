@@ -54,6 +54,7 @@ func writeDueError(w http.ResponseWriter, err error) {
 }
 
 func dueSummaryResponse(d finance.Due) oapi.FinanceDueSummary {
+	frozen := d.Frozen
 	return oapi.FinanceDueSummary{
 		Id:          d.ID,
 		Name:        d.Name,
@@ -62,6 +63,7 @@ func dueSummaryResponse(d finance.Due) oapi.FinanceDueSummary {
 		CreatedAt:   d.CreatedAt,
 		OwingCount:  d.OwingCount,
 		TotalCount:  d.TotalCount,
+		Frozen:      &frozen,
 	}
 }
 

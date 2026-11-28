@@ -33,6 +33,7 @@ type Due struct {
 	CreatedAt   time.Time
 	OwingCount  int
 	TotalCount  int
+	Frozen      bool
 }
 
 // DueMember holds one Roster member's payment status for a Due without exposing document numbers.
@@ -231,7 +232,8 @@ func (s *Store) ListDues(ctx context.Context, sess auth.Session) (out []Due, err
 		rows, e := tx.Query(ctx, `
 			SELECT d.id::text, d.name, d.amount_cents, to_char(d.due_date, 'YYYY-MM-DD'), d.created_at,
 			       COUNT(dm.roster_member_id) FILTER (WHERE e.roster_member_id IS NULL AND `+paidSQL("dm.due_id", "dm.roster_member_id")+` < d.amount_cents)::int,
-			       COUNT(dm.roster_member_id) FILTER (WHERE e.roster_member_id IS NULL)::int
+			       COUNT(dm.roster_member_id) FILTER (WHERE e.roster_member_id IS NULL)::int,
+			       (`+dueActivitySQL("d.tenant_id", "d.id")+`)
 			FROM finance_dues d
 			LEFT JOIN finance_due_members dm ON dm.tenant_id = d.tenant_id AND dm.due_id = d.id
 			LEFT JOIN finance_due_exemptions e

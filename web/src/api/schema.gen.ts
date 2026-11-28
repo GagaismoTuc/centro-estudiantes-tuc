@@ -1970,6 +1970,8 @@ export interface components {
             owingCount: number;
             /** @description Members in the snapshot minus exempt members (the denominator). */
             totalCount: number;
+            /** @description Whether payments or exemptions prevent editing amount and due date. */
+            frozen?: boolean;
         };
         FinanceDueDetail: {
             id: string;

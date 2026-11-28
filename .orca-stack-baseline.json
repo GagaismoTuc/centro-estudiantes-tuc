@@ -33,12 +33,6 @@
     },
     {
       "rule": "comment-excuse",
-      "file": "web/src/screens/Dues.tsx",
-      "location": "hasPayments()",
-      "fingerprint": "sha256:8f7cd075517491c7"
-    },
-    {
-      "rule": "comment-excuse",
       "file": "web/src/screens/Finance.tsx",
       "location": "save()",
       "fingerprint": "sha256:755bfc5a64b18fe5"

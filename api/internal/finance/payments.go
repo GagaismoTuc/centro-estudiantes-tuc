@@ -130,12 +130,14 @@ func paymentDescription(dueName string) string {
 	return paymentDescriptionPrefix + string(runes)
 }
 
-// hasDueActivity reports whether a Due has a payment or an Exemption. A Due stays frozen after its
-// payments were reversed: there was money (#78 R8).
+func dueActivitySQL(tenant, due string) string {
+	return fmt.Sprintf(`EXISTS (SELECT 1 FROM finance_due_payments WHERE tenant_id=%s AND due_id=%s)
+		OR EXISTS (SELECT 1 FROM finance_due_exemptions WHERE tenant_id=%s AND due_id=%s)`, tenant, due, tenant, due)
+}
+
 func hasDueActivity(ctx context.Context, tx pgx.Tx, tenantID, dueID string) (bool, error) {
 	var frozen bool
-	err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM finance_due_payments WHERE tenant_id=$1 AND due_id=$2)
-		OR EXISTS (SELECT 1 FROM finance_due_exemptions WHERE tenant_id=$1 AND due_id=$2)`, tenantID, dueID).Scan(&frozen)
+	err := tx.QueryRow(ctx, `SELECT `+dueActivitySQL("$1", "$2"), tenantID, dueID).Scan(&frozen)
 	return frozen, err
 }
 

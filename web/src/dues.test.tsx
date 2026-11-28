@@ -186,11 +186,11 @@ test("R3 due_frozen error and R6 mfa_required refresh on Dues", async () => {
 });
 
 test("R5 a due with payments shows Monto and Vencimiento disabled with the note, and only the name changes", async () => {
-  const paidDue = { ...dueSummary, id: "d2", name: "Cuota de octubre", owingCount: 1, totalCount: 2 };
+  const paidDue = { ...dueSummary, id: "d2", name: "Cuota de octubre", owingCount: 1, totalCount: 2, frozen: true };
   const partial = { ...dueDetail, members: [dueDetail.members[0], { ...dueDetail.members[1], paidCents: 50000 }] };
   const sent = mockApi({
     "GET /auth/me": ok(officerMe()),
-    "GET /finance/dues": ok([paidDue, dueSummary]),
+    "GET /finance/dues": ok([paidDue, { ...dueSummary, frozen: true }]),
     "GET /finance/dues/mine": ok([]),
     "GET /finance/dues/d1": ok(partial),
     "PATCH /finance/dues/d2": ok({ ...paidDue, name: "Cuota de octubre (2)", members: [] }),
@@ -212,7 +212,6 @@ test("R5 a due with payments shows Monto and Vencimiento disabled with the note,
   await waitFor(() => expect(sentTo(sent, "PATCH /finance/dues/d2")).toHaveLength(1));
   expect(sentTo(sent, "PATCH /finance/dues/d2")[0]?.body).toEqual({ name: "Cuota de octubre (2)", amountCents: 200000, dueDate: "2026-11-30" });
 
-  // A partial payment does not show in the list count: the open detail reveals it.
   fireEvent.click(await screen.findByRole("button", { name: "Ver detalle de Cuota de noviembre" }));
   await screen.findByText("Pagó $ 500,00 de $ 2.000,00");
   fireEvent.click(screen.getByRole("button", { name: "Editar Cuota de noviembre" }));
@@ -524,3 +523,33 @@ test("#135 R6 a student sees only their own Vencida and never the commission lis
     vi.useRealTimers();
   }
 });
+
+for (const [label, summary, locked] of [
+  ["partial payment with closed detail", { ...dueSummary, amountCents: 125050, frozen: true }, true],
+  ["exemptions or reversed payments", { ...dueSummary, frozen: true }, true],
+  ["no payments or exemptions", { ...dueSummary, frozen: false }, false],
+] as const) {
+  test(`issue 144 ${label}`, async () => {
+    const sent = mockApi({
+      "GET /auth/me": ok(me({ role: "officer", mfa: "satisfied" })),
+      "GET /finance/dues": ok([summary]),
+      "GET /finance/dues/mine": ok([]),
+      "PATCH /finance/dues/d1": ok(dueDetail),
+    });
+    window.history.replaceState(null, "", "/cuotas");
+    const view = render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Editar Cuota de noviembre" }));
+    expect((screen.getByLabelText("Monto en pesos") as HTMLInputElement).disabled).toBe(locked);
+    expect((screen.getByLabelText("Vencimiento") as HTMLInputElement).disabled).toBe(locked);
+    if (locked) {
+      expect(screen.getByText("Ya tiene pagos: solo pod\u00e9s cambiar el nombre.")).toBeTruthy();
+    } else {
+      fireEvent.change(screen.getByLabelText("Monto en pesos"), { target: { value: "2500" } });
+      fireEvent.change(screen.getByLabelText("Vencimiento"), { target: { value: "2026-12-15" } });
+      fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
+      await waitFor(() => expect(sentTo(sent, "PATCH /finance/dues/d1")).toHaveLength(1));
+      expect(sentTo(sent, "PATCH /finance/dues/d1")[0]?.body).toEqual({ name: dueSummary.name, amountCents: 250000, dueDate: "2026-12-15" });
+    }
+    view.unmount();
+  });
+}
