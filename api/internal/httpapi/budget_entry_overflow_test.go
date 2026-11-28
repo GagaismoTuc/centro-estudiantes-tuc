@@ -134,12 +134,13 @@ func TestUnlinkedEntryDoesNotReadBudget(t *testing.T) {
 	ctx := integration(t)
 	f, officer, _, _, _, category, _, _ := setupBudgetActualFixture(t, ctx)
 	const ip = "198.51.100.84"
+	id, _ := linkedOverflowBudget(t, f, ip, officer)
 	lock, err := tdb.Super.Begin(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer lock.Rollback(context.Background())
-	if _, err = lock.Exec(ctx, `LOCK TABLE event_budgets IN ACCESS EXCLUSIVE MODE`); err != nil {
+	if _, err = lock.Exec(ctx, `SELECT id FROM event_budgets WHERE id=$1 FOR UPDATE`, id); err != nil {
 		t.Fatal(err)
 	}
 	body := fmt.Sprintf(`{"categoryId":%q,"direction":"expense","date":"2026-11-14","amountCents":100000,"description":"Unlinked"}`, category)
@@ -151,7 +152,7 @@ func TestUnlinkedEntryDoesNotReadBudget(t *testing.T) {
 			t.Fatalf("status %d", code)
 		}
 	case <-time.After(3 * time.Second):
-		t.Fatal("unlinked entry waited on budget table")
+		t.Fatal("unlinked entry waited on budget row lock")
 	}
 }
 
