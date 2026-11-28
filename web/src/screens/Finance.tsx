@@ -417,7 +417,7 @@ export function Finance() {
     </section>}
     <section className="panel"><h2>Movimientos</h2>
       {entries === null ? <p>Cargando...</p> : entries.length === 0 ? <p>{"Todav\u00eda no hay movimientos."}</p> : <ul>{entries.map((entry) => <li key={entry.id}>
-        <strong>{entry.description}</strong> {"\u2014"} {formatPesos(entry.amountCents)} ({entry.direction === "income" ? "Ingreso" : "Gasto"})<br />
+        <strong>{entry.description}</strong> {"\u2014"} <span className="amount">{formatPesos(entry.amountCents)}</span> ({entry.direction === "income" ? "Ingreso" : "Gasto"})<br />
         {categories.find((c) => c.id === entry.categoryId)?.name} {"\u2014"} {formatDate(entry.date)}<br />
         Registrado por {entry.recordedBy} {"\u2014"} {formatDateTime(entry.recordedAt)}
         {entry.eventBudgetName && <><br /><span>Evento: {entry.eventBudgetName}{entry.headingName ? ` \u2014 ${entry.headingName}` : ""}</span></>}
@@ -524,7 +524,7 @@ export function Finance() {
       <p>{"¿Revertís este movimiento? Se va a cargar un movimiento opuesto con fecha de hoy."}</p>
     </ConfirmDialog>}
     {confirmOverdraft !== null && <ConfirmDialog title="Saldo negativo" confirmLabel="Registrar igual" onConfirm={() => { setConfirmOverdraft(null); void save(true); }} onCancel={() => setConfirmOverdraft(null)}>
-      <p>{`El saldo va a quedar en ${formatPesos(confirmOverdraft)}. ¿Registrar igual?`}</p>
+      <p>El saldo va a quedar en <span className="amount">{formatPesos(confirmOverdraft)}</span>. ¿Registrar igual?</p>
     </ConfirmDialog>}
   </>;
 }
