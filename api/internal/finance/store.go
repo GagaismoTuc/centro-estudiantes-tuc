@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/auth"
+	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/budgets"
 	"github.com/GagaismoTuc/centro-estudiantes-tuc/api/internal/db"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -193,7 +194,7 @@ func (s *Store) Create(ctx context.Context, sess auth.Session, in NewEntry) (out
 			return ErrReserved
 		}
 		var eventBudgetParam, headingParam any
-		var eventBudgetName, headingName string
+		var eventBudgetName, headingName, budgetStart, budgetEnd string
 		if (in.EventBudgetID == "") != (in.HeadingID == "") {
 			return ErrInvalidEventLink
 		}
@@ -202,8 +203,8 @@ func (s *Store) Create(ctx context.Context, sess auth.Session, in NewEntry) (out
 				return ErrNotFound
 			}
 			var archived bool
-			// FOR SHARE serializes with DELETE (FOR UPDATE) and Archive (UPDATE) on event_budgets.
-			e = tx.QueryRow(ctx, `SELECT name, archived_at IS NOT NULL FROM event_budgets WHERE tenant_id=$1 AND id=$2 FOR SHARE`, sess.TenantID, in.EventBudgetID).Scan(&eventBudgetName, &archived)
+			// Lock the budget before inserting an entry, matching saveLine and avoiding lock inversion (#145).
+			e = tx.QueryRow(ctx, `SELECT name, archived_at IS NOT NULL, starts_on::text, ends_on::text FROM event_budgets WHERE tenant_id=$1 AND id=$2 FOR UPDATE`, sess.TenantID, in.EventBudgetID).Scan(&eventBudgetName, &archived, &budgetStart, &budgetEnd)
 			if errors.Is(e, pgx.ErrNoRows) {
 				return ErrNotFound
 			}
@@ -237,6 +238,11 @@ func (s *Store) Create(ctx context.Context, sess auth.Session, in NewEntry) (out
 		e = tx.QueryRow(ctx, `INSERT INTO finance_entries(tenant_id,category_id,direction,entry_date,amount_cents,description,recorded_by,recorded_by_name,recorded_at,event_budget_id,heading_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id::text, recorded_at`, sess.TenantID, in.CategoryID, in.Direction, date, in.AmountCents, in.Description, sess.UserID, name, recordedAt, eventBudgetParam, headingParam).Scan(&out.ID, &out.RecordedAt)
 		if e != nil {
 			return e
+		}
+		if in.EventBudgetID != "" {
+			if e = checkBudgetTotals(ctx, tx, sess.TenantID, in.EventBudgetID, budgetStart, budgetEnd); e != nil {
+				return e
+			}
 		}
 		out.CategoryID = in.CategoryID
 		out.Direction = in.Direction
@@ -285,6 +291,13 @@ func (s *Store) Reverse(ctx context.Context, sess auth.Session, id string) (out 
 		if original.ReversalID != "" {
 			return ErrAlreadyReversed
 		}
+		var budgetStart, budgetEnd string
+		if original.EventBudgetID != "" {
+			e = tx.QueryRow(ctx, `SELECT starts_on::text,ends_on::text FROM event_budgets WHERE tenant_id=$1 AND id=$2 FOR UPDATE`, sess.TenantID, original.EventBudgetID).Scan(&budgetStart, &budgetEnd)
+			if e != nil {
+				return e
+			}
+		}
 		name, e := officerName(ctx, tx, sess)
 		if e != nil {
 			return e
@@ -310,13 +323,28 @@ func (s *Store) Reverse(ctx context.Context, sess auth.Session, id string) (out 
 		if errors.As(e, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "finance_entries_reverses_id_key" {
 			return ErrAlreadyReversed
 		}
-		return e
+		if e != nil {
+			return e
+		}
+		if out.EventBudgetID != "" {
+			return checkBudgetTotals(ctx, tx, sess.TenantID, out.EventBudgetID, budgetStart, budgetEnd)
+		}
+		return nil
 	})
 	if err != nil {
 		return Entry{}, err
 	}
 	return
 }
+
+func checkBudgetTotals(ctx context.Context, tx pgx.Tx, tenantID, budgetID, start, end string) error {
+	err := budgets.CheckTotals(ctx, tx, tenantID, budgetID, start, end)
+	if errors.Is(err, budgets.ErrAmount) {
+		return ErrAmount
+	}
+	return err
+}
+
 func (s *Store) List(ctx context.Context, sess auth.Session) (out []Entry, err error) {
 	out = []Entry{}
 	err = s.withMember(ctx, sess, false, func(tx pgx.Tx) error {

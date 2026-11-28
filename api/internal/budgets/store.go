@@ -200,12 +200,7 @@ func (s *Store) saveLine(ctx context.Context, sess auth.Session, budgetID, lineI
 		if err != nil {
 			return err
 		}
-		// Recompute the totals Get would show, still under the budget's FOR UPDATE, so a line
-		// that makes them overflow int64 is rolled back instead of breaking every later read.
-		check := Detail{Budget: Budget{ID: budgetID, StartsOn: start, EndsOn: end}}
-		if err := loadDetail(ctx, tx, sess.TenantID, &check); errors.Is(err, errTotalsOverflow) {
-			return ErrAmount
-		} else if err != nil {
+		if err := CheckTotals(ctx, tx, sess.TenantID, budgetID, start, end); err != nil {
 			return err
 		}
 		out.LineInput = in
@@ -335,6 +330,16 @@ func (s *Store) Get(ctx context.Context, sess auth.Session, id string) (Detail, 
 		return loadDetail(ctx, tx, sess.TenantID, &out)
 	})
 	return out, err
+}
+
+// CheckTotals checks the same totals used by Get while the caller holds the budget lock (#145).
+func CheckTotals(ctx context.Context, tx pgx.Tx, tenantID, budgetID, start, end string) error {
+	check := Detail{Budget: Budget{ID: budgetID, StartsOn: start, EndsOn: end}}
+	if err := loadDetail(ctx, tx, tenantID, &check); errors.Is(err, errTotalsOverflow) {
+		return ErrAmount
+	} else {
+		return err
+	}
 }
 
 // loadDetail fills the lines and totals of out, whose ID, StartsOn and EndsOn are already set.
